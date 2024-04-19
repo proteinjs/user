@@ -1,8 +1,10 @@
 {
     "name": "@proteinjs/user-server",
-    "private": true,
     "version": "1.0.0",
     "description": "User server components",
+    "publishConfig": {
+        "access": "public"
+    },
     "repository": {
         "type": "git",
         "url": "git+https://github.com/proteinjs/user.git"
@@ -21,10 +23,9 @@
     "dependencies": {
         "@proteinjs/reflection": "1.0.2",
         "@proteinjs/util": "1.0.18",
-        "@proteinjs/db": "file:../../db/db",
+        "@proteinjs/db": "1.0.3",
         "@proteinjs/server-api": "1.0.2",
-        "@proteinjs/ui": "file:../../ui",
-        "@proteinjs/user": "file:../user",
+        "@proteinjs/user": "1.0.1",
         "crypto-js": "4.0.0",
         "express-session": "1.17.1",
         "moment": "2.29.4"
