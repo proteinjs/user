@@ -3,8 +3,8 @@
   "private": true,
   "scripts": {
     "clean-workspace": "workspace clean",
-    "build-workspace": "build-workspace --skip=@proteinjs/user-ui",
-    "test-workspace": "workspace test --skip=@proteinjs/user-ui",
+    "build-workspace": "build-workspace",
+    "test-workspace": "workspace test",
     "watch-workspace": "watch-workspace"
   },
   "devDependencies": {
