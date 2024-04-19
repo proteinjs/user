@@ -18,8 +18,7 @@
     "scripts": {
         "clean": "rm -rf dist/ generated/ node_modules/ package-lock.json",
         "build": "reflection-build && tsc",
-        "watch": "reflection-watch",
-        "test": "jest"
+        "watch": "reflection-watch"
     },
     "dependencies": {
         "@proteinjs/reflection": "1.0.2",
