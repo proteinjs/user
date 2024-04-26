@@ -1,6 +1,6 @@
 {
     "name": "@proteinjs/user",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "description": "User management",
     "publishConfig": {
         "access": "public"
@@ -22,7 +22,7 @@
         "test": "jest"
     },
     "dependencies": {
-        "@proteinjs/db": "1.0.7",
+        "@proteinjs/db": "1.0.8",
         "@proteinjs/reflection": "1.0.7",
         "@proteinjs/server-api": "1.0.6",
         "@proteinjs/service": "1.0.6",
@@ -30,7 +30,7 @@
         "moment": "2.29.4"
     },
     "devDependencies": {
-        "@proteinjs/db-driver-knex": "1.0.6",
+        "@proteinjs/db-driver-knex": "1.0.7",
         "@proteinjs/reflection-build": "1.0.11",
         "@types/jest": "29.5.5",
         "@types/node": "14.0.13",
