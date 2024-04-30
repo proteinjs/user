@@ -1,6 +1,6 @@
 {
     "name": "@proteinjs/user-ui",
-    "version": "1.0.8",
+    "version": "1.0.9",
     "description": "User ui components",
     "publishConfig": {
         "access": "public"
@@ -22,15 +22,15 @@
     },
     "dependencies": {
         "@proteinjs/reflection": "1.0.7",
-        "@proteinjs/server-api": "1.0.7",
-        "@proteinjs/ui": "1.0.6",
-        "@proteinjs/user": "1.0.8",
+        "@proteinjs/server-api": "1.0.8",
+        "@proteinjs/ui": "1.0.7",
+        "@proteinjs/user": "1.0.9",
         "moment": "2.29.4",
         "react": "18.2.0",
         "react-dom": "18.2.0"
     },
     "devDependencies": {
-        "@proteinjs/reflection-build": "1.0.12",
+        "@proteinjs/reflection-build": "1.0.13",
         "@types/node": "14.0.13",
         "@types/react": "18.2.23",
         "@types/react-dom": "18.2.8",
