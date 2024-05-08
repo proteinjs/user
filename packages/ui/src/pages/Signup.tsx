@@ -66,10 +66,14 @@ const buttons: FormButtons<SignupFields> = {
           'Content-Type': 'application/json',
         },
       });
-      if (response.status != 200) throw new Error(`Failed to signup, error: ${response.statusText}`);
+      if (response.status != 200) {
+        throw new Error(`Failed to signup, error: ${response.statusText}`);
+      }
 
       const body = await response.json();
-      if (body.error) throw new Error(body.error);
+      if (body.error) {
+        throw new Error(body.error);
+      }
 
       return `Successfully created your account! Please check your email for an email confirmation.`;
     },

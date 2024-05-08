@@ -35,12 +35,15 @@ const dbDriver = new KnexDriver({
   dbName: 'test',
 });
 const dropTable = async (table: Table<any>) => {
-  if (await dbDriver.getKnex().schema.withSchema(dbDriver.getDbName()).hasTable(table.name))
+  if (await dbDriver.getKnex().schema.withSchema(dbDriver.getDbName()).hasTable(table.name)) {
     await dbDriver.getKnex().schema.withSchema(dbDriver.getDbName()).dropTable(table.name);
+  }
 };
 const getTable = (tableName: string) => {
   const userTable = new FavoriteTable();
-  if (userTable.name == tableName) return userTable;
+  if (userTable.name == tableName) {
+    return userTable;
+  }
 
   throw new Error('Cannot find test table');
 };
@@ -48,7 +51,9 @@ const db = new Db(dbDriver, getTable);
 
 describe('Scoped Record', () => {
   beforeAll(async () => {
-    if (dbDriver.start) await dbDriver.start();
+    if (dbDriver.start) {
+      await dbDriver.start();
+    }
 
     await dbDriver.getTableManager().loadTable(new FavoriteTable());
   });
@@ -56,7 +61,9 @@ describe('Scoped Record', () => {
   afterAll(async () => {
     await dropTable(new FavoriteTable());
 
-    if (dbDriver.stop) await dbDriver.stop();
+    if (dbDriver.stop) {
+      await dbDriver.stop();
+    }
   });
 
   test('Query scoped records', async () => {

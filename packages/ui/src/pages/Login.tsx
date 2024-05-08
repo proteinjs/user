@@ -57,10 +57,14 @@ const buttons: FormButtons<LoginFields> = {
           'Content-Type': 'application/json',
         },
       });
-      if (response.status != 200) throw new Error(`Failed to login, error: ${response.statusText}`);
+      if (response.status != 200) {
+        throw new Error(`Failed to login, error: ${response.statusText}`);
+      }
 
       const body = await response.json();
-      if (body.error) throw new Error(body.error);
+      if (body.error) {
+        throw new Error(body.error);
+      }
 
       window.location.href = '/';
     },

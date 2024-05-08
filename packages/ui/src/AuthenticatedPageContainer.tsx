@@ -14,11 +14,17 @@ export function AuthenticatedPageContainer(props: AuthenticatedPageContainerProp
       auth={{
         isLoggedIn,
         canViewPage: (page: Page) => {
-          if (page.auth?.public) return true;
+          if (page.auth?.public) {
+            return true;
+          }
 
-          if (page.auth?.allUsers) return UserAuth.isLoggedIn();
+          if (page.auth?.allUsers) {
+            return UserAuth.isLoggedIn();
+          }
 
-          if (!page.auth?.roles) return UserAuth.hasRole('admin');
+          if (!page.auth?.roles) {
+            return UserAuth.hasRole('admin');
+          }
 
           return UserAuth.hasRoles(page.auth?.roles);
         },
@@ -32,7 +38,9 @@ export function AuthenticatedPageContainer(props: AuthenticatedPageContainerProp
               'Content-Type': 'application/json',
             },
           });
-          if (response.status != 200) throw new Error(`Failed to log out`);
+          if (response.status != 200) {
+            throw new Error(`Failed to log out`);
+          }
 
           new UserRepo().setUser(guestUser);
           setIsLoggedIn(false);

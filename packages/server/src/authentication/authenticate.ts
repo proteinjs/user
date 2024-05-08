@@ -4,7 +4,9 @@ import { tables } from '@proteinjs/user';
 import { DefaultAdminCredentials } from './DefaultAdminCredentials';
 
 export function createAuthentication(defaultAdminCredentials?: { username: string; password: string }) {
-  if (defaultAdminCredentials) DefaultAdminCredentials.setCredentials(defaultAdminCredentials);
+  if (defaultAdminCredentials) {
+    DefaultAdminCredentials.setCredentials(defaultAdminCredentials);
+  }
 
   return authenticate;
 }
@@ -24,7 +26,9 @@ export async function authenticate(email: string, password: string): Promise<tru
     email,
     password: sha256(password).toString(),
   });
-  if (users.length < 1) return 'User name or password incorrect';
+  if (users.length < 1) {
+    return 'User name or password incorrect';
+  }
 
   return true;
 }

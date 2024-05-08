@@ -22,7 +22,9 @@ export const userCache: SessionDataCache<User> = {
           id: 'admin',
         };
         user = adminUser;
-      } else user = await getSystemDb().get(tables.User, { email: userEmail });
+      } else {
+        user = await getSystemDb().get(tables.User, { email: userEmail });
+      }
     }
 
     return user;

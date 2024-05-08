@@ -17,14 +17,18 @@ export class UserAuth {
   private static userRepo?: AuthenticatedUserRepo;
 
   private static getUserRepo() {
-    if (!UserAuth.userRepo) UserAuth.userRepo = getAuthenticatedUserRepo();
+    if (!UserAuth.userRepo) {
+      UserAuth.userRepo = getAuthenticatedUserRepo();
+    }
 
     return UserAuth.userRepo;
   }
 
   static isLoggedIn(): boolean {
     const userRepo = UserAuth.getUserRepo();
-    if (!userRepo) return true;
+    if (!userRepo) {
+      return true;
+    }
 
     const user = userRepo.getUser();
     return user.email != guestUser.email;
@@ -35,10 +39,14 @@ export class UserAuth {
    */
   static hasRole(role: string): boolean {
     const userRepo = UserAuth.getUserRepo();
-    if (!userRepo) return true;
+    if (!userRepo) {
+      return true;
+    }
 
     const user = userRepo.getUser();
-    if (user.roles.includes('admin')) return true;
+    if (user.roles.includes('admin')) {
+      return true;
+    }
 
     return user.roles.includes(role);
   }
@@ -49,12 +57,18 @@ export class UserAuth {
    */
   static hasRoles(roles: string[], has: 'all' | 'at least one' = 'all'): boolean {
     const userRepo = UserAuth.getUserRepo();
-    if (!userRepo) return true;
+    if (!userRepo) {
+      return true;
+    }
 
     for (const role of roles) {
       if (!UserAuth.hasRole(role)) {
-        if (has === 'all') return false;
-      } else if (has === 'at least one') return true;
+        if (has === 'all') {
+          return false;
+        }
+      } else if (has === 'at least one') {
+        return true;
+      }
     }
 
     return has === 'all';

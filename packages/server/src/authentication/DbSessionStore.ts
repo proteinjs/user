@@ -39,7 +39,9 @@ export class DbSessionStore extends Store {
     // console.info('in destroy');
     (async () => {
       await destroySession(sessionId);
-      if (cb) cb();
+      if (cb) {
+        cb();
+      }
     })();
   };
 
@@ -50,7 +52,9 @@ export class DbSessionStore extends Store {
   ): Promise<void> {
     // Only persist authenticated sessions
     if (!session.passport?.user) {
-      if (cb) cb();
+      if (cb) {
+        cb();
+      }
 
       return;
     }
@@ -75,11 +79,15 @@ export class DbSessionStore extends Store {
       }
     }
 
-    if (cb) cb();
+    if (cb) {
+      cb();
+    }
   }
 
   private async sweep(): Promise<void> {
-    if (!(await getSystemDb().tableExists(tables.Session))) return;
+    if (!(await getSystemDb().tableExists(tables.Session))) {
+      return;
+    }
 
     console.info(`Sweeping expired sessions`);
     const qb = new QueryBuilderFactory()
