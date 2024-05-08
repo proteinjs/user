@@ -1,2 +1,2 @@
-export * from './src/UserAuth'
-export * from './src/guestUser'
+export * from './src/UserAuth';
+export * from './src/guestUser';
