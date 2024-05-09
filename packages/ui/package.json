@@ -1,41 +1,41 @@
 {
-    "name": "@proteinjs/user-ui",
-    "version": "1.0.11",
-    "description": "User ui components",
-    "publishConfig": {
-        "access": "public"
-    },
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/proteinjs/user.git"
-    },
-    "bugs": {
-        "url": "https://github.com/proteinjs/user/issues"
-    },
-    "homepage": "https://github.com/proteinjs/user#readme",
-    "author": "Brent Bahry",
-    "license": "MIT",
-    "scripts": {
-        "clean": "rm -rf dist/ generated/ node_modules/",
-        "build": "reflection-build && tsc",
-        "watch": "reflection-watch"
-    },
-    "dependencies": {
-        "@proteinjs/reflection": "1.1.1",
-        "@proteinjs/server-api": "1.1.1",
-        "@proteinjs/ui": "2.0.2",
-        "@proteinjs/user": "^1.0.11",
-        "moment": "2.29.4",
-        "react": "18.2.0",
-        "react-dom": "18.2.0"
-    },
-    "devDependencies": {
-        "@proteinjs/reflection-build": "1.0.16",
-        "@types/node": "14.0.13",
-        "@types/react": "18.2.23",
-        "@types/react-dom": "18.2.8",
-        "typescript": "5.2.2"
-    },
-    "main": "./dist/generated/index.js",
-    "types": "./dist/generated/index.d.ts"
+  "name": "@proteinjs/user-ui",
+  "version": "1.0.12",
+  "description": "User ui components",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/proteinjs/user.git"
+  },
+  "bugs": {
+    "url": "https://github.com/proteinjs/user/issues"
+  },
+  "homepage": "https://github.com/proteinjs/user#readme",
+  "author": "Brent Bahry",
+  "license": "MIT",
+  "scripts": {
+    "clean": "rm -rf dist/ generated/ node_modules/",
+    "build": "reflection-build && tsc",
+    "watch": "reflection-watch"
+  },
+  "dependencies": {
+    "@proteinjs/reflection": "1.1.1",
+    "@proteinjs/server-api": "1.1.1",
+    "@proteinjs/ui": "2.0.2",
+    "@proteinjs/user": "^1.0.12",
+    "moment": "2.29.4",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  },
+  "devDependencies": {
+    "@proteinjs/reflection-build": "1.0.16",
+    "@types/node": "14.0.13",
+    "@types/react": "18.2.23",
+    "@types/react-dom": "18.2.8",
+    "typescript": "5.2.2"
+  },
+  "main": "./dist/generated/index.js",
+  "types": "./dist/generated/index.d.ts"
 }
