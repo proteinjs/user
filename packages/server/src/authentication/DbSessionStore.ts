@@ -55,10 +55,14 @@ export class DbSessionStore extends Store {
 
         const sessionRecord = await getSystemDb().get(tables.Session, { sessionId });
         if (sessionRecord) {
-            sessionRecord.session = JSON.stringify(session);
-            sessionRecord.expires = (<Date>session.cookie.expires);
-            sessionRecord.userEmail = session.passport?.user;
-            await getSystemDb().update(tables.Session, sessionRecord, { sessionId });
+            try {
+                sessionRecord.session = JSON.stringify(session);
+                sessionRecord.expires = (<Date>session.cookie.expires);
+                sessionRecord.userEmail = session.passport?.user;
+                await getSystemDb().update(tables.Session, sessionRecord, { sessionId });
+            } catch (error) {
+                console.error('Failed to update session', error);
+            }
         } else {
             try {
                 await getSystemDb().insert(tables.Session, {
