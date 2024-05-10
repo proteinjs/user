@@ -5,14 +5,9 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## [1.0.8](https://github.com/proteinjs/user/compare/@proteinjs/user-auth@1.0.7...@proteinjs/user-auth@1.0.8) (2024-05-10)
 
-
 ### Bug Fixes
 
-* add linting and lint all files ([71defcd](https://github.com/proteinjs/user/commit/71defcd78dc479d2eef1f624c746c879f4e31daa))
-
-
-
-
+- add linting and lint all files ([71defcd](https://github.com/proteinjs/user/commit/71defcd78dc479d2eef1f624c746c879f4e31daa))
 
 ## 1.0.1 (2024-04-19)
 

@@ -5,14 +5,9 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ## [1.0.12](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.0.11...@proteinjs/user-server@1.0.12) (2024-05-10)
 
-
 ### Bug Fixes
 
-* add linting and lint all files ([71defcd](https://github.com/proteinjs/user/commit/71defcd78dc479d2eef1f624c746c879f4e31daa))
-
-
-
-
+- add linting and lint all files ([71defcd](https://github.com/proteinjs/user/commit/71defcd78dc479d2eef1f624c746c879f4e31daa))
 
 ## [1.0.10](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.0.9...@proteinjs/user-server@1.0.10) (2024-05-09)
 
