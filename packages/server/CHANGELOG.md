@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.13](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.0.12...@proteinjs/user-server@1.0.13) (2024-05-10)
+
+
+### Bug Fixes
+
+* `userCache` should not contain the password hash ([90abf84](https://github.com/proteinjs/user/commit/90abf84e75e0ef1cd9bb07a789a65ef43a527e24))
+
+
+
+
+
 ## [1.0.12](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.0.11...@proteinjs/user-server@1.0.12) (2024-05-10)
 
 ### Bug Fixes
