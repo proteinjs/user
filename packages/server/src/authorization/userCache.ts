@@ -24,6 +24,7 @@ export const userCache: SessionDataCache<User> = {
         user = adminUser;
       } else {
         user = await getSystemDb().get(tables.User, { email: userEmail });
+        delete (user as any)['password'];
       }
     }
 
