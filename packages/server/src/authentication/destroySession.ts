@@ -1,4 +1,4 @@
-import { getSystemDb } from '@proteinjs/db';
+import { getDbAsSystem } from '@proteinjs/db';
 import { tables } from '@proteinjs/user';
 
 export async function destroySession(sessionId?: string) {
@@ -6,5 +6,5 @@ export async function destroySession(sessionId?: string) {
     return;
   }
 
-  await getSystemDb().delete(tables.Session, { sessionId });
+  await getDbAsSystem().delete(tables.Session, { sessionId });
 }

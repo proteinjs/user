@@ -1,6 +1,6 @@
 import sha256 from 'crypto-js/sha256';
 import { Route } from '@proteinjs/server-api';
-import { getSystemDb } from '@proteinjs/db';
+import { getDbAsSystem } from '@proteinjs/db';
 import { User, tables, routes } from '@proteinjs/user';
 import { Logger } from '@proteinjs/util';
 
@@ -10,7 +10,7 @@ export const createUser: Route = {
   onRequest: async (request, response): Promise<void> => {
     const logger = new Logger('createUser');
     const user = request.body as User;
-    const db = getSystemDb();
+    const db = getDbAsSystem();
     const userRecord = await db.get(tables.User, { email: user.email });
     if (userRecord) {
       const error = `User with this email already exists`;

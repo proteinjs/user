@@ -7,6 +7,7 @@ import {
   Table,
   getColumnByName,
   getTables,
+  Db,
 } from '@proteinjs/db';
 import { UserRepo } from './UserRepo';
 
@@ -16,15 +17,19 @@ export interface ScopedRecord extends Record {
 
 export const getScopedDb = getDb<ScopedRecord>;
 
+export const getScopedDbAsSystem = <R extends ScopedRecord = ScopedRecord>() => new Db<R>(undefined, undefined, true);
+
 const scopedRecordColumns = {
   scope: new StringColumn('scope', {
     defaultValue: async () => new UserRepo().getUser().id,
-    addToQuery: async (qb) => {
-      qb.condition({
-        field: 'scope',
-        operator: 'IN',
-        value: [new UserRepo().getUser().id],
-      });
+    addToQuery: async (qb, runAsSystem) => {
+      if (!runAsSystem) {
+        qb.condition({
+          field: 'scope',
+          operator: 'IN',
+          value: [new UserRepo().getUser().id],
+        });
+      }
     },
     ui: { hidden: true },
   }),
