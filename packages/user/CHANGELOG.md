@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.27](https://github.com/proteinjs/user/compare/@proteinjs/user@1.0.26...@proteinjs/user@1.0.27) (2024-06-27)
+
+
+### Bug Fixes
+
+* update test to include get table ([3c6d8f1](https://github.com/proteinjs/user/commit/3c6d8f15c183ccf7171cfcb1975e7cef0a2ee7c0))
+
+
+
+
+
 ## [1.0.14](https://github.com/proteinjs/user/compare/@proteinjs/user@1.0.13...@proteinjs/user@1.0.14) (2024-05-10)
 
 
