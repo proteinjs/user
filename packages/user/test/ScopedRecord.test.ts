@@ -28,17 +28,6 @@ export class FavoriteTable extends Table<Favorite> {
   });
 }
 
-const dbDriver = new KnexDriver({
-  host: 'localhost',
-  user: 'root',
-  password: '',
-  dbName: 'test',
-});
-const dropTable = async (table: Table<any>) => {
-  if (await dbDriver.getKnex().schema.withSchema(dbDriver.getDbName()).hasTable(table.name)) {
-    await dbDriver.getKnex().schema.withSchema(dbDriver.getDbName()).dropTable(table.name);
-  }
-};
 const getTable = (tableName: string) => {
   const userTable = new FavoriteTable();
   if (userTable.name == tableName) {
@@ -47,6 +36,23 @@ const getTable = (tableName: string) => {
 
   throw new Error('Cannot find test table');
 };
+
+const dbDriver = new KnexDriver(
+  {
+    host: 'localhost',
+    user: 'root',
+    password: '',
+    dbName: 'test',
+  },
+  getTable
+);
+
+const dropTable = async (table: Table<any>) => {
+  if (await dbDriver.getKnex().schema.withSchema(dbDriver.getDbName()).hasTable(table.name)) {
+    await dbDriver.getKnex().schema.withSchema(dbDriver.getDbName()).dropTable(table.name);
+  }
+};
+
 const db = new Db(dbDriver, getTable);
 
 describe('Scoped Record', () => {
