@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/user-auth",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "User auth",
   "publishConfig": {
     "access": "public"
@@ -21,11 +21,11 @@
     "watch": "reflection-watch"
   },
   "dependencies": {
-    "@proteinjs/reflection": "1.1.5",
+    "@proteinjs/reflection": "1.1.6",
     "moment": "2.29.4"
   },
   "devDependencies": {
-    "@proteinjs/reflection-build": "1.0.19",
+    "@proteinjs/reflection-build": "1.0.20",
     "@types/jest": "29.5.5",
     "@types/node": "14.0.13",
     "@typescript-eslint/eslint-plugin": "7.8.0",
