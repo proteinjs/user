@@ -14,8 +14,8 @@ export type User = Record & {
   name: string;
   email: string;
   password: string;
-  passwordResetToken: string;
-  passwordResetTokenExpiration: Moment;
+  passwordResetToken?: string | null;
+  passwordResetTokenExpiration?: Moment | null;
   emailVerified: boolean;
   roles: string;
 };
