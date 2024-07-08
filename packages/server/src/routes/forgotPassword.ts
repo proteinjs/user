@@ -3,7 +3,7 @@ import { getDbAsSystem } from '@proteinjs/db';
 import { routes, tables } from '@proteinjs/user';
 import { Logger } from '@proteinjs/util';
 import { v1 as uuidv1 } from 'uuid';
-import { EmailConfig, EmailSender } from '../email/EmailSender';
+import { EmailSender } from '../email/EmailSender';
 import moment from 'moment';
 
 export const forgotPassword: Route = {
