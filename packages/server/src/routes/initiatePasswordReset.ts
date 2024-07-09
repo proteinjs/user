@@ -6,21 +6,35 @@ import { v1 as uuidv1 } from 'uuid';
 import { EmailSender } from '../email/EmailSender';
 import moment from 'moment';
 
-export const forgotPassword: Route = {
-  path: routes.forgotPassword.path,
-  method: routes.forgotPassword.method,
+export const initiatePasswordReset: Route = {
+  path: routes.initiatePasswordReset.path,
+  method: routes.initiatePasswordReset.method,
   onRequest: async (request, response): Promise<void> => {
-    const logger = new Logger('forgotPassword');
+    const logger = new Logger('initiatePasswordReset');
     const { email } = request.body;
     const db = getDbAsSystem();
+
+    const genericResponse = { message: 'If an account with that email exists, we have sent a password reset link.' };
 
     // Check if user exists
     const user = await db.get(tables.User, { email });
     if (!user) {
       logger.info(`Password reset requested for non-existent user: ${email}`);
       // Don't reveal that the user doesn't exist
-      response.send({ message: 'If an account with that email exists, we have sent a password reset link.' });
+      response.send(genericResponse);
       return;
+    }
+
+    // Check if there's an existing token and it's less than 5 minutes old
+    const currentTime = moment();
+    if (user.passwordResetToken && user.passwordResetTokenExpiration) {
+      const tokenAge = currentTime.diff(moment(user.passwordResetTokenExpiration), 'minutes');
+      if (tokenAge < -55) {
+        // Token is less than 5 minutes old
+        logger.info(`Password reset requested too soon for user: ${email}`);
+        response.send(genericResponse);
+        return;
+      }
     }
 
     // Generate reset token
@@ -28,7 +42,7 @@ export const forgotPassword: Route = {
     const passwordResetTokenExpiration = moment().add(1, 'hour');
 
     // Save reset token to user record
-    await db.update(tables.User, { id: user.id }, { passwordResetToken, passwordResetTokenExpiration });
+    await db.update(tables.User, { id: user.id, passwordResetToken, passwordResetTokenExpiration });
 
     const emailSender = new EmailSender();
 
@@ -44,6 +58,6 @@ export const forgotPassword: Route = {
     });
 
     logger.info(`Password reset email sent to: ${email}`);
-    response.send({ message: 'If an account with that email exists, we have sent a password reset link.' });
+    response.send(genericResponse);
   },
 };

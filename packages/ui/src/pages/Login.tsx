@@ -16,6 +16,7 @@ export const loginPage: Page = {
         createFields={() => new LoginFields()}
         fieldLayout={['email', 'password']}
         buttons={buttons}
+        maxWidth={'xs'}
       />
     </FormPage>
   ),
@@ -37,6 +38,16 @@ class LoginFields extends Fields {
 }
 
 const buttons: FormButtons<LoginFields> = {
+  forgotPassword: {
+    name: 'Forgot password',
+    style: {
+      variant: 'text',
+      align: 'left',
+    },
+    redirect: async () => {
+      return { path: '/login/forgot-password' };
+    },
+  },
   clear: clearButton,
   login: {
     name: 'Login',
