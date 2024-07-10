@@ -1,7 +1,6 @@
 import React from 'react';
-import { Page, Form, Fields, textField, FormButtons, clearButton, FormPage } from '@proteinjs/ui';
+import { Page, Form, Fields, textField, FormButtons, FormPage } from '@proteinjs/ui';
 import { routes } from '@proteinjs/user';
-import { Link } from '@mui/material';
 
 export const forgotPasswordPath = 'login/forgot-password';
 export const forgotPasswordPage: Page = {
@@ -52,7 +51,7 @@ const buttons: FormButtons<ForgotPasswordFields> = {
         },
       });
       if (response.status != 200) {
-        throw new Error(`Failed to initiate forgot password, error: ${response.statusText}`);
+        throw new Error(`Failed to initiate forgot password, error: ${response.body}`);
       }
 
       const body = await response.json();

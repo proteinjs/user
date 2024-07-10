@@ -1,24 +1,21 @@
 import nodemailer from 'nodemailer';
 import { Logger } from '@proteinjs/util';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
+import Mail from 'nodemailer/lib/mailer';
 
 export interface EmailConfig {
   host: string;
   port: number;
-  //** Defines if the connection should use SSL (if true) or not (if false) */
+  /** Defines if the connection should use SSL (if true) or not (if false) */
   secure: boolean;
+  /** Authentication details for the email account used to send emails */
   auth: {
     user: string;
     pass: string;
   };
   from: string;
-}
-
-interface EmailOptions {
-  to: string | string[];
-  subject: string;
-  text: string;
-  html?: string;
+  /** Base app URL used when constructing urls within emails */
+  baseUrl: string;
 }
 
 export interface DefaultEmailConfigFactory extends Loadable {
@@ -31,6 +28,7 @@ export class EmailSender {
   private transporter: nodemailer.Transporter;
   private fromAddress: string;
   private logger: Logger;
+  public baseUrl: string;
 
   constructor(config?: EmailConfig) {
     this.config = config ? config : this.getDefaultEmailConfig();
@@ -42,6 +40,7 @@ export class EmailSender {
     });
     this.fromAddress = this.config.from;
     this.logger = new Logger('EmailSender');
+    this.baseUrl = this.config.baseUrl;
   }
 
   private getDefaultEmailConfig(): EmailConfig {
@@ -61,13 +60,10 @@ export class EmailSender {
     return EmailSender.defaultEmailConfig;
   }
 
-  async sendEmail({ to, subject, text, html }: EmailOptions): Promise<void> {
-    const mailOptions = {
+  async sendEmail(mailOptions: Mail.Options): Promise<void> {
+    const finalMailOptions = {
       from: this.fromAddress,
-      to: Array.isArray(to) ? to.join(', ') : to,
-      subject,
-      text,
-      html: html || text,
+      ...mailOptions,
     };
 
     try {

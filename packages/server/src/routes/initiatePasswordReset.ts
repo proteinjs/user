@@ -5,6 +5,7 @@ import { Logger } from '@proteinjs/util';
 import { v1 as uuidv1 } from 'uuid';
 import { EmailSender } from '../email/EmailSender';
 import moment from 'moment';
+import { defaultPasswordResetEmailConfigFactory as defaultConfigFactory } from '../email/EmailConfigs';
 
 export const initiatePasswordReset: Route = {
   path: routes.initiatePasswordReset.path,
@@ -41,23 +42,31 @@ export const initiatePasswordReset: Route = {
     const passwordResetToken = uuidv1();
     const passwordResetTokenExpiration = moment().add(1, 'hour');
 
-    // Save reset token to user record
-    await db.update(tables.User, { id: user.id, passwordResetToken, passwordResetTokenExpiration });
-
     const emailSender = new EmailSender();
 
-    // Send email with reset link
-    const resetUrl = `https://n3xa.io/resetPassword?token=${passwordResetToken}`;
-    await emailSender.sendEmail({
-      to: user.email,
-      subject: 'Password Reset',
-      text: `You are receiving this because you (or someone else) have requested the reset of the password for your account.\n\n
-        Please click on the following link, or paste this into your browser to complete the process:\n\n
-        ${resetUrl}\n\n
-        If you did not request this, please ignore this email and your password will remain unchanged.\n`,
-    });
+    if (!defaultConfigFactory) {
+      throw new Error(
+        `Unable to find a @proteinjs/user-server/DefaultPasswordResetEmailConfigFactory implementation when initiating password reset.`
+      );
+    }
 
-    logger.info(`Password reset email sent to: ${email}`);
-    response.send(genericResponse);
+    try {
+      // Send email containing a reset link
+      await emailSender.sendEmail({
+        to: user.email,
+        subject: defaultConfigFactory.subject,
+        text: defaultConfigFactory.text,
+        html: defaultConfigFactory.html,
+      });
+
+      // If email is sent successfully, save reset token to user record
+      await db.update(tables.User, { id: user.id, passwordResetToken, passwordResetTokenExpiration });
+
+      logger.info(`Password reset email sent to: ${email}`);
+      response.send(genericResponse);
+    } catch (error: any) {
+      logger.error(`Failed to send password reset email to: ${email}`, error);
+      response.status(500).send({ error: 'Failed to send password reset email. Please try again later.' });
+    }
   },
 };
