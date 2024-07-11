@@ -5,10 +5,11 @@ export const defaultPasswordResetEmailConfigFactory = SourceRepository.get().obj
 );
 
 export interface PasswordResetEmailConfig {
-  baseResetUrl: string;
   subject?: string;
-  text?: string;
-  html?: string;
+  getEmailContent: (token: string) => {
+    text: string;
+    html?: string;
+  };
 }
 
 export interface DefaultPasswordResetEmailConfigFactory extends Loadable {

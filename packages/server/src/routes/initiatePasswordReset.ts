@@ -51,12 +51,14 @@ export const initiatePasswordReset: Route = {
     }
 
     try {
+      const { text, html } = defaultConfigFactory.getEmailContent(passwordResetToken);
+
       // Send email containing a reset link
       await emailSender.sendEmail({
         to: user.email,
-        subject: defaultConfigFactory.subject,
-        text: defaultConfigFactory.text,
-        html: defaultConfigFactory.html,
+        subject: defaultConfigFactory.subject || 'Reset Password',
+        text,
+        html,
       });
 
       // If email is sent successfully, save reset token to user record
