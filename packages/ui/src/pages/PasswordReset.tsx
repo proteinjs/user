@@ -60,7 +60,7 @@ const PasswordResetComponent: React.FC = () => {
   );
 };
 
-// export const passwordResetPath = 'login/password-reset';
+export const passwordResetPath = 'login/password-reset';
 export const passwordResetPage: Page = {
   name: 'Reset Password',
   path: passwordResetPath,
