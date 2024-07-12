@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/user-auth",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "User auth",
   "publishConfig": {
     "access": "public"
