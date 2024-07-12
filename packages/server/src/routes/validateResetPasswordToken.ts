@@ -13,7 +13,6 @@ export const validateResetPasswordToken: Route = {
     const db = getDbAsSystem();
 
     if (!token) {
-      logger.info('Token validation attempted without providing a token');
       response.status(400).send({ isValid: false, message: 'No token provided' });
       return;
     }
@@ -35,7 +34,6 @@ export const validateResetPasswordToken: Route = {
       return;
     }
 
-    logger.info(`Valid reset token used for user: ${user.email}`);
     response.status(200).send({ isValid: true });
   },
 };

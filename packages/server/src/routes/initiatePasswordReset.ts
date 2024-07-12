@@ -15,6 +15,8 @@ import { lib } from 'crypto-js';
  * This route handles the process of generating a password reset token,
  * sending a reset email to the user, and storing the token and expiration of the token in the database.
  *
+ * Requires an implementation of `DefaultPasswordResetEmailConfigFactory` to build the password reset email with.
+ *
  * @bodyParam {string} email - The email address of the user requesting a password reset.
  * @bodyParam {string} resetPath - The path to the password reset page in the client application.
  * This will be combined with the generated token to create the reset link that is emailed to the user.
@@ -79,7 +81,6 @@ export const initiatePasswordReset: Route = {
 
       // If email is sent successfully, save reset token to user record
       await db.update(tables.User, { id: user.id, passwordResetToken, passwordResetTokenExpiration });
-      logger.info(`Password reset email sent to: ${email}`);
       response.send(genericResponse);
     } catch (error: any) {
       logger.error(`Failed to send password reset email to: ${email}`, error);
