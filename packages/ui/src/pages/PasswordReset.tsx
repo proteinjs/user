@@ -1,6 +1,36 @@
 import React, { useEffect, useState } from 'react';
 import { Page, Form, Fields, textField, FormButtons, FormPage } from '@proteinjs/ui';
 import { routes } from '@proteinjs/user';
+import { EnvInfo } from '@proteinjs/server-api';
+
+// const baseUrl = EnvInfo.isDev() ? 'http://localhost:3000' : 'https://n3xa.io';
+export const passwordResetPath = 'login/password-reset';
+// const baseResetUrl = `${baseUrl}/${passwordResetPath}`;
+
+// export class PasswordResetEmailConfigFactory implements DefaultPasswordResetEmailConfigFactory {
+//   getConfig(): PasswordResetEmailConfig {
+//     return {
+//       options: {
+//         subject: 'Reset N3XA Password',
+//       },
+//       getEmailContent: (token: string) => {
+//         const resetLink = `${baseResetUrl}?token=${token}`;
+//         return {
+//           text: `You are receiving this because you (or someone else) have requested the reset of the password for your account.\n\n
+//             Please click on the following link, or paste this into your browser to complete the process:\n\n
+//             ${resetLink}\n\n
+//             If you did not request this, please ignore this email and your password will remain unchanged.\n`,
+//           html: `
+//             <p>You are receiving this because you (or someone else) have requested the reset of the password for your account.</p>
+//             <p>Please click on the following link, or paste this into your browser to complete the process:</p>
+//             <p><a href="${resetLink}">${resetLink}</a></p>
+//             <p>If you did not request this, please ignore this email and your password will remain unchanged.</p>
+//           `,
+//         };
+//       },
+//     };
+//   }
+// }
 
 const PasswordResetComponent: React.FC = () => {
   const [token, setToken] = useState('');
@@ -60,7 +90,6 @@ const PasswordResetComponent: React.FC = () => {
   );
 };
 
-export const passwordResetPath = 'login/password-reset';
 export const passwordResetPage: Page = {
   name: 'Reset Password',
   path: passwordResetPath,

@@ -3,9 +3,11 @@ import { getDbAsSystem } from '@proteinjs/db';
 import { routes, tables } from '@proteinjs/user';
 import { Logger } from '@proteinjs/util';
 import { v1 as uuidv1 } from 'uuid';
-import { EmailSender } from '../email/EmailSender';
 import moment from 'moment';
-import { defaultPasswordResetEmailConfigFactory as defaultConfigFactory } from '../email/EmailConfigs';
+import {
+  EmailSender,
+  getDefaultPasswordResetEmailConfigFactory as getDefaultConfigFactory,
+} from '@proteinjs/email-server';
 
 export const initiatePasswordReset: Route = {
   path: routes.initiatePasswordReset.path,
@@ -38,25 +40,27 @@ export const initiatePasswordReset: Route = {
       }
     }
 
-    // Generate reset token
-    const passwordResetToken = uuidv1();
-    const passwordResetTokenExpiration = moment().add(1, 'hour');
-
     const emailSender = new EmailSender();
 
+    const defaultConfigFactory = getDefaultConfigFactory();
     if (!defaultConfigFactory) {
       throw new Error(
         `Unable to find a @proteinjs/user-server/DefaultPasswordResetEmailConfigFactory implementation when initiating password reset.`
       );
     }
 
+    // Generate reset token
+    const passwordResetToken = uuidv1();
+    const passwordResetTokenExpiration = moment().add(1, 'hour');
+
     try {
-      const { text, html } = defaultConfigFactory.getEmailContent(passwordResetToken);
+      const config = defaultConfigFactory.getConfig();
+      const { text, html } = config.getEmailContent(passwordResetToken);
 
       // Send email containing a reset link
       await emailSender.sendEmail({
         to: user.email,
-        subject: defaultConfigFactory.subject || 'Reset Password',
+        subject: config.options?.subject || 'Reset Password',
         text,
         html,
       });
