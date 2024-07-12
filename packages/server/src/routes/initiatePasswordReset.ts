@@ -1,12 +1,13 @@
 import { Route } from '@proteinjs/server-api';
 import { getDbAsSystem } from '@proteinjs/db';
 import { routes, tables } from '@proteinjs/user';
-import { generateSecureToken, Logger } from '@proteinjs/util';
+import { Logger } from '@proteinjs/util';
 import moment from 'moment';
 import {
   EmailSender,
   getDefaultPasswordResetEmailConfigFactory as getDefaultConfigFactory,
 } from '@proteinjs/email-server';
+import { lib } from 'crypto-js';
 
 /**
  * Route for initiating a password reset process.
@@ -63,7 +64,7 @@ export const initiatePasswordReset: Route = {
     }
 
     // Generate reset token
-    const passwordResetToken = generateSecureToken();
+    const passwordResetToken = lib.WordArray.random(32).toString();
     const passwordResetTokenExpiration = moment().add(1, 'hour');
 
     try {
