@@ -9,12 +9,26 @@ import {
   getDefaultPasswordResetEmailConfigFactory as getDefaultConfigFactory,
 } from '@proteinjs/email-server';
 
+/**
+ * Route for initiating a password reset process.
+ *
+ * This route handles the process of generating a password reset token,
+ * sending a reset email to the user, and storing the token and expiration of the token in the database.
+ *
+ * @bodyParam {string} email - The email address of the user requesting a password reset.
+ * @bodyParam {string} resetPath - The path to the password reset page in the client application.
+ * This will be combined with the generated token to create the reset link that is emailed to the user.
+ *
+ * @returns {object} A generic response to avoid revealing whether an account exists.
+ *
+ * @throws {Error} If there's an issue with sending the email or updating the database.
+ */
 export const initiatePasswordReset: Route = {
   path: routes.initiatePasswordReset.path,
   method: routes.initiatePasswordReset.method,
   onRequest: async (request, response): Promise<void> => {
     const logger = new Logger('initiatePasswordReset');
-    const { email } = request.body;
+    const { email, resetPath } = request.body;
     const db = getDbAsSystem();
 
     const genericResponse = { message: 'If an account with that email exists, we have sent a password reset link.' };
@@ -45,7 +59,7 @@ export const initiatePasswordReset: Route = {
     const defaultConfigFactory = getDefaultConfigFactory();
     if (!defaultConfigFactory) {
       throw new Error(
-        `Unable to find a @proteinjs/user-server/DefaultPasswordResetEmailConfigFactory implementation when initiating password reset.`
+        `Unable to find a @proteinjs/email-server/DefaultPasswordResetEmailConfigFactory implementation when initiating password reset.`
       );
     }
 
@@ -55,7 +69,7 @@ export const initiatePasswordReset: Route = {
 
     try {
       const config = defaultConfigFactory.getConfig();
-      const { text, html } = config.getEmailContent(passwordResetToken);
+      const { text, html } = config.getEmailContent(`${resetPath}?token=${passwordResetToken}`);
 
       // Send email containing a reset link
       await emailSender.sendEmail({
@@ -67,7 +81,6 @@ export const initiatePasswordReset: Route = {
 
       // If email is sent successfully, save reset token to user record
       await db.update(tables.User, { id: user.id, passwordResetToken, passwordResetTokenExpiration });
-
       logger.info(`Password reset email sent to: ${email}`);
       response.send(genericResponse);
     } catch (error: any) {

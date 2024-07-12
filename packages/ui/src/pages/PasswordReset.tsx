@@ -1,41 +1,49 @@
 import React, { useEffect, useState } from 'react';
 import { Page, Form, Fields, textField, FormButtons, FormPage } from '@proteinjs/ui';
 import { routes } from '@proteinjs/user';
-import { EnvInfo } from '@proteinjs/server-api';
+import { Button, Stack, Typography } from '@mui/material';
 
-// const baseUrl = EnvInfo.isDev() ? 'http://localhost:3000' : 'https://n3xa.io';
 export const passwordResetPath = 'login/password-reset';
-// const baseResetUrl = `${baseUrl}/${passwordResetPath}`;
-
-// export class PasswordResetEmailConfigFactory implements DefaultPasswordResetEmailConfigFactory {
-//   getConfig(): PasswordResetEmailConfig {
-//     return {
-//       options: {
-//         subject: 'Reset N3XA Password',
-//       },
-//       getEmailContent: (token: string) => {
-//         const resetLink = `${baseResetUrl}?token=${token}`;
-//         return {
-//           text: `You are receiving this because you (or someone else) have requested the reset of the password for your account.\n\n
-//             Please click on the following link, or paste this into your browser to complete the process:\n\n
-//             ${resetLink}\n\n
-//             If you did not request this, please ignore this email and your password will remain unchanged.\n`,
-//           html: `
-//             <p>You are receiving this because you (or someone else) have requested the reset of the password for your account.</p>
-//             <p>Please click on the following link, or paste this into your browser to complete the process:</p>
-//             <p><a href="${resetLink}">${resetLink}</a></p>
-//             <p>If you did not request this, please ignore this email and your password will remain unchanged.</p>
-//           `,
-//         };
-//       },
-//     };
-//   }
-// }
-
 const PasswordResetComponent: React.FC = () => {
   const [token, setToken] = useState('');
   const [isValidating, setIsValidating] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [resetSuccess, setResetSuccess] = useState(false);
+
+  const buttons: FormButtons<ResetPasswordFields> = {
+    submit: {
+      name: 'Reset Password',
+      style: {
+        color: 'primary',
+        variant: 'contained',
+      },
+      onClick: async (fields: ResetPasswordFields) => {
+        if (fields.newPassword.field.value !== fields.confirmPassword.field.value) {
+          throw new Error('Passwords do not match');
+        }
+
+        const response = await fetch(routes.executePasswordReset.path, {
+          method: routes.executePasswordReset.method,
+          body: JSON.stringify({
+            token: fields.token.field.value,
+            newPassword: fields.newPassword.field.value,
+          }),
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.status !== 200) {
+          const body = await response.json();
+          throw new Error(body.error || 'Failed to reset password');
+        }
+
+        setResetSuccess(true);
+        return 'Your password has been successfully reset. You can now log in with your new password.';
+      },
+    },
+  };
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -72,7 +80,39 @@ const PasswordResetComponent: React.FC = () => {
   }
 
   if (validationError) {
-    return <FormPage>{validationError}</FormPage>;
+    return (
+      <FormPage>
+        <Stack alignItems='center' spacing={3}>
+          <Typography variant='h1' gutterBottom>
+            Invalid password reset link
+          </Typography>
+          <Typography variant='body1' gutterBottom>
+            The password reset link is invalid or has expired. Please request a new password reset.
+          </Typography>
+          <Button variant='contained' color='primary' href='/login'>
+            Go to login page
+          </Button>
+        </Stack>
+      </FormPage>
+    );
+  }
+
+  if (resetSuccess) {
+    return (
+      <FormPage>
+        <Stack alignItems='center' spacing={3}>
+          <Typography variant='h6' gutterBottom>
+            Password reset successful
+          </Typography>
+          <Typography variant='body1' gutterBottom>
+            Your password has been successfully reset. You can now log in with your new password.
+          </Typography>
+          <Button variant='contained' color='primary' href='/login'>
+            Go to login page
+          </Button>
+        </Stack>
+      </FormPage>
+    );
   }
 
   return (
@@ -119,40 +159,3 @@ class ResetPasswordFields extends Fields {
     isPassword: true,
   });
 }
-
-const buttons: FormButtons<ResetPasswordFields> = {
-  submit: {
-    name: 'Reset Password',
-    style: {
-      color: 'primary',
-      variant: 'contained',
-    },
-    onClick: async (fields: ResetPasswordFields) => {
-      if (fields.newPassword.field.value !== fields.confirmPassword.field.value) {
-        throw new Error('Passwords do not match');
-      }
-
-      const response = await fetch(routes.executePasswordReset.path, {
-        method: routes.executePasswordReset.method,
-        body: JSON.stringify({
-          token: fields.token.field.value,
-          newPassword: fields.newPassword.field.value,
-        }),
-        credentials: 'same-origin',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.status !== 200) {
-        const body = await response.json();
-        throw new Error(body.error || 'Failed to reset password');
-      }
-
-      // Optionally, you can redirect the user to the login page after successful password reset
-      // window.location.href = '/login';
-
-      return 'Your password has been successfully reset. You can now log in with your new password.';
-    },
-  },
-};
