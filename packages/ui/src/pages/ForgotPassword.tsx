@@ -53,12 +53,12 @@ const buttons: FormButtons<ForgotPasswordFields> = {
         },
       });
       if (response.status != 200) {
-        throw new Error(`Failed to initiate forgot password, error: ${response.body}`);
+        throw new Error(`Failed to initiate forgot password.`);
       }
 
       const body = await response.json();
       if (body.error) {
-        throw new Error(body.error);
+        throw new Error(`Failed to initiate forgot password.`);
       }
 
       return `Successfully sent an email with a link to reset your password.`;
