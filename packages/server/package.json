@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/user-server",
-  "version": "1.0.34",
+  "version": "1.0.35",
   "description": "User server components",
   "publishConfig": {
     "access": "public"
@@ -21,18 +21,18 @@
     "watch": "reflection-watch"
   },
   "dependencies": {
-    "@proteinjs/db": "1.3.1",
-    "@proteinjs/email-server": "1.0.3",
-    "@proteinjs/reflection": "1.1.6",
-    "@proteinjs/server-api": "1.3.3",
-    "@proteinjs/user": "^1.0.34",
-    "@proteinjs/util": "1.2.0",
+    "@proteinjs/db": "1.3.2",
+    "@proteinjs/email-server": "1.0.4",
+    "@proteinjs/reflection": "1.1.7",
+    "@proteinjs/server-api": "1.3.4",
+    "@proteinjs/user": "^1.0.35",
+    "@proteinjs/util": "1.3.1",
     "crypto-js": "4.0.0",
     "express-session": "1.17.1",
     "moment": "2.29.4"
   },
   "devDependencies": {
-    "@proteinjs/reflection-build": "1.0.21",
+    "@proteinjs/reflection-build": "1.0.22",
     "@types/crypto-js": "4.0.1",
     "@types/express-session": "1.17.0",
     "@types/node": "14.0.13",
