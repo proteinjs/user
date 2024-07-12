@@ -5,6 +5,17 @@ import { Logger } from '@proteinjs/util';
 import moment from 'moment';
 import sha256 from 'crypto-js/sha256';
 
+/**
+ * Route handler for executing a password reset.
+ *
+ * This function handles the process of resetting a user's password using a provided reset token.
+ * It verifies the token, checks its expiration, and updates the user's password if everything is valid.
+ *
+ * @bodyParam {string} token - The password reset token.
+ * @bodyParam {string} newPassword - The new password for the user.
+ *
+ * @throws {Error} If there's an issue with the database operations or if the token is invalid or expired.
+ */
 export const executePasswordReset: Route = {
   path: routes.executePasswordReset.path,
   method: routes.executePasswordReset.method,

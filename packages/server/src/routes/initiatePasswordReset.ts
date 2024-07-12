@@ -19,8 +19,6 @@ import { lib } from 'crypto-js';
  * @bodyParam {string} resetPath - The path to the password reset page in the client application.
  * This will be combined with the generated token to create the reset link that is emailed to the user.
  *
- * @returns {object} A generic response to avoid revealing whether an account exists.
- *
  * @throws {Error} If there's an issue with sending the email or updating the database.
  */
 export const initiatePasswordReset: Route = {
