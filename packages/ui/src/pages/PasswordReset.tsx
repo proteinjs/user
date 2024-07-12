@@ -35,8 +35,7 @@ const PasswordResetComponent: React.FC = () => {
         });
 
         if (response.status !== 200) {
-          const body = await response.json();
-          throw new Error(body.error || 'Failed to reset password');
+          throw new Error('Failed to reset password');
         }
 
         setResetSuccess(true);
@@ -68,7 +67,6 @@ const PasswordResetComponent: React.FC = () => {
         setValidationError(data.message || 'Invalid or expired token');
       }
     } catch (error) {
-      console.error('Error validating token:', error);
       setValidationError('An error occurred while validating the token');
     } finally {
       setIsValidating(false);
