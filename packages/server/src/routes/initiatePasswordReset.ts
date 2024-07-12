@@ -1,8 +1,7 @@
 import { Route } from '@proteinjs/server-api';
 import { getDbAsSystem } from '@proteinjs/db';
 import { routes, tables } from '@proteinjs/user';
-import { Logger } from '@proteinjs/util';
-import { v1 as uuidv1 } from 'uuid';
+import { generateSecureToken, Logger } from '@proteinjs/util';
 import moment from 'moment';
 import {
   EmailSender,
@@ -64,7 +63,7 @@ export const initiatePasswordReset: Route = {
     }
 
     // Generate reset token
-    const passwordResetToken = uuidv1();
+    const passwordResetToken = generateSecureToken();
     const passwordResetTokenExpiration = moment().add(1, 'hour');
 
     try {

@@ -26,7 +26,7 @@ export class UserTable extends Table<User> {
     name: new StringColumn('name'),
     email: new StringColumn('email', {}, 250),
     password: new PasswordColumn('password'),
-    passwordResetToken: new UuidColumn('password_reset_token'),
+    passwordResetToken: new StringColumn('password_reset_token'),
     passwordResetTokenExpiration: new DateTimeColumn('password_reset_token_expiration'),
     emailVerified: new BooleanColumn('email_verified'),
     roles: new StringColumn('roles'),
