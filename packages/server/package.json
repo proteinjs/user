@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/user-server",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "User server components",
   "publishConfig": {
     "access": "public"
@@ -21,12 +21,12 @@
     "watch": "reflection-watch"
   },
   "dependencies": {
-    "@proteinjs/db": "1.3.3",
+    "@proteinjs/db": "1.4.0",
     "@proteinjs/email-server": "1.0.4",
     "@proteinjs/reflection": "1.1.7",
-    "@proteinjs/server": "1.5.2",
+    "@proteinjs/server": "1.5.3",
     "@proteinjs/server-api": "1.3.5",
-    "@proteinjs/user": "^1.0.37",
+    "@proteinjs/user": "^1.0.38",
     "@proteinjs/util": "1.3.1",
     "crypto-js": "4.0.0",
     "express-session": "1.17.1",
