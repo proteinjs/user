@@ -1,6 +1,7 @@
 import React from 'react';
 import { Page, Form, Fields, textField, FormButtons, clearButton, FormPage } from '@proteinjs/ui';
-import { routes } from '@proteinjs/user';
+import { getInviteService } from '@proteinjs/user';
+import { signupPath } from './Signup';
 
 export const invitePage: Page = {
   name: 'Send an Invite',
@@ -31,37 +32,31 @@ class InviteFields extends Fields {
 }
 
 const buttons: FormButtons<InviteFields> = {
-  clear: clearButton,
   signup: {
-    name: 'Sign up',
+    name: 'Send',
     style: {
       color: 'primary',
       variant: 'contained',
     },
     onClick: async (fields: InviteFields, buttons: FormButtons<InviteFields>) => {
-      const response = await fetch(routes.createUser.path, {
-        method: routes.createUser.method,
-        body: JSON.stringify({
-          name: fields.name.field.value,
-          email: fields.email.field.value,
-          password: fields.password.field.value,
-        }),
-        redirect: 'follow',
-        credentials: 'same-origin',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      if (response.status != 200) {
-        throw new Error(`Failed to send invite, error: ${response.statusText}`);
+      const email = fields.email.field.value && fields.email.field.value.trim();
+
+      if (!email) {
+        return 'Please enter an email address.';
       }
 
-      const body = await response.json();
-      if (body.error) {
-        throw new Error(body.error);
+      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+      if (!emailRegex.test(email)) {
+        return 'Please enter a valid email address.';
       }
 
-      return `Successfully created your account! Please check your email for an email confirmation.`;
+      const response = await getInviteService().sendInvite(email, signupPath);
+      if (response.sent === false) {
+        return 'Failed to send invite.';
+      }
+
+      return `Successfully sent invite to ${email}!`;
     },
   },
 };
