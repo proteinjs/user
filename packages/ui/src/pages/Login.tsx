@@ -1,11 +1,10 @@
 import React from 'react';
 import { Page, Form, Fields, textField, FormButtons, clearButton, FormPage } from '@proteinjs/ui';
-import { routes } from '@proteinjs/user';
+import { routes, uiRoutes } from '@proteinjs/user';
 
-export const loginPath = 'login';
 export const loginPage: Page = {
   name: 'Login',
-  path: loginPath,
+  path: uiRoutes.auth.login,
   auth: {
     public: true,
   },
@@ -45,7 +44,7 @@ const buttons: FormButtons<LoginFields> = {
       align: 'left',
     },
     redirect: async () => {
-      return { path: '/login/forgot-password' };
+      return { path: `/${uiRoutes.auth.forgotPassword}` };
     },
   },
   clear: clearButton,

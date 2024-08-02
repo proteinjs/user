@@ -1,11 +1,11 @@
 import React from 'react';
-import { Page, Form, Fields, textField, FormButtons, clearButton, FormPage } from '@proteinjs/ui';
-import { getInviteService } from '@proteinjs/user';
-import { signupPath } from './Signup';
+import { Page, Form, Fields, textField, FormButtons, FormPage } from '@proteinjs/ui';
+import { getSignupService, uiRoutes } from '@proteinjs/user';
+import { emailRegex } from '@proteinjs/util';
 
 export const invitePage: Page = {
   name: 'Send an Invite',
-  path: 'invite',
+  path: uiRoutes.admin.invite,
   auth: {
     roles: ['admin'],
   },
@@ -45,13 +45,11 @@ const buttons: FormButtons<InviteFields> = {
         return 'Please enter an email address.';
       }
 
-      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-
       if (!emailRegex.test(email)) {
         return 'Please enter a valid email address.';
       }
 
-      const response = await getInviteService().sendInvite(email, signupPath);
+      const response = await getSignupService().sendInvite(email);
       if (response.sent === false) {
         return 'Failed to send invite.';
       }

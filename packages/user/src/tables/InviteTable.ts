@@ -1,6 +1,6 @@
 import { StringColumn, Table, Record, withRecordColumns, DateTimeColumn } from '@proteinjs/db';
 import { Moment } from 'moment';
-import { InviteStatus } from '../services/InviteService';
+import { InviteStatus } from '../services/SignupService';
 
 export type Invite = Record & {
   email: string;

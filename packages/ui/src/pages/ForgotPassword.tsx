@@ -1,12 +1,10 @@
 import React from 'react';
 import { Page, Form, Fields, textField, FormButtons, FormPage } from '@proteinjs/ui';
-import { routes } from '@proteinjs/user';
-import { passwordResetPath } from './PasswordReset';
+import { routes, uiRoutes } from '@proteinjs/user';
 
-export const forgotPasswordPath = 'login/forgot-password';
 export const forgotPasswordPage: Page = {
   name: 'Forgot Password',
-  path: forgotPasswordPath,
+  path: uiRoutes.auth.forgotPassword,
   auth: {
     public: true,
   },
@@ -44,7 +42,6 @@ const buttons: FormButtons<ForgotPasswordFields> = {
         method: routes.initiatePasswordReset.method,
         body: JSON.stringify({
           email: fields.email.field.value,
-          resetPath: passwordResetPath,
         }),
         redirect: 'follow',
         credentials: 'same-origin',

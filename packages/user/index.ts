@@ -1,4 +1,4 @@
-export * from './src/services/InviteService';
+export * from './src/services/SignupService';
 
 export * from './src/tables/InviteTable';
 export * from './src/tables/UserTable';
