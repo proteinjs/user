@@ -76,6 +76,7 @@ export const initiatePasswordReset: Route = {
         subject: config.options?.subject || 'Reset Password',
         text,
         html,
+        ...config.options,
       });
 
       // If email is sent successfully, save reset token to user record

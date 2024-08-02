@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Page, Form, Fields, textField, FormButtons, clearButton, FormPage } from '@proteinjs/ui';
-import { getInviteService, routes } from '@proteinjs/user';
+import { getSignupService, SignupType, uiRoutes } from '@proteinjs/user';
 import { Button, Skeleton, Stack, Typography } from '@mui/material';
+import { emailRegex } from '@proteinjs/util';
 
 const SignupComponent: React.FC = () => {
   const [token, setToken] = useState('');
-  const [isValidating, setIsValidating] = useState(false);
-  const [validationError, setValidationError] = useState<string | null>(null);
+  const [signupType, setSignupType] = useState<SignupType | null>(null);
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [initializationError, setInitializationError] = useState<string | null>(null);
 
   const buttons: FormButtons<SignupFields> = {
     clear: clearButton,
@@ -17,26 +19,35 @@ const SignupComponent: React.FC = () => {
         variant: 'contained',
       },
       onClick: async (fields: SignupFields, buttons: FormButtons<SignupFields>) => {
-        const response = await fetch(routes.createUser.path, {
-          method: routes.createUser.method,
-          body: JSON.stringify({
-            name: fields.name.field.value,
-            email: fields.email.field.value,
-            password: fields.password.field.value,
-          }),
-          redirect: 'follow',
-          credentials: 'same-origin',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-        if (response.status != 200) {
-          throw new Error(`Failed to sign up, error: ${response.statusText}`);
+        if (!fields.name.field.value) {
+          return 'Please enter your name.';
         }
 
-        const body = await response.json();
-        if (body.error) {
-          throw new Error(body.error);
+        const email = fields.email.field.value && fields.email.field.value.trim();
+
+        if (!email) {
+          return 'Please enter an email address.';
+        }
+
+        if (!emailRegex.test(email)) {
+          return 'Please enter a valid email address.';
+        }
+
+        if (!fields.password.field.value) {
+          return 'Please enter a password.';
+        }
+
+        try {
+          await getSignupService().createUser(
+            {
+              name: fields.name.field.value,
+              email: email,
+              password: fields.password.field.value,
+            },
+            token
+          );
+        } catch {
+          return 'Sign up failed.';
         }
 
         return `Successfully created your account! Please check your email for an email confirmation.`;
@@ -50,40 +61,51 @@ const SignupComponent: React.FC = () => {
     const inviteToken = searchParams.get('token');
     if (inviteToken) {
       setToken(inviteToken);
-      validateToken(inviteToken);
+      initializeSignup(inviteToken);
     } else {
-      setValidationError('No sign up token provided.');
+      initializeSignup();
     }
   }, []);
 
-  const validateToken = async (token: string) => {
-    setIsValidating(true);
+  const initializeSignup = async (token?: string) => {
+    setIsInitializing(true);
     try {
-      const result = await getInviteService().isTokenValid(token);
-      if (!result) {
-        setValidationError('Invalid or expired token.');
+      const response = await getSignupService().initializeSignup(token);
+
+      if (response.signupType) {
+        setSignupType(response.signupType);
+      }
+
+      if (!response.isReady && response.error) {
+        setInitializationError(response.error);
       }
     } catch (error) {
-      setValidationError('An error occurred while validating the token.');
+      setInitializationError('An error occurred while initializing sign up.');
     } finally {
-      setIsValidating(false);
+      setIsInitializing(false);
     }
   };
 
   return (
     <FormPage>
-      {/* // veronica todo: read the configuration from the consumer to know what to do here
-    // if invite only, then disable the page if there is no token provided
-    // if invite closed, then don't do any token validation or processing */}
-      {isValidating ? (
-        <Skeleton variant='rounded' width={300} height={100} />
-      ) : validationError ? (
-        <Stack alignItems='center' spacing={3}>
+      {isInitializing ? (
+        <Stack direction='column' spacing={2} sx={{ px: 2, py: 1 }}>
+          <Skeleton variant='text' width='500px' height='60px' />
+          <Skeleton variant='text' width='500px' height='60px' />
+          <Skeleton variant='text' width='500px' height='60px' />
+          <Skeleton variant='text' width='500px' height='60px' />
+          <Stack direction='row' spacing={2} justifyContent='flex-end'>
+            <Skeleton variant='text' width='100px' height='60px' />
+            <Skeleton variant='text' width='100px' height='60px' />
+          </Stack>
+        </Stack>
+      ) : initializationError ? (
+        <Stack alignItems='center' spacing={3} sx={{ p: 4 }}>
           <Typography variant='h1' gutterBottom>
-            Invalid invite link
+            Sign up is not available
           </Typography>
           <Typography variant='body1' gutterBottom>
-            The invite link is invalid or has expired.
+            {initializationError}
           </Typography>
           <Button variant='contained' color='primary' href='/login'>
             Go to login page
@@ -104,10 +126,9 @@ const SignupComponent: React.FC = () => {
   );
 };
 
-export const signupPath = 'signup';
 export const signupPage: Page = {
   name: 'Sign Up',
-  path: signupPath,
+  path: uiRoutes.auth.signup,
   auth: {
     public: true,
   },
