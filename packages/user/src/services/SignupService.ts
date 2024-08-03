@@ -7,7 +7,6 @@ export const getSignupService = serviceFactory<SignupService>('@proteinjs/user/S
 export type SendInviteResponse = {
   sent: boolean;
   error?: string;
-  invite?: Invite;
 };
 
 export type SignupType = 'inviteOnly' | 'inviteOptional' | 'signupOnly';

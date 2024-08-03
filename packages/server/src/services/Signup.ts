@@ -127,10 +127,7 @@ export class Signup implements SignupService {
         ...config.options,
       });
 
-      return {
-        sent: true,
-        invite,
-      };
+      return { sent: true };
     } catch (error: any) {
       logger.error('Error: ', error);
       return {
