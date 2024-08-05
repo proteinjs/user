@@ -82,7 +82,7 @@ export class Signup implements SignupService {
       const { text, html } = config.getExistingUserEmailContent();
       await emailSender.sendEmail({
         to: email,
-        subject: config.options?.subject || 'Account already exists',
+        subject: config.existingUserSubject || config.options?.subject || 'Account already exists',
         text,
         html,
         ...config.options,
@@ -102,7 +102,7 @@ export class Signup implements SignupService {
     const { text, html } = config.getNewUserEmailContent();
     await emailSender.sendEmail({
       to: email,
-      subject: config.options?.subject || 'Welcome!',
+      subject: config.newUserSubject || config.options?.subject || 'Welcome!',
       text,
       html,
       ...config.options,
