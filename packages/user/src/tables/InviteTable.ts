@@ -1,8 +1,6 @@
 import { StringColumn, Table, Record, withRecordColumns, DateTimeColumn } from '@proteinjs/db';
 import { Moment } from 'moment';
 
-type InviteStatus = 'pending' | 'accepted' | 'revoked';
-
 export type Invite = Record & {
   email: string;
   token: string | null;
