@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Page, Form, Fields, textField, FormButtons, clearButton, FormPage } from '@proteinjs/ui';
-import { getSignupService, SignupType, uiRoutes } from '@proteinjs/user';
+import { getSignupService, uiRoutes } from '@proteinjs/user';
 import { Button, Skeleton, Stack, Typography } from '@mui/material';
 import { emailRegex } from '@proteinjs/util';
 
 const SignupComponent: React.FC = () => {
   const [token, setToken] = useState('');
-  const [signupType, setSignupType] = useState<SignupType | null>(null);
+  const [isInviteOnly, setIsInviteOnly] = useState<boolean>(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [initializationError, setInitializationError] = useState<string | null>(null);
 
@@ -25,11 +25,8 @@ const SignupComponent: React.FC = () => {
 
         const email = fields.email.field.value && fields.email.field.value.trim();
 
-        if (!email) {
-          return 'Please enter an email address.';
-        }
-
-        if (!emailRegex.test(email)) {
+        // invited users don't enter an email
+        if (!token && (!email || !emailRegex.test(email))) {
           return 'Please enter a valid email address.';
         }
 
@@ -41,7 +38,7 @@ const SignupComponent: React.FC = () => {
           await getSignupService().createUser(
             {
               name: fields.name.field.value,
-              email: email,
+              email,
               password: fields.password.field.value,
             },
             token
@@ -56,7 +53,6 @@ const SignupComponent: React.FC = () => {
   };
 
   useEffect(() => {
-    // veronica todo: read the configuration from the consumer to know what to do here
     const searchParams = new URLSearchParams(window.location.search);
     const inviteToken = searchParams.get('token');
     if (inviteToken) {
@@ -72,8 +68,8 @@ const SignupComponent: React.FC = () => {
     try {
       const response = await getSignupService().initializeSignup(token);
 
-      if (response.signupType) {
-        setSignupType(response.signupType);
+      if (response.isInviteOnly !== undefined) {
+        setIsInviteOnly(response.isInviteOnly);
       }
 
       if (!response.isReady && response.error) {
@@ -119,6 +115,9 @@ const SignupComponent: React.FC = () => {
           buttons={buttons}
           onLoad={async (fields) => {
             fields.token.field.value = token;
+            if (token) {
+              fields.email.field.accessibility = { hidden: true };
+            }
           }}
         />
       )}

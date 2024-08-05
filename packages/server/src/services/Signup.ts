@@ -5,9 +5,10 @@ import {
   UserAuth,
   uiRoutes,
   SignupService,
-  User,
-  SignupType,
   InitializeSignupResponse,
+  UserRepo,
+  Invite,
+  UserSignup,
 } from '@proteinjs/user';
 import moment from 'moment';
 import { lib } from 'crypto-js';
@@ -20,51 +21,68 @@ import {
 import sha256 from 'crypto-js/sha256';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 
-export interface SignupConfig {
-  type: SignupType;
+export interface InviteConfig {
+  isInviteOnly: boolean;
 }
 
-export interface DefaultSignupConfigFactory extends Loadable {
-  getConfig(): SignupConfig;
+export interface DefaultInviteConfigFactory extends Loadable {
+  getConfig(): InviteConfig;
 }
 
-export const getDefaultSignupConfigFactory = () =>
-  SourceRepository.get().object<DefaultSignupConfigFactory>('@proteinjs/user-server/DefaultSignupConfigFactory');
+export const getDefaultInviteConfigFactory = (): DefaultInviteConfigFactory => {
+  const defaultFactory: DefaultInviteConfigFactory = {
+    getConfig: (): InviteConfig => ({ isInviteOnly: false }),
+  };
+
+  const factory = SourceRepository.get().object<DefaultInviteConfigFactory>(
+    '@proteinjs/user-server/DefaultInviteConfigFactory'
+  );
+  return factory || defaultFactory;
+};
 
 export class Signup implements SignupService {
   public serviceMetadata = {
-    // veronica todo: do we have throttling in place already for our services?
     auth: {
       canAccess: (methodName: string, args: any[]) => {
-        if (methodName === 'isTokenValid') {
-          return true;
+        if (methodName === 'sendInvite' || methodName === 'revokeInvite') {
+          UserAuth.hasRole('admin');
         }
 
-        return UserAuth.hasRole('admin');
+        return true;
       },
     },
   };
 
-  async createUser(user: Pick<User, 'name' | 'email' | 'password'>, token?: string): Promise<void> {
+  async createUser(user: UserSignup, token?: string): Promise<void> {
     const logger = new Logger('SignupService: createUser');
     const db = getDbAsSystem();
-    const userRecord = await db.get(tables.User, { email: user.email });
 
-    const emailSender = new EmailSender();
-    const defaultEmailConfigFactory = getDefaultSignupConfirmationEmailConfigFactory();
-    if (!defaultEmailConfigFactory) {
-      throw new Error(
-        `Unable to find a @proteinjs/email-server/DefaultSignupConfirmationEmailConfigFactory implementation when creating user.`
-      );
+    const initSignupResponse = await this.initializeSignup(token);
+    if (!initSignupResponse.isReady) {
+      throw new Error(initSignupResponse.error);
     }
 
+    const invite = token ? await this.getValidInvite(token) : null;
+    if (token) {
+      await db.delete(tables.Invite, { token });
+    }
+
+    const email = invite ? invite.email : user.email;
+    if (!email) {
+      throw new Error('Email is required when there is no invite');
+    }
+
+    const defaultEmailConfigFactory = getDefaultSignupConfirmationEmailConfigFactory();
     const config = defaultEmailConfigFactory.getConfig();
+    const emailSender = new EmailSender();
+
+    const userRecord = await db.get(tables.User, { email });
     if (userRecord) {
-      logger.error(`User with this email already exists: ${user.email}`);
+      logger.error(`User with this email already exists: ${email}`);
       const { text, html } = config.getExistingUserEmailContent();
       await emailSender.sendEmail({
-        to: user.email,
-        subject: config.options?.subject || 'Login to your account',
+        to: email,
+        subject: config.options?.subject || 'Account already exists',
         text,
         html,
         ...config.options,
@@ -74,40 +92,46 @@ export class Signup implements SignupService {
 
     await db.insert(tables.User, {
       name: user.name,
-      email: user.email,
+      email,
       password: sha256(user.password).toString(),
       emailVerified: false,
       roles: '',
+      invitedBy: invite ? invite.invitedBy : null,
     });
 
     const { text, html } = config.getNewUserEmailContent();
     await emailSender.sendEmail({
-      to: user.email,
+      to: email,
       subject: config.options?.subject || 'Welcome!',
       text,
       html,
       ...config.options,
     });
-    logger.info(`Created user: ${user.email}`);
+    logger.info(`Created user: ${email}`);
   }
 
   async sendInvite(email: string): Promise<SendInviteResponse> {
     const logger = new Logger('SignupService: sendInvite');
     try {
+      const db = getDbAsSystem();
+      const userRecord = await db.get(tables.User, { email });
+      if (userRecord) {
+        return { sent: false, error: 'User already exists with that email.' };
+      }
+
       const token = lib.WordArray.random(32).toString();
       const tokenExpiresAt = moment().add(7, 'days');
-      const db = getDb();
       let invite = await db.get(tables.Invite, { email });
       if (invite) {
         invite = {
           ...invite,
           token,
           tokenExpiresAt,
-          status: 'pending',
         };
         await db.update(tables.Invite, invite);
       } else {
-        invite = await db.insert(tables.Invite, { email, status: 'pending', token, tokenExpiresAt });
+        const userId = new UserRepo().getUser().id;
+        invite = await db.insert(tables.Invite, { email, token, tokenExpiresAt, invitedBy: userId });
       }
 
       const emailSender = new EmailSender();
@@ -132,77 +156,53 @@ export class Signup implements SignupService {
       logger.error('Error: ', error);
       return {
         sent: false,
-        error: 'Error sending invite',
+        error: 'Error occurred.',
       };
     }
   }
 
   async revokeInvite(email: string): Promise<void> {
-    throw new Error('Method not implemented.');
+    if (!email) {
+      throw new Error('No email was provided.');
+    }
+
+    const db = getDb();
+    await db.delete(tables.Invite, { email });
   }
 
-  async initializeSignup(inviteToken: string): Promise<InitializeSignupResponse> {
-    const logger = new Logger('SignupService: initializeSignup');
+  /**
+   * Initializes signup process, validating invite configuration and token if provided.
+   * `DefaultInviteConfigFactory` defaults to invite optional.
+   */
+  async initializeSignup(inviteToken: string | undefined): Promise<InitializeSignupResponse> {
     try {
-      const defaultSignupConfigFactory = getDefaultSignupConfigFactory();
-      if (!defaultSignupConfigFactory) {
-        throw new Error(
-          `Unable to find a @proteinjs/user-server/DefaultSignupConfigFactory implementation when validating signup token.`
-        );
+      const config = getDefaultInviteConfigFactory().getConfig();
+      const { isInviteOnly } = config;
+      const invite = inviteToken ? await this.getValidInvite(inviteToken) : undefined;
+
+      if (isInviteOnly) {
+        if (!inviteToken) {
+          return {
+            isReady: false,
+            error: 'An invite is required to sign up.',
+            isInviteOnly,
+          };
+        }
+        if (!invite) {
+          return {
+            isReady: false,
+            error: 'The provided invite was not found or has expired.',
+            isInviteOnly,
+          };
+        }
       }
 
-      const config = defaultSignupConfigFactory.getConfig();
-
-      switch (config.type) {
-        case 'inviteOnly':
-          if (!inviteToken) {
-            return {
-              signupType: config.type,
-              isReady: false,
-              error: 'An invite is required to sign up.',
-            };
-          }
-          if (!(await this.isInviteTokenValid(inviteToken))) {
-            return {
-              signupType: config.type,
-              isReady: false,
-              error: 'The provided invite token is invalid or has expired.',
-            };
-          }
-          return {
-            signupType: config.type,
-            isReady: true,
-          };
-
-        case 'inviteOptional':
-          if (inviteToken) {
-            if (await this.isInviteTokenValid(inviteToken)) {
-              return {
-                signupType: config.type,
-                isReady: true,
-              };
-            }
-            return {
-              signupType: config.type,
-              isReady: true,
-              error: 'The provided invite token is invalid or has expired. You may proceed with regular sign up.',
-            };
-          }
-          return {
-            signupType: config.type,
-            isReady: true,
-          };
-
-        case 'signupOnly':
-          return {
-            signupType: config.type,
-            isReady: true,
-            error: inviteToken ? 'Invite token ignored for open signup.' : undefined,
-          };
-      }
+      return {
+        isReady: true,
+        isInviteOnly,
+        invite: invite ? invite : undefined,
+      };
     } catch (error: any) {
-      // return 500? how to even do that?
-      logger.error('Error: ', error);
       return {
         isReady: false,
         error: 'Initializing sign up failed.',
@@ -210,12 +210,20 @@ export class Signup implements SignupService {
     }
   }
 
-  private async isInviteTokenValid(token: string): Promise<boolean> {
-    const db = getDb();
+  /** Returns a valid invite if it exists and is not expired, returns `null` otherwise. */
+  private async getValidInvite(token: string): Promise<Invite | null> {
+    const db = getDbAsSystem();
     const invite = await db.get(tables.Invite, { token });
-    if (invite) {
-      return true;
+
+    if (!invite) {
+      return null;
     }
-    return false;
+
+    const currentTime = moment();
+    if (invite.tokenExpiresAt && moment(invite.tokenExpiresAt).isBefore(currentTime)) {
+      return null;
+    }
+
+    return invite;
   }
 }
