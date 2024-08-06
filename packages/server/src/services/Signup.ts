@@ -119,6 +119,15 @@ export class Signup implements SignupService {
         return { sent: false, error: 'User already exists with that email.' };
       }
 
+      const emailSender = new EmailSender();
+      const defaultConfigFactory = getDefaultInviteEmailConfigFactory();
+      if (!defaultConfigFactory) {
+        throw new Error(
+          `Unable to find a @proteinjs/email-server/DefaultInviteEmailConfigFactory implementation when sending invite.`
+        );
+      }
+      const config = defaultConfigFactory.getConfig();
+
       const token = lib.WordArray.random(32).toString();
       const tokenExpiresAt = moment().add(7, 'days');
       let invite = await db.get(tables.Invite, { email });
@@ -134,14 +143,6 @@ export class Signup implements SignupService {
         invite = await db.insert(tables.Invite, { email, token, tokenExpiresAt, invitedBy: userId });
       }
 
-      const emailSender = new EmailSender();
-      const defaultConfigFactory = getDefaultInviteEmailConfigFactory();
-      if (!defaultConfigFactory) {
-        throw new Error(
-          `Unable to find a @proteinjs/email-server/DefaultInviteEmailConfigFactory implementation when sending invite.`
-        );
-      }
-      const config = defaultConfigFactory.getConfig();
       const { text, html } = config.getEmailContent(`${uiRoutes.auth.signup}?token=${token}`);
       await emailSender.sendEmail({
         to: email,
