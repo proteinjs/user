@@ -18,6 +18,7 @@ export type User = Record & {
   passwordResetTokenExpiration?: Moment | null;
   emailVerified: boolean;
   roles: string;
+  invitedBy?: string | null;
 };
 
 export class UserTable extends Table<User> {
@@ -30,5 +31,6 @@ export class UserTable extends Table<User> {
     passwordResetTokenExpiration: new DateTimeColumn('password_reset_token_expiration'),
     emailVerified: new BooleanColumn('email_verified'),
     roles: new StringColumn('roles'),
+    invitedBy: new StringColumn('invited_by'),
   });
 }

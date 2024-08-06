@@ -1,7 +1,6 @@
 import React from 'react';
 import { Page, PageContainer, PageContainerProps } from '@proteinjs/ui';
-import { routes, guestUser, UserAuth, UserRepo } from '@proteinjs/user';
-import { loginPath } from './pages/Login';
+import { routes, guestUser, UserAuth, UserRepo, uiRoutes } from '@proteinjs/user';
 
 export type AuthenticatedPageContainerProps = Omit<PageContainerProps, 'auth'>;
 
@@ -28,7 +27,7 @@ export function AuthenticatedPageContainer(props: AuthenticatedPageContainerProp
 
           return UserAuth.hasRoles(page.auth?.roles);
         },
-        login: loginPath,
+        login: uiRoutes.auth.login,
         logout: async () => {
           const response = await fetch(routes.logout.path, {
             method: routes.logout.method,
@@ -44,7 +43,7 @@ export function AuthenticatedPageContainer(props: AuthenticatedPageContainerProp
 
           new UserRepo().setUser(guestUser);
           setIsLoggedIn(false);
-          return loginPath;
+          return uiRoutes.auth.login;
         },
       }}
       {...other}

@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Page, Form, Fields, textField, FormButtons, FormPage } from '@proteinjs/ui';
-import { routes } from '@proteinjs/user';
+import { routes, uiRoutes } from '@proteinjs/user';
 import { Button, Stack, Typography } from '@mui/material';
 
-export const passwordResetPath = 'login/password-reset';
 const PasswordResetComponent: React.FC = () => {
   const [token, setToken] = useState('');
   const [isValidating, setIsValidating] = useState(false);
@@ -130,7 +129,7 @@ const PasswordResetComponent: React.FC = () => {
 
 export const passwordResetPage: Page = {
   name: 'Reset Password',
-  path: passwordResetPath,
+  path: uiRoutes.auth.passwordReset,
   auth: {
     public: true,
   },
