@@ -21,8 +21,23 @@ export type UserSignup = Pick<User, 'name' | 'password'> & {
 };
 
 export interface SignupService extends Service {
+  /**
+   * Creates a new user account.
+   * @param {UserSignup} user - User signup information. `user.email` is required if no token is provided.
+   * @param {string} [token] - Optional invite token. If provided, the corresponding invite record will be used to get the user's email.
+   * @returns {Promise<void>}
+   */
   createUser(user: UserSignup, token?: string): Promise<void>;
+  /** Creates invite record and sends email to the invited user.
+   * If invite already exists for the email, it will update the existing record with a new token and send a new email.
+   */
   sendInvite(email: string): Promise<SendInviteResponse>;
+  /** Deletes invite record associated with the email. */
   revokeInvite(email: string): Promise<void>;
+  /**
+   * Initializes signup process, validating invite configuration and token if provided.
+   * Invite configuration defaults to invite optional.
+   * @see `DefaultInviteConfigFactory` for configuring invite setting
+   */
   initializeSignup(inviteToken?: string): Promise<InitializeSignupResponse>;
 }
