@@ -103,7 +103,7 @@ const SignupComponent: React.FC = () => {
           <Typography variant='body1' gutterBottom>
             {initializationError}
           </Typography>
-          <Button variant='contained' color='primary' href='/login'>
+          <Button variant='contained' color='primary' href={`/${uiRoutes.auth.login}`}>
             Go to login page
           </Button>
         </Stack>

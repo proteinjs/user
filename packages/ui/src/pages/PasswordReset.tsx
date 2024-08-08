@@ -86,7 +86,7 @@ const PasswordResetComponent: React.FC = () => {
           <Typography variant='body1' gutterBottom>
             The password reset link is invalid or has expired. Please request a new password reset.
           </Typography>
-          <Button variant='contained' color='primary' href='/login'>
+          <Button variant='contained' color='primary' href={`/${uiRoutes.auth.login}`}>
             Go to login page
           </Button>
         </Stack>
@@ -104,7 +104,7 @@ const PasswordResetComponent: React.FC = () => {
           <Typography variant='body1' gutterBottom>
             Your password has been successfully reset. You can now log in with your new password.
           </Typography>
-          <Button variant='contained' color='primary' href='/login'>
+          <Button variant='contained' color='primary' href={`/${uiRoutes.auth.login}`}>
             Go to login page
           </Button>
         </Stack>

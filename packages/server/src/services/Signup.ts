@@ -94,7 +94,7 @@ export class Signup implements SignupService {
       name: user.name,
       email,
       password: sha256(user.password).toString(),
-      emailVerified: false,
+      emailVerified: invite ? true : false, // because we retrieved the email from the invite record
       roles: '',
       invitedBy: invite ? invite.invitedBy : null,
     });
