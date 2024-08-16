@@ -32,7 +32,6 @@ export const initiatePasswordReset: Route = {
 
     const genericResponse = { message: 'If an account with that email exists, we have sent a password reset link.' };
 
-    // Check if user exists
     const user = await db.get(tables.User, { email });
     if (!user) {
       logger.info({ message: `Password reset requested for non-existent user`, obj: { email } });
@@ -44,9 +43,8 @@ export const initiatePasswordReset: Route = {
     // Check if there's an existing token and it's less than 5 minutes old
     const currentTime = moment();
     if (user.passwordResetToken && user.passwordResetTokenExpiration) {
-      const tokenAge = moment(user.passwordResetTokenExpiration).diff(currentTime, 'minutes');
-      if (tokenAge > 0 && tokenAge <= 5) {
-        // Token is less than 5 minutes old
+      const tokenAge = moment(currentTime).diff(user.passwordResetTokenExpiration, 'minutes');
+      if (tokenAge >= 0 && tokenAge < 5) {
         logger.info({ message: `Password reset requested too soon for user`, obj: { email } });
         response.send(genericResponse);
         return;
