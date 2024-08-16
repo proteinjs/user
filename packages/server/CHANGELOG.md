@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.2.8](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.2.7...@proteinjs/user-server@1.2.8) (2024-08-16)
+
+
+### Bug Fixes
+
+* `DbSessionStore` needs to bind the sweep method to have access to instance state (like the logger) ([96057f6](https://github.com/proteinjs/user/commit/96057f620f10f0ed9c8de3e6e8202c1e4044eefe))
+
+
+
+
+
 ## [1.2.7](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.2.6...@proteinjs/user-server@1.2.7) (2024-08-16)
 
 
