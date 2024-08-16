@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.2.7](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.2.6...@proteinjs/user-server@1.2.7) (2024-08-16)
+
+
+### Bug Fixes
+
+* adjust clarity of checking existing pw reset token ([0e7f750](https://github.com/proteinjs/user/commit/0e7f750a2d94fedf051040c7072101f5b97b470b))
+
+
+
+
+
 ## [1.2.6](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.2.5...@proteinjs/user-server@1.2.6) (2024-08-16)
 
 
