@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.2.4](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.2.3...@proteinjs/user-server@1.2.4) (2024-08-16)
+
+
+### Bug Fixes
+
+* refactored to implement new @proteinjs/logger/Logger api ([339adf6](https://github.com/proteinjs/user/commit/339adf671db190e157fcaadfb69ac3ba518a2bf1))
+
+
+
+
+
 # [1.2.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.1.4...@proteinjs/user-server@1.2.0) (2024-08-06)
 
 
