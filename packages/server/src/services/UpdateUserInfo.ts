@@ -1,5 +1,5 @@
 import { getDbAsSystem } from '@proteinjs/db';
-import { tables, UserAuth, UserRepo, UpdatePasswordResponse, UpdateUserInfoService } from '@proteinjs/user';
+import { tables, UserRepo, UpdatePasswordResponse, UpdateUserInfoService } from '@proteinjs/user';
 import { EmailSender, getDefaultPasswordUpdatedEmailConfigFactory } from '@proteinjs/email-server';
 import sha256 from 'crypto-js/sha256';
 

@@ -12,7 +12,7 @@ import {
 } from '@proteinjs/user';
 import moment from 'moment';
 import { lib } from 'crypto-js';
-import { Logger } from '@proteinjs/util';
+import { Logger } from '@proteinjs/logger';
 import {
   EmailSender,
   getDefaultInviteEmailConfigFactory,
@@ -54,7 +54,7 @@ export class Signup implements SignupService {
   };
 
   async createUser(user: UserSignup, token?: string): Promise<void> {
-    const logger = new Logger('SignupService: createUser');
+    const logger = new Logger({ name: 'Signup.createUser' });
     const db = getDbAsSystem();
 
     const initSignupResponse = await this.initializeSignup(token);
@@ -78,7 +78,7 @@ export class Signup implements SignupService {
 
     const userRecord = await db.get(tables.User, { email });
     if (userRecord) {
-      logger.error(`User with this email already exists: ${email}`);
+      logger.error({ message: `User with this email already exists`, obj: { email } });
       const { text, html } = config.getExistingUserEmailContent();
       await emailSender.sendEmail({
         to: email,
@@ -107,11 +107,11 @@ export class Signup implements SignupService {
       html,
       ...config.options,
     });
-    logger.info(`Created user: ${email}`);
+    logger.info({ message: `Created user`, obj: { email } });
   }
 
   async sendInvite(email: string): Promise<SendInviteResponse> {
-    const logger = new Logger('SignupService: sendInvite');
+    const logger = new Logger({ name: 'Signup.sendInvite' });
     try {
       const db = getDbAsSystem();
       const userRecord = await db.get(tables.User, { email });
@@ -154,7 +154,7 @@ export class Signup implements SignupService {
 
       return { sent: true };
     } catch (error: any) {
-      logger.error('Error: ', error);
+      logger.error({ message: 'Error sending invite', obj: { email }, error });
       return {
         sent: false,
         error: 'Error occurred.',

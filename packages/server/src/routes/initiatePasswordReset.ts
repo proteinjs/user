@@ -1,7 +1,7 @@
 import { Route } from '@proteinjs/server-api';
 import { getDbAsSystem } from '@proteinjs/db';
 import { routes, tables, uiRoutes } from '@proteinjs/user';
-import { Logger } from '@proteinjs/util';
+import { Logger } from '@proteinjs/logger';
 import moment from 'moment';
 import {
   EmailSender,
@@ -26,7 +26,7 @@ export const initiatePasswordReset: Route = {
   path: routes.initiatePasswordReset.path,
   method: routes.initiatePasswordReset.method,
   onRequest: async (request, response): Promise<void> => {
-    const logger = new Logger('initiatePasswordReset');
+    const logger = new Logger({ name: 'initiatePasswordReset' });
     const { email } = request.body;
     const db = getDbAsSystem();
 
@@ -35,7 +35,7 @@ export const initiatePasswordReset: Route = {
     // Check if user exists
     const user = await db.get(tables.User, { email });
     if (!user) {
-      logger.info(`Password reset requested for non-existent user: ${email}`);
+      logger.info({ message: `Password reset requested for non-existent user`, obj: { email } });
       // Don't reveal that the user doesn't exist
       response.send(genericResponse);
       return;
@@ -44,10 +44,10 @@ export const initiatePasswordReset: Route = {
     // Check if there's an existing token and it's less than 5 minutes old
     const currentTime = moment();
     if (user.passwordResetToken && user.passwordResetTokenExpiration) {
-      const tokenAge = currentTime.diff(moment(user.passwordResetTokenExpiration), 'minutes');
-      if (tokenAge < -55) {
+      const tokenAge = moment(user.passwordResetTokenExpiration).diff(currentTime, 'minutes');
+      if (tokenAge > 0 && tokenAge <= 5) {
         // Token is less than 5 minutes old
-        logger.info(`Password reset requested too soon for user: ${email}`);
+        logger.info({ message: `Password reset requested too soon for user`, obj: { email } });
         response.send(genericResponse);
         return;
       }
@@ -83,7 +83,7 @@ export const initiatePasswordReset: Route = {
       await db.update(tables.User, { id: user.id, passwordResetToken, passwordResetTokenExpiration });
       response.send(genericResponse);
     } catch (error: any) {
-      logger.error(`Failed to send password reset email to: ${email}`, error);
+      logger.error({ message: `Failed to send password reset email`, obj: { email }, error });
       response.status(500).send({ error: 'Failed to send password reset email. Please try again later.' });
     }
   },

@@ -1,6 +1,7 @@
 import sha256 from 'crypto-js/sha256';
 import { getDbAsSystem } from '@proteinjs/db';
 import { tables } from '@proteinjs/user';
+import { Logger } from '@proteinjs/logger';
 import { DefaultAdminCredentials } from './DefaultAdminCredentials';
 
 export function createAuthentication(defaultAdminCredentials?: { username: string; password: string }) {
@@ -12,13 +13,14 @@ export function createAuthentication(defaultAdminCredentials?: { username: strin
 }
 
 export async function authenticate(email: string, password: string): Promise<true | string> {
+  const logger = new Logger({ name: 'authenticate' });
   const defaultAdminCredentials = DefaultAdminCredentials.getCredentials();
   if (
     defaultAdminCredentials &&
     defaultAdminCredentials.username == email &&
     defaultAdminCredentials.password == password
   ) {
-    console.info('Authenitcated default admin user');
+    logger.info({ message: 'Authenitcated default admin user' });
     return true;
   }
 
