@@ -10,7 +10,7 @@ export class DbSessionStore extends Store {
 
   constructor() {
     super();
-    setInterval(this.sweep, DbSessionStore.TWELVE_HOURS);
+    setInterval(this.sweep.bind(this), DbSessionStore.TWELVE_HOURS);
   }
 
   get = (sessionId: string, cb: (error: any, session?: Express.SessionData | null) => void) => {
