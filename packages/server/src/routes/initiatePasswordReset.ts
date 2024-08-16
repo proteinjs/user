@@ -41,10 +41,11 @@ export const initiatePasswordReset: Route = {
     }
 
     // Check if there's an existing token and it's less than 5 minutes old
-    const currentTime = moment();
     if (user.passwordResetToken && user.passwordResetTokenExpiration) {
-      const tokenAge = moment(currentTime).diff(user.passwordResetTokenExpiration, 'minutes');
-      if (tokenAge >= 0 && tokenAge < 5) {
+      const currentTime = moment();
+      const tokenCreationTime = moment(user.passwordResetTokenExpiration).subtract(1, 'hour');
+      const timeDifference = currentTime.diff(tokenCreationTime, 'minutes');
+      if (timeDifference < 5) {
         logger.info({ message: `Password reset requested too soon for user`, obj: { email } });
         response.send(genericResponse);
         return;
