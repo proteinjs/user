@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.2.6](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.2.5...@proteinjs/user-server@1.2.6) (2024-08-16)
+
+
+### Bug Fixes
+
+* password reset logic ([a02cab4](https://github.com/proteinjs/user/commit/a02cab41355f0f4484b3351509ec8a113a775317))
+
+
+
+
+
 ## [1.2.4](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.2.3...@proteinjs/user-server@1.2.4) (2024-08-16)
 
 
