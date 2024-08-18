@@ -3,6 +3,7 @@ import { Page, Form, Fields, textField, FormButtons, clearButton, FormPage } fro
 import { getSignupService, uiRoutes } from '@proteinjs/user';
 import { Button, Skeleton, Stack, Typography } from '@mui/material';
 import { emailRegex } from '@proteinjs/util';
+import { Helmet } from 'react-helmet';
 
 const SignupComponent: React.FC = () => {
   const [token, setToken] = useState('');
@@ -83,45 +84,50 @@ const SignupComponent: React.FC = () => {
   };
 
   return (
-    <FormPage>
-      {isInitializing ? (
-        <Stack direction='column' spacing={2} sx={{ px: 2, py: 1 }}>
-          <Skeleton variant='text' width='500px' height='60px' />
-          <Skeleton variant='text' width='500px' height='60px' />
-          <Skeleton variant='text' width='500px' height='60px' />
-          <Skeleton variant='text' width='500px' height='60px' />
-          <Stack direction='row' spacing={2} justifyContent='flex-end'>
-            <Skeleton variant='text' width='100px' height='60px' />
-            <Skeleton variant='text' width='100px' height='60px' />
+    <>
+      <Helmet>
+        <title>Sign up</title>
+      </Helmet>
+      <FormPage>
+        {isInitializing ? (
+          <Stack direction='column' spacing={2} sx={{ px: 2, py: 1 }}>
+            <Skeleton variant='text' width='500px' height='60px' />
+            <Skeleton variant='text' width='500px' height='60px' />
+            <Skeleton variant='text' width='500px' height='60px' />
+            <Skeleton variant='text' width='500px' height='60px' />
+            <Stack direction='row' spacing={2} justifyContent='flex-end'>
+              <Skeleton variant='text' width='100px' height='60px' />
+              <Skeleton variant='text' width='100px' height='60px' />
+            </Stack>
           </Stack>
-        </Stack>
-      ) : initializationError ? (
-        <Stack alignItems='center' spacing={3} sx={{ p: 4 }}>
-          <Typography variant='h1' gutterBottom>
-            Sign up is not available
-          </Typography>
-          <Typography variant='body1' gutterBottom>
-            {initializationError}
-          </Typography>
-          <Button variant='contained' color='primary' href={`/${uiRoutes.auth.login}`}>
-            Go to login page
-          </Button>
-        </Stack>
-      ) : (
-        <Form<SignupFields, typeof buttons>
-          name='Sign Up'
-          createFields={() => new SignupFields()}
-          fieldLayout={['name', 'email', 'password', 'confirmPassword']}
-          buttons={buttons}
-          onLoad={async (fields) => {
-            fields.token.field.value = token;
-            if (token) {
-              fields.email.field.accessibility = { hidden: true };
-            }
-          }}
-        />
-      )}
-    </FormPage>
+        ) : initializationError ? (
+          <Stack alignItems='center' spacing={3} sx={{ p: 4 }}>
+            <Typography variant='h1' gutterBottom>
+              Sign up is not available
+            </Typography>
+            <Typography variant='body1' gutterBottom>
+              {initializationError}
+            </Typography>
+            <Button variant='contained' color='primary' href={`/${uiRoutes.auth.login}`}>
+              Go to login page
+            </Button>
+          </Stack>
+        ) : (
+          <Form<SignupFields, typeof buttons>
+            name='Sign Up'
+            createFields={() => new SignupFields()}
+            fieldLayout={['name', 'email', 'password', 'confirmPassword']}
+            buttons={buttons}
+            onLoad={async (fields) => {
+              fields.token.field.value = token;
+              if (token) {
+                fields.email.field.accessibility = { hidden: true };
+              }
+            }}
+          />
+        )}
+      </FormPage>
+    </>
   );
 };
 

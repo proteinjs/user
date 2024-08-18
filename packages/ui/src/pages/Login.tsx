@@ -1,6 +1,7 @@
 import React from 'react';
 import { Page, Form, Fields, textField, FormButtons, clearButton, FormPage } from '@proteinjs/ui';
 import { routes, uiRoutes } from '@proteinjs/user';
+import { Helmet } from 'react-helmet';
 
 export const loginPage: Page = {
   name: 'Login',
@@ -9,15 +10,20 @@ export const loginPage: Page = {
     public: true,
   },
   component: () => (
-    <FormPage>
-      <Form<LoginFields, typeof buttons>
-        name='Login'
-        createFields={() => new LoginFields()}
-        fieldLayout={['email', 'password']}
-        buttons={buttons}
-        maxWidth={'xs'}
-      />
-    </FormPage>
+    <>
+      <Helmet>
+        <title>Login</title>
+      </Helmet>
+      <FormPage>
+        <Form<LoginFields, typeof buttons>
+          name='Login'
+          createFields={() => new LoginFields()}
+          fieldLayout={['email', 'password']}
+          buttons={buttons}
+          maxWidth={'xs'}
+        />
+      </FormPage>
+    </>
   ),
 };
 
