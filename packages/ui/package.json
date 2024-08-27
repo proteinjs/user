@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/user-ui",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "User ui components",
   "publishConfig": {
     "access": "public"
@@ -25,7 +25,7 @@
     "@mui/material": "5.14.11",
     "@proteinjs/reflection": "1.1.9",
     "@proteinjs/server-api": "1.5.0",
-    "@proteinjs/ui": "3.0.1",
+    "@proteinjs/ui": "3.1.0",
     "@proteinjs/user": "^1.1.6",
     "@proteinjs/util": "1.4.1",
     "moment": "2.29.4",
