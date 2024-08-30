@@ -1,7 +1,11 @@
 import { QueryBuilder, Table, TableWatcher } from '@proteinjs/db';
 import { Session, SessionTable } from '@proteinjs/user';
-import { io } from '@proteinjs/server';
+import { SocketIOServerRepo } from '@proteinjs/server';
 
+/**
+ * Handles Socket.IO session cleanup (such as disconnecting sockets)
+ * when sessions are deleted.
+ */
 export class SocketIOSessionWatcher implements TableWatcher<Session> {
   name(): string {
     return this.constructor.name;
@@ -17,6 +21,6 @@ export class SocketIOSessionWatcher implements TableWatcher<Session> {
     qb: QueryBuilder<T>
   ): Promise<void> {
     const deletedSessionIds = deletedRecords.map((deletedRecord) => deletedRecord.sessionId);
-    io.in(deletedSessionIds).disconnectSockets(true);
+    SocketIOServerRepo.getSocketIOServer().in(deletedSessionIds).disconnectSockets(true);
   }
 }
