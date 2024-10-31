@@ -22,7 +22,7 @@
     "test": "jest"
   },
   "dependencies": {
-    "@proteinjs/db": "1.6.0",
+    "@proteinjs/db": "^1.7.0",
     "@proteinjs/reflection": "1.1.9",
     "@proteinjs/server-api": "1.5.0",
     "@proteinjs/service": "1.1.1",
