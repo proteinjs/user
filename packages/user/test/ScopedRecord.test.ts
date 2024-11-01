@@ -15,7 +15,7 @@ export class FavoriteTable extends Table<Favorite> {
   columns = withRecordColumns<Favorite>({
     name: new StringColumn('name'),
     scope: new StringColumn('scope', {
-      defaultValue: async (favorite: Favorite) =>
+      defaultValue: async (table: any, favorite: Favorite) =>
         favorite.name.startsWith(veronicaUser.name) ? veronicaScope : kevinScope,
       addToQuery: async (qb) => {
         qb.condition({
