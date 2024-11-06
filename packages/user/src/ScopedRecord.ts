@@ -23,7 +23,7 @@ const getScopedRecordColumns = (accessibleScopes: string[] = []) => {
   return {
     scope: new StringColumn('scope', {
       defaultValue: async () => new UserRepo().getUser().id,
-      forceDefaultValue: true,
+      forceDefaultValue: (runAsSystem) => !runAsSystem,
       addToQuery: async (qb, runAsSystem) => {
         if (!runAsSystem) {
           qb.condition({
