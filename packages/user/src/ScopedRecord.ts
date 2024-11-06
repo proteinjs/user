@@ -19,20 +19,23 @@ export const getScopedDb = getDb<ScopedRecord>;
 
 export const getScopedDbAsSystem = <R extends ScopedRecord = ScopedRecord>() => new Db<R>(undefined, undefined, true);
 
-const scopedRecordColumns = {
-  scope: new StringColumn('scope', {
-    defaultValue: async () => new UserRepo().getUser().id,
-    addToQuery: async (qb, runAsSystem) => {
-      if (!runAsSystem) {
-        qb.condition({
-          field: 'scope',
-          operator: 'IN',
-          value: [new UserRepo().getUser().id],
-        });
-      }
-    },
-    ui: { hidden: true },
-  }),
+const getScopedRecordColumns = (accessibleScopes: string[] = []) => {
+  return {
+    scope: new StringColumn('scope', {
+      defaultValue: async () => new UserRepo().getUser().id,
+      forceDefaultValue: true,
+      addToQuery: async (qb, runAsSystem) => {
+        if (!runAsSystem) {
+          qb.condition({
+            field: 'scope',
+            operator: 'IN',
+            value: [new UserRepo().getUser().id, ...accessibleScopes],
+          });
+        }
+      },
+      ui: { hidden: true },
+    }),
+  };
 };
 
 export function getScopedTables() {
@@ -40,7 +43,7 @@ export function getScopedTables() {
 }
 
 export function isScopedTable(table: Table<any>) {
-  const scopeColumn = getColumnByName(table, scopedRecordColumns.scope.name);
+  const scopeColumn = getColumnByName(table, getScopedRecordColumns().scope.name);
   return !!scopeColumn;
 }
 
@@ -53,7 +56,11 @@ export function isScopedTable(table: Table<any>) {
  * @returns recordColumns & sourceRecordColumns & your columns
  */
 export function withScopedRecordColumns<T extends ScopedRecord>(
-  columns: Columns<Omit<T, keyof ScopedRecord>>
+  columns: Columns<Omit<T, keyof ScopedRecord>>,
+  accessibleScopes?: string[]
 ): Columns<ScopedRecord> & Columns<Omit<T, keyof ScopedRecord>> {
-  return Object.assign(Object.assign({}, scopedRecordColumns), withRecordColumns<Record>(columns) as any);
+  return Object.assign(
+    Object.assign({}, getScopedRecordColumns(accessibleScopes)),
+    withRecordColumns<Record>(columns) as any
+  );
 }
