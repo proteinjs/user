@@ -17,7 +17,8 @@ export interface ScopedRecord extends Record {
 
 export const getScopedDb = getDb<ScopedRecord>;
 
-export const getScopedDbAsSystem = <R extends ScopedRecord = ScopedRecord>() => new Db<R>(undefined, undefined, true);
+export const getScopedDbAsSystem = <R extends ScopedRecord = ScopedRecord>() =>
+  new Db<R>(undefined, undefined, undefined, true);
 
 const getScopedRecordColumns = (accessibleScopes: string[] = []) => {
   return {
