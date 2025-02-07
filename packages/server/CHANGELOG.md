@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.2.28](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.2.25...@proteinjs/user-server@1.2.28) (2025-02-07)
+
+
+### Bug Fixes
+
+* add table param to defaultValue, update params for db changes ([#3](https://github.com/proteinjs/user/issues/3)) ([c98e5dc](https://github.com/proteinjs/user/commit/c98e5dcc4a09bf27bfd2cdd877eb0a15b952c56a))
+
+
+
+
+
 ## [1.2.19](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.2.18...@proteinjs/user-server@1.2.19) (2024-10-21)
 
 **Note:** Version bump only for package @proteinjs/user-server
