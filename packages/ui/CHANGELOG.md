@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.1.29](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.1.28...@proteinjs/user-ui@1.1.29) (2025-05-08)
+
+
+### Bug Fixes
+
+* Redirect successful signup to login page ([ccc8222](https://github.com/proteinjs/user/commit/ccc8222a2f6e4f1b017d9313ae12a03238e296ba))
+
+
+
+
+
 ## [1.1.23](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.1.20...@proteinjs/user-ui@1.1.23) (2025-02-07)
 
 

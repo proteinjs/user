@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.2.34](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.2.33...@proteinjs/user-server@1.2.34) (2025-05-08)
+
+
+### Bug Fixes
+
+* Email should be case insensitive when managing invites and auth ([9a4179b](https://github.com/proteinjs/user/commit/9a4179b6739dbec144444f5a07beac299df1a1be))
+
+
+
+
+
 ## [1.2.28](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.2.25...@proteinjs/user-server@1.2.28) (2025-02-07)
 
 
