@@ -4,8 +4,10 @@ import { getSignupService, uiRoutes } from '@proteinjs/user';
 import { Button, Skeleton, Stack, Typography } from '@mui/material';
 import { emailRegex } from '@proteinjs/util';
 import { Helmet } from 'react-helmet';
+import { useNavigate } from 'react-router-dom';
 
 const SignupComponent: React.FC = () => {
+  const navigate = useNavigate();
   const [token, setToken] = useState('');
   const [isInviteOnly, setIsInviteOnly] = useState<boolean>(false);
   const [isInitializing, setIsInitializing] = useState(false);
@@ -48,7 +50,7 @@ const SignupComponent: React.FC = () => {
           return 'Sign up failed.';
         }
 
-        return `Successfully created your account! Please check your email for an email confirmation.`;
+        navigate(uiRoutes.auth.login.startsWith('/') ? uiRoutes.auth.login : '/' + uiRoutes.auth.login);
       },
     },
   };
