@@ -25,7 +25,7 @@ export async function authenticate(email: string, password: string): Promise<tru
   }
 
   const users = await getDbAsSystem().query(tables.User, {
-    email,
+    email: email.toLowerCase(),
     password: sha256(password).toString(),
   });
   if (users.length < 1) {

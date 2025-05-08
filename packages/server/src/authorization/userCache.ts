@@ -23,7 +23,7 @@ export const userCache: SessionDataCache<User> = {
         };
         user = adminUser;
       } else {
-        user = await getDbAsSystem().get(tables.User, { email: userEmail });
+        user = await getDbAsSystem().get(tables.User, { email: userEmail.toLowerCase() });
         delete (user as any)['password'];
       }
     }

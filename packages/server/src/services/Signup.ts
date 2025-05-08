@@ -67,7 +67,7 @@ export class Signup implements SignupService {
       await db.delete(tables.Invite, { token });
     }
 
-    const email = invite ? invite.email : user.email;
+    const email = (invite ? invite.email : user.email)?.toLowerCase();
     if (!email) {
       throw new Error('Email is required when there is no invite');
     }
@@ -79,14 +79,16 @@ export class Signup implements SignupService {
     const userRecord = await db.get(tables.User, { email });
     if (userRecord) {
       logger.error({ message: `User with this email already exists`, obj: { email } });
-      const { text, html } = config.getExistingUserEmailContent();
-      await emailSender.sendEmail({
-        to: email,
-        subject: config.existingUserSubject || config.options?.subject || 'Account already exists',
-        text,
-        html,
-        ...config.options,
-      });
+      if (config.getExistingUserEmailContent) {
+        const { text, html } = config.getExistingUserEmailContent();
+        await emailSender.sendEmail({
+          to: email,
+          subject: config.existingUserSubject || config.options?.subject || 'Account already exists',
+          text,
+          html,
+          ...config.options,
+        });
+      }
       return;
     }
 
@@ -112,9 +114,10 @@ export class Signup implements SignupService {
 
   async sendInvite(email: string): Promise<SendInviteResponse> {
     const logger = new Logger({ name: 'Signup.sendInvite' });
+    const caseInsensitiveEmail = email.toLowerCase();
     try {
       const db = getDbAsSystem();
-      const userRecord = await db.get(tables.User, { email });
+      const userRecord = await db.get(tables.User, { email: caseInsensitiveEmail });
       if (userRecord) {
         return { sent: false, error: 'User already exists with that email.' };
       }
@@ -130,7 +133,7 @@ export class Signup implements SignupService {
 
       const token = lib.WordArray.random(32).toString();
       const tokenExpiresAt = moment().add(7, 'days');
-      let invite = await db.get(tables.Invite, { email });
+      let invite = await db.get(tables.Invite, { email: caseInsensitiveEmail });
       if (invite) {
         invite = {
           ...invite,
@@ -140,12 +143,17 @@ export class Signup implements SignupService {
         await db.update(tables.Invite, invite);
       } else {
         const userId = new UserRepo().getUser().id;
-        invite = await db.insert(tables.Invite, { email, token, tokenExpiresAt, invitedBy: userId });
+        invite = await db.insert(tables.Invite, {
+          email: caseInsensitiveEmail,
+          token,
+          tokenExpiresAt,
+          invitedBy: userId,
+        });
       }
 
       const { text, html } = config.getEmailContent(`${uiRoutes.auth.signup}?token=${token}`);
       await emailSender.sendEmail({
-        to: email,
+        to: caseInsensitiveEmail,
         subject: config.options?.subject || `You're Invited`,
         text,
         html,
@@ -154,7 +162,7 @@ export class Signup implements SignupService {
 
       return { sent: true };
     } catch (error: any) {
-      logger.error({ message: 'Error sending invite', obj: { email }, error });
+      logger.error({ message: 'Error sending invite', obj: { email: caseInsensitiveEmail }, error });
       return {
         sent: false,
         error: 'Error occurred.',
@@ -168,7 +176,7 @@ export class Signup implements SignupService {
     }
 
     const db = getDb();
-    await db.delete(tables.Invite, { email });
+    await db.delete(tables.Invite, { email: email.toLowerCase() });
   }
 
   /**

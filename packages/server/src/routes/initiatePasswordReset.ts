@@ -27,7 +27,7 @@ export const initiatePasswordReset: Route = {
   method: routes.initiatePasswordReset.method,
   onRequest: async (request, response): Promise<void> => {
     const logger = new Logger({ name: 'initiatePasswordReset' });
-    const { email } = request.body;
+    const email = request.body.email?.toLowerCase();
     const db = getDbAsSystem();
 
     const genericResponse = { message: 'If an account with that email exists, we have sent a password reset link.' };
