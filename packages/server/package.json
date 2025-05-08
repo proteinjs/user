@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/user-server",
-  "version": "1.2.34",
+  "version": "1.2.35",
   "description": "User server components",
   "publishConfig": {
     "access": "public"
@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@proteinjs/db": "1.15.0",
-    "@proteinjs/email-server": "1.2.5",
+    "@proteinjs/email-server": "1.2.6",
     "@proteinjs/logger": "1.0.8",
     "@proteinjs/reflection": "1.1.10",
     "@proteinjs/server": "2.1.3",
