@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/user-server",
-  "version": "1.2.37",
+  "version": "1.2.38",
   "description": "User server components",
   "publishConfig": {
     "access": "public"
@@ -25,7 +25,7 @@
     "@proteinjs/email-server": "1.2.8",
     "@proteinjs/logger": "1.0.10",
     "@proteinjs/reflection": "1.1.10",
-    "@proteinjs/server": "2.1.5",
+    "@proteinjs/server": "2.1.6",
     "@proteinjs/server-api": "1.5.4",
     "@proteinjs/user": "^1.2.16",
     "crypto-js": "4.0.0",
