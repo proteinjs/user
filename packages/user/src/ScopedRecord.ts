@@ -10,6 +10,7 @@ import {
   Db,
   QueryBuilder,
   Condition,
+  Reference,
 } from '@proteinjs/db';
 import { UserRepo } from './UserRepo';
 
@@ -19,7 +20,8 @@ export interface ScopedRecord extends Record {
 
 export type ScopedRecordOptions<T extends ScopedRecord> = {
   inheritScope?: {
-    parentColumn: keyof T extends string ? keyof T : never;
+    // Must be of type Reference
+    parentColumn: { [K in keyof T]: T[K] extends Reference<infer U> | undefined ? K : never }[keyof T];
   };
   accessibleScopes: string[];
   useDefaultScope: boolean;
@@ -30,7 +32,7 @@ export const getScopedDb = getDb<ScopedRecord>;
 export const getScopedDbAsSystem = <R extends ScopedRecord = ScopedRecord>() =>
   new Db<R>(undefined, undefined, undefined, true);
 
-const getScopedRecordColumns = (options?: ScopedRecordOptions<unknown extends ScopedRecord ? ScopedRecord : never>) => {
+const getScopedRecordColumns = <T extends ScopedRecord>(options?: ScopedRecordOptions<T>) => {
   return {
     scope: new StringColumn('scope', {
       defaultValue: async () => new UserRepo().getUser().id,
@@ -133,7 +135,7 @@ export function withScopedRecordColumns<T extends ScopedRecord>(
   };
 
   return Object.assign(
-    Object.assign({}, getScopedRecordColumns(Object.assign({}, defaultOpts, options) as ScopedRecordOptions<T>)),
+    Object.assign({}, getScopedRecordColumns(Object.assign({}, defaultOpts, options))),
     withRecordColumns<Record>(columns) as any
   );
 }
