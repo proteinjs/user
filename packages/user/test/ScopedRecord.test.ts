@@ -1,31 +1,41 @@
-import { Db, StringColumn, Table, Record, withRecordColumns } from '@proteinjs/db';
-import { KnexDriver } from '@proteinjs/db-driver-knex';
+jest.mock('../src/UserRepo', () => {
+  return {
+    UserRepo: jest.fn().mockImplementation(() => {
+      return {
+        getUser: jest.fn().mockReturnValue({ id: 'user0' }),
+      };
+    }),
+  };
+});
 
-export interface Favorite extends Record {
+import { Db, Reference, ReferenceColumn, StringColumn, Table } from '@proteinjs/db';
+import { KnexDriver } from '@proteinjs/db-driver-knex';
+import { ScopedRecord, withScopedRecordColumns } from '../src/ScopedRecord';
+
+export interface Favorite extends ScopedRecord {
   name: string;
-  scope?: string;
+  parent?: Reference<Favorite>;
 }
 
-const veronicaUser = { name: 'Veronica', email: 'veroni@cake.com' };
-const kevinUser = { name: 'Kevin', email: 'kev@tron.com' };
-const veronicaScope = 'vvvveronica';
-const kevinScope = 'kevinnn';
+const users: { name: string; id: string; email: string }[] = [
+  { name: 'user0', id: 'user0', email: 'user0@null.local' },
+  { name: 'user1', id: 'user1', email: 'user1@null.local' },
+];
+
 export class FavoriteTable extends Table<Favorite> {
   name = 'user_test_user';
-  columns = withRecordColumns<Favorite>({
-    name: new StringColumn('name'),
-    scope: new StringColumn('scope', {
-      defaultValue: async (table: any, favorite: Favorite) =>
-        favorite.name.startsWith(veronicaUser.name) ? veronicaScope : kevinScope,
-      addToQuery: async (qb) => {
-        qb.condition({
-          field: 'scope',
-          operator: 'IN',
-          value: [veronicaScope],
-        });
+  columns = withScopedRecordColumns<Favorite>(
+    {
+      name: new StringColumn('name'),
+      parent: new ReferenceColumn('parent', this.name, false, { nullable: true }),
+    },
+    {
+      useDefaultScope: false,
+      inheritScope: {
+        parentColumn: 'parent',
       },
-    }),
-  });
+    }
+  );
 }
 
 const getTable = (tableName: string) => {
@@ -60,26 +70,64 @@ describe('Scoped Record', () => {
     if (dbDriver.start) {
       await dbDriver.start();
     }
+  });
 
+  beforeEach(async () => {
     await dbDriver.getTableManager().loadTable(new FavoriteTable());
   });
 
-  afterAll(async () => {
+  afterEach(async () => {
     await dropTable(new FavoriteTable());
+  });
 
+  afterAll(() => {
     if (dbDriver.stop) {
-      await dbDriver.stop();
+      dbDriver.stop();
     }
   });
 
   test('Query scoped records', async () => {
     const favoriteTable: Table<Favorite> = new FavoriteTable();
-    await db.insert(favoriteTable, { name: `${veronicaUser.name}_favorite1` });
-    await db.insert(favoriteTable, { name: `${veronicaUser.name}_favorite2` });
-    await db.insert(favoriteTable, { name: `${veronicaUser.name}_favorite3` });
-    await db.insert(favoriteTable, { name: `${kevinUser.name}_favorite1` });
-    await db.insert(favoriteTable, { name: `${kevinUser.name}_favorite2` });
+
+    const [user0, user1] = users;
+    await db.insert(favoriteTable, { name: `${user0.name}_favorite1`, scope: user0.id });
+    await db.insert(favoriteTable, { name: `${user0.name}_favorite2`, scope: user0.id });
+    await db.insert(favoriteTable, { name: `${user0.name}_favorite3`, scope: user0.id });
+    await db.insert(favoriteTable, { name: `${user1.name}_favorite1`, scope: user1.id });
+    await db.insert(favoriteTable, { name: `${user1.name}_favorite2`, scope: user1.id });
     const favorites = await db.query(favoriteTable, {});
     expect(favorites.length).toBe(3);
+  });
+
+  test('Query records with inherited scope', async () => {
+    const favoriteTable: Table<Favorite> = new FavoriteTable();
+    const [user0, user1] = users;
+
+    const parent = await db.insert(favoriteTable, {
+      name: 'Parent Favorite',
+      scope: user0.id,
+    });
+
+    const child = await db.insert(favoriteTable, {
+      name: 'Child Favorite',
+      scope: user1.id,
+      parent: Reference.fromObject(FavoriteTable.name, parent),
+    });
+
+    const other = await db.insert(favoriteTable, {
+      name: 'Unrelated Favorite',
+      scope: user1.id,
+    });
+
+    const favorites = await db.query(favoriteTable, {});
+
+    // should return the parent record (direct scope match)
+    // and the child record (inherited scope through parent)
+    expect(favorites.length).toBe(2);
+
+    const resultNames = favorites.map((r) => r.name);
+    expect(resultNames).toContain(parent.name);
+    expect(resultNames).toContain(child.name);
+    expect(resultNames).not.toContain(other.name);
   });
 });
