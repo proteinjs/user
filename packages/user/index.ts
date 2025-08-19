@@ -9,5 +9,6 @@ export * from './src/routes';
 export * from './src/cacheKeys';
 export * from './src/UserRepo';
 export * from './src/ScopedRecord';
+export * from './src/SharedRecord';
 
 export * from '@proteinjs/user-auth';
