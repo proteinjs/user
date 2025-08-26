@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.3.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.2.39...@proteinjs/user-server@1.3.0) (2025-08-26)
+
+
+### Features
+
+* SharedRecord column type ([#5](https://github.com/proteinjs/user/issues/5)) [skip ci] ([d320303](https://github.com/proteinjs/user/commit/d320303db6a209bd11f08845edff61b136d09859))
+* **user:** invites that create access grants when accepted ([#6](https://github.com/proteinjs/user/issues/6)) ([5ee1965](https://github.com/proteinjs/user/commit/5ee196519ebd08ca215aad75257af3b1fc60f778))
+
+
+
+
+
 ## [1.2.34](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.2.33...@proteinjs/user-server@1.2.34) (2025-05-08)
 
 

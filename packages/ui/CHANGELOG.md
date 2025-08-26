@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.2.0](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.1.32...@proteinjs/user-ui@1.2.0) (2025-08-26)
+
+
+### Features
+
+* SharedRecord column type ([#5](https://github.com/proteinjs/user/issues/5)) [skip ci] ([d320303](https://github.com/proteinjs/user/commit/d320303db6a209bd11f08845edff61b136d09859))
+
+
+
+
+
 ## [1.1.29](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.1.28...@proteinjs/user-ui@1.1.29) (2025-05-08)
 
 
