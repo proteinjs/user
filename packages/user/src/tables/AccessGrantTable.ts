@@ -22,6 +22,14 @@ export type AccessGrant = Record & {
 
 export class AccessGrantTable extends Table<AccessGrant> {
   name = 'access_grant';
+  auth: Table<AccessGrant>['auth'] = {
+    db: {
+      all: 'authenticated',
+    },
+    service: {
+      all: 'authenticated',
+    },
+  };
   columns = withRecordColumns<AccessGrant>({
     accessLevel: new StringColumn('access_level'),
     principal: new ReferenceColumn<User>('principal', UserTable.name, false),

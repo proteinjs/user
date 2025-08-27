@@ -30,6 +30,14 @@ export type AccessInvite<T extends Record = any> = Record & {
 
 export class AccessInviteTable extends Table<AccessInvite> {
   name = 'access_invite';
+  auth: Table<AccessInvite>['auth'] = {
+    db: {
+      all: 'authenticated',
+    },
+    service: {
+      all: 'authenticated',
+    },
+  };
   columns = withRecordColumns<AccessInvite>({
     token: new StringColumn('token', {
       defaultValue: async () => crypto.randomBytes(32).toString('hex'),
