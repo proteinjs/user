@@ -18,7 +18,8 @@ export class SocketIOSessionWatcher implements TableWatcher<Session> {
   async afterDelete<T extends Session>(
     recordDeleteCount: number,
     deletedRecords: T[],
-    qb: QueryBuilder<T>
+    initialQb: QueryBuilder<T>,
+    deleteQb: QueryBuilder<T>
   ): Promise<void> {
     const deletedSessionIds = deletedRecords.map((deletedRecord) => deletedRecord.sessionId);
     SocketIOServerRepo.getSocketIOServer().in(deletedSessionIds).disconnectSockets(true);
