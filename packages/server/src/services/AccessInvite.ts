@@ -12,13 +12,14 @@ export class AccessInvite<T extends Record> implements AccessInviteService<T> {
   };
 
   async createAccessInvite(params: CreateAccessInviteParams): Promise<CreateAccessInviteResponse> {
-    const { resourceTable, resourceId, expiresInDays } = params;
+    const { resourceTable, resourceId, expiresInDays, accessLevel } = params;
 
     const db = getDbAsSystem();
     const tokenExpiresAt = moment().add(expiresInDays ?? 7, 'days');
 
     const invite = await db.insert(tables.AccessInvite, {
       resource: new Reference(resourceTable, resourceId),
+      accessLevel,
       resourceTable,
       tokenExpiresAt,
     });

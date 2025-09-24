@@ -2,6 +2,7 @@ import type { Record } from '@proteinjs/db';
 import type { Moment } from 'moment';
 
 import { Service, serviceFactory } from '@proteinjs/service';
+import { AccessGrant } from '../tables/AccessGrantTable';
 
 export const getAccessInviteService = <T extends Record>() =>
   serviceFactory<AccessInviteService<T>>('@proteinjs/user/AccessInviteService');
@@ -9,6 +10,7 @@ export const getAccessInviteService = <T extends Record>() =>
 export type CreateAccessInviteParams = {
   resourceTable: string;
   resourceId: string;
+  accessLevel: AccessGrant['accessLevel'];
   expiresInDays?: number;
 };
 
