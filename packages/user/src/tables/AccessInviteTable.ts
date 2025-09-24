@@ -5,7 +5,7 @@ import {
   DateTimeColumn,
   DynamicReferenceColumn,
   DynamicReferenceTableNameColumn,
-  getDbAsSystem,
+  getDbAsSystem, QueryBuilderFactory,
   Record,
   Reference,
   ReferenceColumn,
@@ -23,6 +23,7 @@ export type AccessInvite<T extends Record = any> = Record & {
   tokenExpiresAt: Moment;
   resource: Reference<T>;
   resourceTable: string;
+  accessLevel: AccessGrant['accessLevel'];
   accepted?: boolean;
   acceptedBy?: Reference<User>;
   acceptedAt?: Moment;
@@ -47,6 +48,7 @@ export class AccessInviteTable extends Table<AccessInvite> {
     accepted: new BooleanColumn('accepted', { defaultValue: async () => false }),
     acceptedBy: new ReferenceColumn('accepted_by', new UserTable().name, false),
     acceptedAt: new DateTimeColumn('accepted_at'),
+    accessLevel: new StringColumn('access_level'),
     resource: new DynamicReferenceColumn('resource', 'resource_table'),
     resourceTable: new DynamicReferenceTableNameColumn('resource_table', 'resource', {
       onBeforeInsert: async (insertObj: AccessInvite, runAsSystem) => {
@@ -54,15 +56,23 @@ export class AccessInviteTable extends Table<AccessInvite> {
           return;
         }
 
+        const adminAccessQb = new QueryBuilderFactory().createQueryBuilder(
+          new AccessGrantTable() as Table<AccessGrant>,
+          {
+            principal: new UserRepo().getUser().id,
+            resource: insertObj.resource._id,
+            resourceTable: insertObj.resourceTable,
+          }
+        );
+
+        adminAccessQb.condition({
+          field: 'accessLevel',
+          operator: 'IN',
+          value: ['admin', 'owner'],
+        });
+
         const hasAdminAccess =
-          (
-            await getDbAsSystem().query(new AccessGrantTable() as Table<AccessGrant>, {
-              accessLevel: 'admin',
-              principal: new UserRepo().getUser().id,
-              resource: insertObj.resource._id,
-              resourceTable: insertObj.resourceTable,
-            })
-          ).length > 0;
+          (await getDbAsSystem().query(new AccessGrantTable() as Table<AccessGrant>, adminAccessQb)).length > 0;
 
         if (!hasAdminAccess) {
           throw new Error(`User does not have admin access to resource`);

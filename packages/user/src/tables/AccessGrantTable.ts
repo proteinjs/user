@@ -2,6 +2,7 @@ import {
   DynamicReferenceColumn,
   DynamicReferenceTableNameColumn,
   getDbAsSystem,
+  QueryBuilderFactory,
   Record,
   Reference,
   ReferenceColumn,
@@ -17,7 +18,7 @@ export type AccessGrant = Record & {
   principal: Reference<any>;
   resource: Reference<any>;
   resourceTable?: Table<any>['name'];
-  accessLevel: 'read' | 'write' | 'admin';
+  accessLevel: 'read' | 'write' | 'admin' | 'owner';
 };
 
 export class AccessGrantTable extends Table<AccessGrant> {
@@ -46,15 +47,23 @@ export class AccessGrantTable extends Table<AccessGrant> {
           return;
         }
 
+        const adminAccessQb = new QueryBuilderFactory().createQueryBuilder(
+          new AccessGrantTable() as Table<AccessGrant>,
+          {
+            principal: new UserRepo().getUser().id,
+            resource: insertObj.resource._id,
+            resourceTable: insertObj.resourceTable,
+          }
+        );
+
+        adminAccessQb.condition({
+          field: 'accessLevel',
+          operator: 'IN',
+          value: ['admin', 'owner'],
+        });
+
         const hasAdminAccess =
-          (
-            await getDbAsSystem().query(new AccessGrantTable() as Table<AccessGrant>, {
-              accessLevel: 'admin',
-              principal: new UserRepo().getUser().id,
-              resource: insertObj.resource._id,
-              resourceTable: insertObj.resourceTable,
-            })
-          ).length > 0;
+          (await getDbAsSystem().query(new AccessGrantTable() as Table<AccessGrant>, adminAccessQb)).length > 0;
 
         if (!hasAdminAccess) {
           throw new Error(`User does not have admin access to resource`);
