@@ -44,10 +44,17 @@ const getSharedRecordColumns = () => {
 
         return new Reference(table.name, insertObj.id);
       },
-      addToQuery: async (qb, runAsSystem) => {
+      addToQuery: async (qb, runAsSystem, operation) => {
         if (runAsSystem) {
           return;
         }
+
+        const operationToLevel: globalThis.Record<typeof operation, AccessGrant['accessLevel'][]> = {
+          read: ['read', 'write', 'admin', 'owner'],
+          write: ['write', 'admin', 'owner'],
+          delete: ['admin', 'owner'],
+        };
+
         const subQuery = new QueryBuilder(new AccessGrantTable().name);
         subQuery.select({
           fields: ['resource'],
@@ -62,7 +69,7 @@ const getSharedRecordColumns = () => {
         subQuery.condition({
           field: 'accessLevel',
           operator: 'IN',
-          value: ['read', 'write', 'admin'],
+          value: operationToLevel[operation],
         });
 
         subQuery.condition({
