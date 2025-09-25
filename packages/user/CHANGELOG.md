@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.3.6](https://github.com/proteinjs/user/compare/@proteinjs/user@1.3.5...@proteinjs/user@1.3.6) (2025-09-25)
+
+
+### Bug Fixes
+
+* export AccessGrant ([3d6038d](https://github.com/proteinjs/user/commit/3d6038d2ca1b06ca09a9dab9bd2b5250f136ce8e))
+
+
+
+
+
 ## [1.3.1](https://github.com/proteinjs/user/compare/@proteinjs/user@1.3.0...@proteinjs/user@1.3.1) (2025-08-27)
 
 
