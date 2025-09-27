@@ -30,7 +30,7 @@ export const getSharedDbAsSystem = <R extends SharedRecord = SharedRecord>() =>
 
 const getSharedRecordColumns = () => {
   return {
-    permissionSource: new DynamicReferenceColumn('permission_source', 'permission_source_table', true, {
+    permissionSource: new DynamicReferenceColumn('permission_source', 'permission_source_table', false, {
       defaultValue: async (table, insertObj) => {
         const user = new UserRepo().getUser();
         const db = getDb<AccessGrant>();
