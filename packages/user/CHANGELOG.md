@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.3.7](https://github.com/proteinjs/user/compare/@proteinjs/user@1.3.6...@proteinjs/user@1.3.7) (2025-09-27)
+
+
+### Bug Fixes
+
+* remove circular cascade delete ([#10](https://github.com/proteinjs/user/issues/10)) ([0622ac3](https://github.com/proteinjs/user/commit/0622ac307b1641cab8e87d390446f172de6a3eed))
+* remove index on AccessGrants ([d3e4576](https://github.com/proteinjs/user/commit/d3e4576b33cde0c321099b7eaadd58dc42974663))
+
+
+
+
+
 ## [1.3.6](https://github.com/proteinjs/user/compare/@proteinjs/user@1.3.5...@proteinjs/user@1.3.6) (2025-09-25)
 
 
