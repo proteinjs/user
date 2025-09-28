@@ -33,6 +33,12 @@ export class AccessGrantTable extends Table<AccessGrant> {
       all: 'authenticated',
     },
   };
+  indexes = [
+    {
+      name: 'idx_ag_principal_table_level_resource',
+      columns: ['principal', 'resourceTable', 'accessLevel', 'resource'] satisfies (keyof AccessGrant)[],
+    },
+  ];
   columns = withRecordColumns<AccessGrant>({
     accessLevel: new StringColumn('access_level'),
     principal: new ReferenceColumn<User>('principal', UserTable.name, false),

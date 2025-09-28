@@ -184,7 +184,6 @@ describe('Shared Record', () => {
 
   test('Only Admin can create AccessGrants', async () => {
     const sharedItemTable = new SharedItemTable();
-    const accessGrantTable = new AccessGrantTable();
     const [user0, user1] = users;
 
     userRepo.setUser(user0);
@@ -194,7 +193,7 @@ describe('Shared Record', () => {
 
     try {
       userRepo.setUser(user1);
-      await getDb().insert(accessGrantTable, {
+      await getDb().insert(tables.AccessGrant, {
         principal: new Reference('user', user1.id),
         resource: new Reference(sharedItemTable.name, sharedItem.id),
         resourceTable: sharedItemTable.name,
@@ -208,7 +207,7 @@ describe('Shared Record', () => {
     }
 
     userRepo.setUser(user0);
-    const grantForUser1 = await getDb().insert(accessGrantTable, {
+    const grantForUser1 = await getDb().insert(tables.AccessGrant, {
       principal: new Reference('user', user1.id),
       resource: new Reference(sharedItemTable.name, sharedItem.id),
       resourceTable: sharedItemTable.name,
@@ -300,7 +299,6 @@ describe('Shared Record', () => {
 
   test('AccessGrant updates are rejected', async () => {
     const sharedItemTable = new SharedItemTable();
-    const accessGrantTable = new AccessGrantTable();
     const [user0] = users;
 
     userRepo.setUser(user0);
@@ -308,7 +306,7 @@ describe('Shared Record', () => {
       name: 'Shared item update test',
     });
 
-    const grants = await getDb().query(accessGrantTable, {});
+    const grants = await getDb().query(tables.AccessGrant, {});
     const adminGrant = grants.find((grant) => grant.principal._id === user0.id);
 
     if (!adminGrant) {
