@@ -16,6 +16,7 @@ import {
 import { AccessGrant, AccessGrantTable } from './tables/AccessGrantTable';
 import { UserRepo } from './UserRepo';
 import { UserTable } from './tables/UserTable';
+import { tables } from './tables/tables'
 
 export interface SharedRecord<T extends SharedRecord = any> extends Record {
   permissionSource: Reference<T>;
@@ -35,7 +36,7 @@ const getSharedRecordColumns = () => {
         const user = new UserRepo().getUser();
         const db = getDb<AccessGrant>();
 
-        await db.insert(new AccessGrantTable() as Table<AccessGrant>, {
+        await db.insert(tables.AccessGrant, {
           principal: new Reference(new UserTable().name, user.id),
           resource: new Reference(table.name, insertObj.id),
           resourceTable: table.name,
@@ -55,7 +56,7 @@ const getSharedRecordColumns = () => {
           delete: ['admin', 'owner'],
         };
 
-        const subQuery = new QueryBuilder(new AccessGrantTable().name);
+        const subQuery = new QueryBuilder(tables.AccessGrant.name);
         subQuery.select({
           fields: ['resource'],
         });

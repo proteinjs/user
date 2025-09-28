@@ -2,6 +2,7 @@ import {
   DynamicReferenceColumn,
   DynamicReferenceTableNameColumn,
   getDbAsSystem,
+  QueryBuilder,
   QueryBuilderFactory,
   Record,
   Reference,
@@ -31,6 +32,12 @@ export class AccessGrantTable extends Table<AccessGrant> {
       all: 'authenticated',
     },
   };
+  indexes = [
+    {
+      name: 'idx_ag_principal_table_level_resource',
+      columns: ['principal', 'resourceTable', 'accessLevel', 'resource'] satisfies (keyof AccessGrant)[],
+    },
+  ];
   columns = withRecordColumns<AccessGrant>({
     accessLevel: new StringColumn('access_level'),
     principal: new ReferenceColumn<User>('principal', UserTable.name, false),
@@ -62,12 +69,37 @@ export class AccessGrantTable extends Table<AccessGrant> {
           value: ['admin', 'owner'],
         });
 
-        const hasAdminAccess =
-          (await getDbAsSystem().query(new AccessGrantTable() as Table<AccessGrant>, adminAccessQb)).length > 0;
+        const hasAdminAccess = (await getDbAsSystem().query(new AccessGrantTable(), adminAccessQb)).length > 0;
 
         if (!hasAdminAccess) {
           throw new Error(`User does not have admin access to resource`);
         }
+      },
+      // Prevent direct updates and limit access to own or admin-accessible grants
+      async addToQuery(qb, runAsSystem, operation) {
+        if (runAsSystem) {
+          return;
+        }
+
+        if (operation === 'write') {
+          throw new Error('AccessGrants cannot be updated directly');
+        }
+
+        const currentUser = new UserRepo().getUser();
+
+        const adminResourceSubQuery = new QueryBuilder(new AccessGrantTable().name);
+        adminResourceSubQuery.select({ fields: ['resource'] });
+        adminResourceSubQuery.condition({ field: 'principal', operator: '=', value: currentUser.id });
+        adminResourceSubQuery.condition({ field: 'accessLevel', operator: 'IN', value: ['admin', 'owner'] });
+
+        qb.or([
+          { field: 'principal', operator: '=', value: currentUser.id },
+          {
+            field: 'resource',
+            operator: 'IN',
+            value: adminResourceSubQuery,
+          },
+        ]);
       },
     }),
   });
