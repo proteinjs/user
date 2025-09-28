@@ -14,7 +14,6 @@ import {
 import { Table } from '@proteinjs/db';
 import { User, UserTable } from './UserTable';
 import { UserRepo } from '../UserRepo';
-import { tables } from './tables';
 
 export type AccessGrant = Record & {
   principal: Reference<any>;
@@ -55,11 +54,14 @@ export class AccessGrantTable extends Table<AccessGrant> {
           return;
         }
 
-        const adminAccessQb = new QueryBuilderFactory().createQueryBuilder(tables.AccessGrant, {
-          principal: new UserRepo().getUser().id,
-          resource: insertObj.resource._id,
-          resourceTable: insertObj.resourceTable,
-        });
+        const adminAccessQb = new QueryBuilderFactory().createQueryBuilder(
+          new AccessGrantTable() as Table<AccessGrant>,
+          {
+            principal: new UserRepo().getUser().id,
+            resource: insertObj.resource._id,
+            resourceTable: insertObj.resourceTable,
+          }
+        );
 
         adminAccessQb.condition({
           field: 'accessLevel',
@@ -67,7 +69,7 @@ export class AccessGrantTable extends Table<AccessGrant> {
           value: ['admin', 'owner'],
         });
 
-        const hasAdminAccess = (await getDbAsSystem().query(tables.AccessGrant, adminAccessQb)).length > 0;
+        const hasAdminAccess = (await getDbAsSystem().query(new AccessGrantTable(), adminAccessQb)).length > 0;
 
         if (!hasAdminAccess) {
           throw new Error(`User does not have admin access to resource`);
