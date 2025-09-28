@@ -55,6 +55,16 @@ const users = [
     updated: moment(),
     id: 'user1',
   },
+  {
+    name: 'Test user2',
+    email: 'test.user2',
+    password: 'test',
+    emailVerified: false,
+    roles: '',
+    created: moment(),
+    updated: moment(),
+    id: 'user2',
+  },
 ];
 
 export class SharedItemTable extends Table<SharedItem> {
@@ -109,7 +119,7 @@ describe('Shared Record', () => {
 
   beforeEach(async () => {
     await dbDriver.getTableManager().loadTable(new SharedItemTable());
-    await dbDriver.getTableManager().loadTable(new AccessGrantTable());
+    await dbDriver.getTableManager().loadTable(tables.AccessGrant);
   });
 
   afterEach(async () => {
@@ -208,5 +218,105 @@ describe('Shared Record', () => {
     expect(grantForUser1.id).toBeDefined();
     expect(grantForUser1.principal._id).toBe(user1.id);
     expect(grantForUser1.accessLevel).toBe('read');
+  });
+
+  test('AccessGrant queries enforce principal or admin access', async () => {
+    const sharedItemTable = new SharedItemTable();
+    const [user0, user1, user2] = users;
+
+    userRepo.setUser(user0);
+    const sharedItem = await getSharedDbAsSystem().insert(sharedItemTable, {
+      name: 'Shared item with grants',
+    });
+
+    await getDb().insert(tables.AccessGrant, {
+      principal: new Reference('user', user1.id),
+      resource: new Reference(sharedItemTable.name, sharedItem.id),
+      resourceTable: sharedItemTable.name,
+      accessLevel: 'read',
+    });
+
+    userRepo.setUser(user1);
+    const user1Grants = await getDb().query(tables.AccessGrant, {});
+    expect(user1Grants).toHaveLength(1);
+    expect(user1Grants[0].principal._id).toBe(user1.id);
+
+    userRepo.setUser(user0);
+    const adminGrants = await getDb().query(tables.AccessGrant, {});
+    expect(adminGrants.some((grant) => grant.principal._id === user1.id)).toBe(true);
+    expect(adminGrants.some((grant) => grant.principal._id === user0.id)).toBe(true);
+
+    userRepo.setUser(user2);
+    const user2Grants = await getDb().query(tables.AccessGrant, {});
+    expect(user2Grants).toHaveLength(0);
+
+    userRepo.setUser(user0);
+  });
+
+  test('AccessGrant delete enforces admin or principal permissions', async () => {
+    const sharedItemTable = new SharedItemTable();
+    const [user0, user1] = users;
+
+    userRepo.setUser(user0);
+    const sharedItem = await getSharedDbAsSystem().insert(sharedItemTable, {
+      name: 'Shared item delete test',
+    });
+
+    await getDb().insert(tables.AccessGrant, {
+      principal: new Reference('user', user1.id),
+      resource: new Reference(sharedItemTable.name, sharedItem.id),
+      resourceTable: sharedItemTable.name,
+      accessLevel: 'read',
+    });
+
+    const adminGrants = await getDb().query(tables.AccessGrant, {});
+    const adminGrant = adminGrants.find((grant) => grant.principal._id === user0.id);
+    const user1Grant = adminGrants.find((grant) => grant.principal._id === user1.id);
+
+    if (!adminGrant || !user1Grant) {
+      throw new Error('Expected access grants were not created');
+    }
+
+    userRepo.setUser(user1);
+    const user1DeletesAdmin = await getDb().delete(tables.AccessGrant, { id: adminGrant.id });
+    expect(user1DeletesAdmin).toBe(0);
+
+    const user1DeletesOwn = await getDb().delete(tables.AccessGrant, { id: user1Grant.id });
+    expect(user1DeletesOwn).toBe(1);
+
+    userRepo.setUser(user0);
+    const recreatedGrant = await getDb().insert(tables.AccessGrant, {
+      principal: new Reference('user', user1.id),
+      resource: new Reference(sharedItemTable.name, sharedItem.id),
+      resourceTable: sharedItemTable.name,
+      accessLevel: 'read',
+    });
+
+    const adminDeletes = await getDb().delete(tables.AccessGrant, { id: recreatedGrant.id });
+    expect(adminDeletes).toBe(1);
+
+    userRepo.setUser(user0);
+  });
+
+  test('AccessGrant updates are rejected', async () => {
+    const sharedItemTable = new SharedItemTable();
+    const accessGrantTable = new AccessGrantTable();
+    const [user0] = users;
+
+    userRepo.setUser(user0);
+    await getSharedDbAsSystem().insert(sharedItemTable, {
+      name: 'Shared item update test',
+    });
+
+    const grants = await getDb().query(accessGrantTable, {});
+    const adminGrant = grants.find((grant) => grant.principal._id === user0.id);
+
+    if (!adminGrant) {
+      throw new Error('Expected admin access grant to exist');
+    }
+
+    await expect(getDb().update(tables.AccessGrant, { id: adminGrant.id, accessLevel: 'owner' })).rejects.toThrow();
+
+    userRepo.setUser(user0);
   });
 });
