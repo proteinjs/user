@@ -16,7 +16,7 @@ import {
 import { AccessGrant, AccessGrantTable } from './tables/AccessGrantTable';
 import { UserRepo } from './UserRepo';
 import { UserTable } from './tables/UserTable';
-import { tables } from './tables/tables'
+import { tables } from './tables/tables';
 
 export interface SharedRecord<T extends SharedRecord = any> extends Record {
   permissionSource: Reference<T>;
