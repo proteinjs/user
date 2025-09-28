@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.3.9](https://github.com/proteinjs/user/compare/@proteinjs/user@1.3.8...@proteinjs/user@1.3.9) (2025-09-28)
+
+
+### Bug Fixes
+
+* restrict AccessGrant access to principals and resource admins ([#11](https://github.com/proteinjs/user/issues/11)) ([a311388](https://github.com/proteinjs/user/commit/a311388db1f03612e57ba1d85d0b3d70d9524736))
+
+
+
+
+
 ## [1.3.7](https://github.com/proteinjs/user/compare/@proteinjs/user@1.3.6...@proteinjs/user@1.3.7) (2025-09-27)
 
 
