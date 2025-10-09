@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.3.10](https://github.com/proteinjs/user/compare/@proteinjs/user@1.3.9...@proteinjs/user@1.3.10) (2025-10-09)
+
+
+### Bug Fixes
+
+* **shared-record:** use owner as default accessLevel when creating a record ([#12](https://github.com/proteinjs/user/issues/12)) ([95c8f22](https://github.com/proteinjs/user/commit/95c8f2266137a3bb17bacbf1590b1da33f0152ce))
+
+
+
+
+
 ## [1.3.9](https://github.com/proteinjs/user/compare/@proteinjs/user@1.3.8...@proteinjs/user@1.3.9) (2025-09-28)
 
 
