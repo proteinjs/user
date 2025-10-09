@@ -40,7 +40,7 @@ const getSharedRecordColumns = () => {
           principal: new Reference(new UserTable().name, user.id),
           resource: new Reference(table.name, insertObj.id),
           resourceTable: table.name,
-          accessLevel: 'admin',
+          accessLevel: 'owner',
         });
 
         return new Reference(table.name, insertObj.id);
