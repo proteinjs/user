@@ -50,7 +50,7 @@ export class AccessInvite<T extends Record> implements AccessInviteService<T> {
       principal: Reference.fromObject(tables.User.name, user),
       resource: invite.resource,
       resourceTable: invite.resourceTable,
-      accessLevel: 'write',
+      accessLevel: invite.accessLevel,
     });
 
     await db.update(tables.AccessInvite, {
