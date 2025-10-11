@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.3.10](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.3.9...@proteinjs/user-server@1.3.10) (2025-10-11)
+
+
+### Bug Fixes
+
+* use access level from invitation ([#13](https://github.com/proteinjs/user/issues/13)) ([bb3daa3](https://github.com/proteinjs/user/commit/bb3daa32930c1f1191741f49fe904f26e869730a))
+
+
+
+
+
 ## [1.3.9](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.3.8...@proteinjs/user-server@1.3.9) (2025-10-09)
 
 **Note:** Version bump only for package @proteinjs/user-server
