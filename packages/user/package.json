@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/user",
-  "version": "1.3.12",
+  "version": "1.3.13",
   "description": "User management",
   "publishConfig": {
     "access": "public"
@@ -22,16 +22,16 @@
     "test": "jest"
   },
   "dependencies": {
-    "@proteinjs/db": "^1.19.0",
+    "@proteinjs/db": "^1.20.1",
     "@proteinjs/reflection": "1.1.10",
-    "@proteinjs/server-api": "2.0.1",
-    "@proteinjs/service": "1.2.7",
-    "@proteinjs/user-auth": "^1.1.6",
+    "@proteinjs/server-api": "2.0.2",
+    "@proteinjs/service": "1.2.8",
+    "@proteinjs/user-auth": "^1.1.7",
     "moment": "2.29.4"
   },
   "devDependencies": {
-    "@proteinjs/db-driver-knex": "1.4.15",
-    "@proteinjs/reflection-build": "1.2.1",
+    "@proteinjs/db-driver-knex": "1.6.2",
+    "@proteinjs/reflection-build": "1.4.1",
     "@types/jest": "29.5.5",
     "@types/node": "14.0.13",
     "@typescript-eslint/eslint-plugin": "7.8.0",
