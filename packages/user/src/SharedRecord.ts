@@ -29,22 +29,32 @@ export const getSharedDbWithOverride = getDb<Omit<SharedRecord, 'permissionSourc
 export const getSharedDbAsSystem = <R extends SharedRecord = SharedRecord>() =>
   new Db<R>(undefined, undefined, undefined, true);
 
-const getSharedRecordColumns = () => {
+type SharedRecordOptions = {
+  permissionSourceTableName?: string;
+  permissionSourceDefaultValue?: (table: Table<any>, insertObj: any & Record) => Promise<any>;
+};
+
+const getSharedRecordColumns = ({
+  permissionSourceTableName,
+  permissionSourceDefaultValue,
+}: SharedRecordOptions = {}) => {
   return {
     permissionSource: new DynamicReferenceColumn('permission_source', 'permission_source_table', false, {
-      defaultValue: async (table, insertObj) => {
-        const user = new UserRepo().getUser();
-        const db = getDb<AccessGrant>();
+      defaultValue:
+        permissionSourceDefaultValue ??
+        (async (table, insertObj) => {
+          const user = new UserRepo().getUser();
+          const db = getDb<AccessGrant>();
 
-        await db.insert(tables.AccessGrant, {
-          principal: new Reference(new UserTable().name, user.id),
-          resource: new Reference(table.name, insertObj.id),
-          resourceTable: table.name,
-          accessLevel: 'owner',
-        });
+          await db.insert(tables.AccessGrant, {
+            principal: new Reference(new UserTable().name, user.id),
+            resource: new Reference(table.name, insertObj.id),
+            resourceTable: table.name,
+            accessLevel: 'owner',
+          });
 
-        return new Reference(table.name, insertObj.id);
-      },
+          return new Reference(table.name, insertObj.id);
+        }),
       addToQuery: async (qb, runAsSystem, operation) => {
         if (runAsSystem) {
           return;
@@ -76,7 +86,7 @@ const getSharedRecordColumns = () => {
         subQuery.condition({
           field: 'resourceTable',
           operator: '=',
-          value: qb.tableName,
+          value: permissionSourceTableName ?? qb.tableName,
         });
 
         qb.condition({
@@ -87,7 +97,7 @@ const getSharedRecordColumns = () => {
       },
     }),
     permissionSourceTable: new DynamicReferenceTableNameColumn('permission_source_table', 'permission_source', {
-      defaultValue: async (table) => table.name,
+      defaultValue: async (table) => permissionSourceTableName ?? table.name,
       forceDefaultValue: true,
     }),
   };
@@ -108,7 +118,8 @@ export function isSharedTable(table: Table<any>): table is Table<SharedRecord> {
  * @returns recordColumns & sourceRecordColumns & your columns
  */
 export function withSharedRecordColumns<T extends SharedRecord>(
-  columns: Columns<Omit<T, keyof SharedRecord>>
+  columns: Columns<Omit<T, keyof SharedRecord>>,
+  options?: SharedRecordOptions
 ): Columns<SharedRecord> & Columns<Omit<T, keyof SharedRecord>> {
-  return Object.assign(Object.assign({}, getSharedRecordColumns()), withRecordColumns<Record>(columns) as any);
+  return Object.assign(Object.assign({}, getSharedRecordColumns(options)), withRecordColumns<Record>(columns) as any);
 }
