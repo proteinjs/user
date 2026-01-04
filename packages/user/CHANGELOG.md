@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.4.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.3.15...@proteinjs/user@1.4.0) (2026-01-04)
+
+
+### Features
+
+* Added `SharedRecordOptions` to enable the consuming table to specify a `permissionSourceTableName` and a `permissionSourceDefaultValue`. ([d627182](https://github.com/proteinjs/user/commit/d6271822ba1c73a7628eee342bfaaa42231d01e0))
+
+
+
+
+
 ## [1.3.12](https://github.com/proteinjs/user/compare/@proteinjs/user@1.3.11...@proteinjs/user@1.3.12) (2025-11-13)
 
 **Note:** Version bump only for package @proteinjs/user
