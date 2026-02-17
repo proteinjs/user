@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.5.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.4.0...@proteinjs/user@1.5.0) (2026-02-17)
+
+
+### Features
+
+* Added utility `createScopedIndex`. ([ed02520](https://github.com/proteinjs/user/commit/ed0252072786bb3f0d9cd7f158ee15958a443d05))
+
+
+
+
+
 # [1.4.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.3.15...@proteinjs/user@1.4.0) (2026-01-04)
 
 
