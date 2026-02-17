@@ -65,3 +65,20 @@ export function withScopedRecordColumns<T extends ScopedRecord>(
     withRecordColumns<Record>(columns) as any
   );
 }
+
+/**
+ * Adds the `scope` column as the first column to the provided index.
+ *
+ * @param args Index to create
+ * @returns Index with `scope` column added first
+ */
+export function createScopedIndex<T extends ScopedRecord>(args: {
+  columns: (keyof T)[];
+  name?: string;
+}): { columns: (keyof T)[]; name?: string } {
+  if (args.columns.includes('scope')) {
+    return args;
+  }
+
+  return { columns: ['scope', ...args.columns], name: args.name };
+}
