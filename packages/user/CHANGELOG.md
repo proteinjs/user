@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.5.3](https://github.com/proteinjs/user/compare/@proteinjs/user@1.5.2...@proteinjs/user@1.5.3) (2026-04-08)
+
+
+### Bug Fixes
+
+* add --passWithNoTests to jest test script ([0f6ae5c](https://github.com/proteinjs/user/commit/0f6ae5c667c9932037448ea4bb6fc4f43c59190d))
+
+
+
+
+
 # [1.5.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.4.0...@proteinjs/user@1.5.0) (2026-02-17)
 
 
