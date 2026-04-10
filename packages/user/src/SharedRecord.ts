@@ -29,6 +29,17 @@ export const getSharedDbWithOverride = getDb<Omit<SharedRecord, 'permissionSourc
 export const getSharedDbAsSystem = <R extends SharedRecord = SharedRecord>() =>
   new Db<R>(undefined, undefined, undefined, true);
 
+/**
+ * When true, skips AccessGrant creation during inserts and skips the
+ * permission subquery filter on reads. Use in test environments where
+ * AccessGrant accumulation degrades Spanner emulator performance.
+ */
+export let skipAccessGrants = false;
+
+export function setSkipAccessGrants(value: boolean) {
+  skipAccessGrants = value;
+}
+
 type SharedRecordOptions = {
   permissionSourceTableName?: string;
   permissionSourceDefaultValue?: (table: Table<any>, insertObj: any & Record) => Promise<any>;
@@ -43,20 +54,22 @@ const getSharedRecordColumns = ({
       defaultValue:
         permissionSourceDefaultValue ??
         (async (table, insertObj) => {
-          const user = new UserRepo().getUser();
-          const db = getDb<AccessGrant>();
+          if (!skipAccessGrants) {
+            const user = new UserRepo().getUser();
+            const db = getDb<AccessGrant>();
 
-          await db.insert(tables.AccessGrant, {
-            principal: new Reference(new UserTable().name, user.id),
-            resource: new Reference(table.name, insertObj.id),
-            resourceTable: table.name,
-            accessLevel: 'owner',
-          });
+            await db.insert(tables.AccessGrant, {
+              principal: new Reference(new UserTable().name, user.id),
+              resource: new Reference(table.name, insertObj.id),
+              resourceTable: table.name,
+              accessLevel: 'owner',
+            });
+          }
 
           return new Reference(table.name, insertObj.id);
         }),
       addToQuery: async (qb, runAsSystem, operation) => {
-        if (runAsSystem) {
+        if (runAsSystem || skipAccessGrants) {
           return;
         }
 
