@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.4.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.3.28...@proteinjs/user-server@1.4.0) (2026-07-21)
+
+
+### Features
+
+* **dev:** GET /dev/login — dev-only session bootstrap for agent-driven testing ([75aa262](https://github.com/proteinjs/user/commit/75aa262a71f639d9c77887e77e1fcabf45ee7120))
+
+
+
+
+
 ## [1.3.28](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.3.27...@proteinjs/user-server@1.3.28) (2026-07-21)
 
 **Note:** Version bump only for package @proteinjs/user-server
