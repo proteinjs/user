@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.5.10](https://github.com/proteinjs/user/compare/@proteinjs/user@1.5.9...@proteinjs/user@1.5.10) (2026-07-21)
+
+
+### Bug Fixes
+
+* scoped queries/writes with no user in context fail loudly at the seam ([f1a00ca](https://github.com/proteinjs/user/commit/f1a00cab599a2b212391edd4d47ba274af453188))
+
+
+
+
+
 ## [1.5.5](https://github.com/proteinjs/user/compare/@proteinjs/user@1.5.4...@proteinjs/user@1.5.5) (2026-04-10)
 
 **Note:** Version bump only for package @proteinjs/user
