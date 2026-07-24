@@ -46,6 +46,11 @@ const getScopedRecordColumns = (accessibleScopes: string[] = []) => {
     scope: new StringColumn('scope', {
       defaultValue: async () => requireScopeUserId('write'),
       forceDefaultValue: (runAsSystem) => !runAsSystem,
+      // Scope is write-once for non-system callers: forced on insert (above), and stripped from
+      // update payloads — without this, a client-path update could reassign a row the caller owns
+      // into ANOTHER user's scope (the row then acts under the victim: e.g. an executable routine
+      // ticking in their session). System callers (reapers, migrations) may still move rows.
+      immutable: (runAsSystem) => !runAsSystem,
       addToQuery: async (qb, runAsSystem) => {
         if (!runAsSystem) {
           qb.condition({
