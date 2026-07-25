@@ -10,7 +10,15 @@ export class DbSessionStore extends Store {
 
   constructor() {
     super();
-    setInterval(this.sweep.bind(this), DbSessionStore.TWELVE_HOURS);
+    // The store is the async→callback boundary: every promise here must land in the request's
+    // callback (or a log), never float — a floating rejection (e.g. a transient Spanner timeout
+    // after host sleep) is fatal under Node's default unhandled-rejection policy and took the
+    // dev server down (2026-07-25).
+    setInterval(
+      () =>
+        void this.sweep().catch((error) => this.logger.error({ message: 'Failed to sweep sessions', error })),
+      DbSessionStore.TWELVE_HOURS
+    );
   }
 
   get = (sessionId: string, cb: (error: any, session?: Express.SessionData | null) => void) => {
@@ -22,15 +30,25 @@ export class DbSessionStore extends Store {
       }
 
       return cb(null, JSON.parse(result.session));
-    })();
+    })().catch((error) => cb(error));
   };
 
   set = (sessionId: string, session: Express.SessionData, cb?: (error?: any) => void) => {
-    this.insertOrUpdate(sessionId, session, cb);
+    this.insertOrUpdate(sessionId, session, cb).catch((error) => {
+      this.logger.error({ message: 'Failed to persist session', error });
+      if (cb) {
+        cb(error);
+      }
+    });
   };
 
   touch = (sessionId: string, session: Express.SessionData, cb?: (error?: any) => void) => {
-    this.insertOrUpdate(sessionId, session, cb);
+    this.insertOrUpdate(sessionId, session, cb).catch((error) => {
+      this.logger.error({ message: 'Failed to persist session', error });
+      if (cb) {
+        cb(error);
+      }
+    });
   };
 
   /**
@@ -43,7 +61,11 @@ export class DbSessionStore extends Store {
       if (cb) {
         cb();
       }
-    })();
+    })().catch((error) => {
+      if (cb) {
+        cb(error);
+      }
+    });
   };
 
   private async insertOrUpdate(
