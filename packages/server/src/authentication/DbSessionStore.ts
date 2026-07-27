@@ -6,7 +6,11 @@ import { destroySession } from './destroySession';
 
 export class DbSessionStore extends Store {
   private static readonly TWELVE_HOURS = 1000 * 60 * 60 * 12;
+  /** Touch at most this often per session — every SPA request otherwise rewrites the same row
+   *  and parallel requests wound each other's Spanner transactions. */
+  private static readonly TOUCH_INTERVAL = 1000 * 60 * 5;
   private logger = new Logger({ name: this.constructor.name });
+  private lastTouchMs = new Map<string, number>();
 
   constructor() {
     super();
@@ -15,8 +19,7 @@ export class DbSessionStore extends Store {
     // after host sleep) is fatal under Node's default unhandled-rejection policy and took the
     // dev server down (2026-07-25).
     setInterval(
-      () =>
-        void this.sweep().catch((error) => this.logger.error({ message: 'Failed to sweep sessions', error })),
+      () => void this.sweep().catch((error) => this.logger.error({ message: 'Failed to sweep sessions', error })),
       DbSessionStore.TWELVE_HOURS
     );
   }
@@ -34,7 +37,17 @@ export class DbSessionStore extends Store {
   };
 
   set = (sessionId: string, session: Express.SessionData, cb?: (error?: any) => void) => {
-    this.insertOrUpdate(sessionId, session, cb).catch((error) => {
+    this.insertOrUpdate(sessionId, session, cb).catch(async (error) => {
+      // A wounded transaction (concurrent request won the row) is retryable, not fatal — one
+      // aborted session write must never 500 the request that carried it.
+      if (DbSessionStore.isTransactionAbort(error)) {
+        try {
+          await this.insertOrUpdate(sessionId, session, cb);
+          return;
+        } catch (retryError) {
+          error = retryError;
+        }
+      }
       this.logger.error({ message: 'Failed to persist session', error });
       if (cb) {
         cb(error);
@@ -43,13 +56,42 @@ export class DbSessionStore extends Store {
   };
 
   touch = (sessionId: string, session: Express.SessionData, cb?: (error?: any) => void) => {
+    // Rolling-expiry touch fires on EVERY request; rewriting the row each time makes parallel
+    // requests wound each other ("aborted ... conflict on session_id" storms — the session-drop
+    // plague's server face). Throttle per session; a lost touch only delays expiry refresh.
+    const last = this.lastTouchMs.get(sessionId) ?? 0;
+    const now = Date.now();
+    if (now - last < DbSessionStore.TOUCH_INTERVAL) {
+      if (cb) {
+        cb();
+      }
+      return;
+    }
+    this.lastTouchMs.set(sessionId, now);
+    if (this.lastTouchMs.size > 10000) {
+      this.lastTouchMs.clear(); // bounded memory; worst case is one extra touch per session
+    }
     this.insertOrUpdate(sessionId, session, cb).catch((error) => {
+      if (DbSessionStore.isTransactionAbort(error)) {
+        // Benign: a concurrent request's write already refreshed this session row.
+        if (cb) {
+          cb();
+        }
+        return;
+      }
+      this.lastTouchMs.delete(sessionId);
       this.logger.error({ message: 'Failed to persist session', error });
       if (cb) {
         cb(error);
       }
     });
   };
+
+  /** Spanner ABORTED / wounded-transaction shape (transient by definition). */
+  private static isTransactionAbort(error: any): boolean {
+    const text = `${error?.message ?? ''} ${error?.details ?? ''} ${error?.errorDetails ?? ''}`;
+    return error?.code === 10 || /aborted|wounded/i.test(text);
+  }
 
   /**
    * Does not get called since request.logout is broken
