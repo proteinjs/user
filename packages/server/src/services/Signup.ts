@@ -44,8 +44,11 @@ export class Signup implements SignupService {
   public serviceMetadata = {
     auth: {
       canAccess: (methodName: string, args: any[]) => {
+        // Admin-only invite management. This previously evaluated hasRole WITHOUT returning it,
+        // which made sendInvite/revokeInvite effectively public — any caller (even logged out)
+        // could mint themselves a valid signup token and bypass invite-only signup.
         if (methodName === 'sendInvite' || methodName === 'revokeInvite') {
-          UserAuth.hasRole('admin');
+          return UserAuth.hasRole('admin');
         }
 
         return true;
