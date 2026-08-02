@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/user-server",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "User server components",
   "publishConfig": {
     "access": "public"
