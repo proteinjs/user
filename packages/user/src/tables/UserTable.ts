@@ -27,8 +27,11 @@ export class UserTable extends Table<User> {
     name: new StringColumn('name'),
     email: new StringColumn('email', {}, 250),
     password: new PasswordColumn('password'),
-    passwordResetToken: new StringColumn('password_reset_token'),
-    passwordResetTokenExpiration: new DateTimeColumn('password_reset_token_expiration'),
+    // Server-internal credential state: the reset token is a live capability (its holder can take
+    // the account), and the expiration is meaningless without it. Hidden from generic UI (record
+    // table/form) — like `password` — so admin surfaces show the user roster, not secrets.
+    passwordResetToken: new StringColumn('password_reset_token', { ui: { hidden: true } }),
+    passwordResetTokenExpiration: new DateTimeColumn('password_reset_token_expiration', { ui: { hidden: true } }),
     emailVerified: new BooleanColumn('email_verified'),
     roles: new StringColumn('roles'),
     invitedBy: new StringColumn('invited_by'),
