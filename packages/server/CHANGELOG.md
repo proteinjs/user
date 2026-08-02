@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.4.5](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.4.3...@proteinjs/user-server@1.4.5) (2026-08-02)
+
+
+### Bug Fixes
+
+* enforce admin check on sendInvite/revokeInvite (was computed and discarded — both were publicly callable) ([478bde1](https://github.com/proteinjs/user/commit/478bde16edb22646fc24f52896f7e0534ba7e74e))
+
+
+
+
+
 # [1.4.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.3.28...@proteinjs/user-server@1.4.0) (2026-07-21)
 
 
