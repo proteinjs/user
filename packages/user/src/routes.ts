@@ -13,7 +13,4 @@ export const uiRoutes = {
     passwordReset: 'login/password-reset',
     signup: 'signup',
   },
-  admin: {
-    invite: 'invite',
-  },
 };

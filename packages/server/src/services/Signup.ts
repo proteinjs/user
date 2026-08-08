@@ -21,9 +21,22 @@ import {
 import sha256 from 'crypto-js/sha256';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 
+/**
+ * How long an invite link stays usable. Deliberately generous: a legitimate invite that gets
+ * clicked late should still work, and revocation (surfaced in the admin UI) is the real control.
+ * Expiry stays non-infinite so a forgotten invite isn't a permanent credential sitting in a mailbox.
+ */
+export const INVITE_TOKEN_TTL_DAYS = 90;
+
 export interface InviteConfig {
   isInviteOnly: boolean;
 }
+
+/**
+ * Result of resolving an invite token. `expired` is kept distinct from `notFound` so signup can
+ * tell the user which one happened instead of a conflated "not found or expired".
+ */
+export type InviteLookup = { status: 'valid'; invite: Invite } | { status: 'expired' } | { status: 'notFound' };
 
 export interface DefaultInviteConfigFactory extends Loadable {
   getConfig(): InviteConfig;
@@ -65,7 +78,9 @@ export class Signup implements SignupService {
       throw new Error(initSignupResponse.error);
     }
 
-    const invite = token ? await this.getValidInvite(token) : null;
+    // `initializeSignup` is the single place invite tokens are validated; reuse its result rather
+    // than re-resolving the token here (two lookups meant two chances to disagree).
+    const invite = initSignupResponse.invite ?? null;
     if (token) {
       await db.delete(tables.Invite, { token });
     }
@@ -135,7 +150,7 @@ export class Signup implements SignupService {
       const config = defaultConfigFactory.getConfig();
 
       const token = lib.WordArray.random(32).toString();
-      const tokenExpiresAt = moment().add(7, 'days');
+      const tokenExpiresAt = moment().add(INVITE_TOKEN_TTL_DAYS, 'days');
       let invite = await db.get(tables.Invite, { email: caseInsensitiveEmail });
       if (invite) {
         invite = {
@@ -190,29 +205,45 @@ export class Signup implements SignupService {
     try {
       const config = getDefaultInviteConfigFactory().getConfig();
       const { isInviteOnly } = config;
-      const invite = inviteToken ? await this.getValidInvite(inviteToken) : undefined;
+
+      // A bad token is reported whether or not signup is invite-only. Silently ignoring it left the
+      // form rendered with the email field hidden (the UI hides it whenever a token is present),
+      // so the user could only ever reach a generic "Sign up failed." on submit.
+      if (inviteToken) {
+        const lookup = await this.lookupInvite(inviteToken);
+        if (lookup.status === 'expired') {
+          return {
+            isReady: false,
+            error: 'This invite has expired. Ask whoever invited you to send a new one.',
+            isInviteOnly,
+          };
+        }
+        if (lookup.status === 'notFound') {
+          return {
+            isReady: false,
+            error: 'This invite link is no longer valid. Ask whoever invited you to send a new one.',
+            isInviteOnly,
+          };
+        }
+
+        return {
+          isReady: true,
+          isInviteOnly,
+          invite: lookup.invite,
+        };
+      }
 
       if (isInviteOnly) {
-        if (!inviteToken) {
-          return {
-            isReady: false,
-            error: 'An invite is required to sign up.',
-            isInviteOnly,
-          };
-        }
-        if (!invite) {
-          return {
-            isReady: false,
-            error: 'The provided invite was not found or has expired.',
-            isInviteOnly,
-          };
-        }
+        return {
+          isReady: false,
+          error: 'An invite is required to sign up.',
+          isInviteOnly,
+        };
       }
 
       return {
         isReady: true,
         isInviteOnly,
-        invite: invite ? invite : undefined,
       };
     } catch (error: any) {
       return {
@@ -222,20 +253,19 @@ export class Signup implements SignupService {
     }
   }
 
-  /** Returns a valid invite if it exists and is not expired, returns `null` otherwise. */
-  private async getValidInvite(token: string): Promise<Invite | null> {
+  /** Resolves an invite token, distinguishing "expired" from "never existed / already revoked". */
+  private async lookupInvite(token: string): Promise<InviteLookup> {
     const db = getDbAsSystem();
     const invite = await db.get(tables.Invite, { token });
 
     if (!invite) {
-      return null;
+      return { status: 'notFound' };
     }
 
-    const currentTime = moment();
-    if (invite.tokenExpiresAt && moment(invite.tokenExpiresAt).isBefore(currentTime)) {
-      return null;
+    if (invite.tokenExpiresAt && moment(invite.tokenExpiresAt).isBefore(moment())) {
+      return { status: 'expired' };
     }
 
-    return invite;
+    return { status: 'valid', invite };
   }
 }
