@@ -18,7 +18,8 @@
   "scripts": {
     "clean": "rm -rf dist/ generated/ node_modules/",
     "build": "reflection-build && tsc",
-    "watch": "reflection-watch"
+    "watch": "reflection-watch",
+    "test": "jest --passWithNoTests"
   },
   "dependencies": {
     "@proteinjs/reflection": "^1.1.12",

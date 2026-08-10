@@ -16,7 +16,7 @@ export const userCache: SessionDataCache<User> = {
           email: adminCredentials.username,
           password: adminCredentials.password,
           emailVerified: true,
-          roles: 'admin',
+          roles: ['admin'],
           created: moment(),
           updated: moment(),
           id: 'admin',

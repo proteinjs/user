@@ -12,6 +12,13 @@ const veronicaScope = 'vvvveronica';
 const kevinScope = 'kevinnn';
 export class FavoriteTable extends Table<Favorite> {
   name = 'user_test_user';
+  // The suite pins scope-column query injection with NO user in context at all; UserAuth is
+  // fail-closed, so the table door must not consult it. Public keeps the subject under test
+  // (the scope column) the only filter.
+  auth: Table<Favorite>['auth'] = {
+    db: { all: 'public' },
+    service: { all: 'public' },
+  };
   columns = withRecordColumns<Favorite>({
     name: new StringColumn('name'),
     scope: new StringColumn('scope', {

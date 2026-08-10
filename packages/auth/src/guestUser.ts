@@ -5,7 +5,7 @@ export const guestUser = {
   email: 'guest',
   password: 'guest',
   emailVerified: false,
-  roles: '',
+  roles: [] as string[],
   created: moment(),
   updated: moment(),
   id: 'guest',
