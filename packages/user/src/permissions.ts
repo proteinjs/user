@@ -9,4 +9,9 @@ export const USER_PERMISSIONS = {
   users: 'users',
   /** Grant and revoke roles, through the Roles service only (audited per change). */
   roles: 'roles',
+  /**
+   * View session records — a different trust than 'users' people-management (session rows carry
+   * auth material). Read-only by design: session writes are system-written (DbSessionStore).
+   */
+  sessions: 'sessions',
 } as const;

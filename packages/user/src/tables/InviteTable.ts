@@ -15,10 +15,15 @@ export class InviteTable extends Table<Invite> {
    * Invite management rides the 'users' permission: reads and deletes through the record
    * surfaces; creating/refreshing an invite is `SignupService.sendInvite` ONLY (a generic insert
    * would mint an invite that can never be redeemed — no token/expiry/inviter), so generic
-   * writes stay closed. The db api is left unspecified (admin door) — server code uses system
-   * paths.
+   * writes stay closed. The db doors mirror the service doors — `DbService`'s inner `Db`
+   * re-checks the db api as the calling user (see the user table); server code proper uses
+   * system paths, which bypass TableAuth.
    */
   auth: Table<Invite>['auth'] = {
+    db: {
+      query: { permission: USER_PERMISSIONS.users },
+      delete: { permission: USER_PERMISSIONS.users },
+    },
     service: {
       query: { permission: USER_PERMISSIONS.users },
       delete: { permission: USER_PERMISSIONS.users },

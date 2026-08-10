@@ -28,10 +28,18 @@ export class UserTable extends Table<User> {
   /**
    * The 'users' permission covers viewing and managing user records — EXCEPT roles. The roles
    * column is service-protected: the ONLY write path is the Roles service (permission 'roles'),
-   * which also writes the role_grant_event audit row per change. The db api is left unspecified
-   * (admin door) — server code uses system paths.
+   * which also writes the role_grant_event audit row per change. The db doors mirror the
+   * service doors: `DbService`'s inner `Db` re-checks the db api as the calling user, so a
+   * service-only shape leaves the record surfaces admin-locked (server code proper still uses
+   * system paths, which bypass TableAuth).
    */
   auth: Table<User>['auth'] = {
+    db: {
+      query: { permission: USER_PERMISSIONS.users },
+      insert: { permission: USER_PERMISSIONS.users },
+      update: { permission: USER_PERMISSIONS.users },
+      delete: { permission: USER_PERMISSIONS.users },
+    },
     service: {
       query: { permission: USER_PERMISSIONS.users },
       insert: { permission: USER_PERMISSIONS.users },
