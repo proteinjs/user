@@ -95,16 +95,18 @@ export function withScopedRecordColumns<T extends ScopedRecord>(
 /**
  * Adds the `scope` column as the first column to the provided index.
  *
- * @param args Index to create
+ * @param args Index to create (`unique: true` for a scoped UNIQUE index — name it with a
+ * `_unique` suffix, matching schema-metadata classification)
  * @returns Index with `scope` column added first
  */
 export function createScopedIndex<T extends ScopedRecord>(args: {
   columns: (keyof T)[];
   name?: string;
-}): { columns: (keyof T)[]; name?: string } {
+  unique?: boolean;
+}): { columns: (keyof T)[]; name?: string; unique?: boolean } {
   if (args.columns.includes('scope')) {
     return args;
   }
 
-  return { columns: ['scope', ...args.columns], name: args.name };
+  return { columns: ['scope', ...args.columns], name: args.name, ...(args.unique ? { unique: true } : {}) };
 }
