@@ -148,3 +148,47 @@ describe('UserAuth.hasPermission — permission indirection through the consumer
     expect(UserAuth.hasPermission('never-declared')).toBe(true);
   });
 });
+
+describe('UserAuth — NULL/absent roles tolerance (the n3xa5 AccountMenu white-screen class)', () => {
+  // Pre-roles-backfill user rows read roles as NULL; a repo implementation fed by raw session
+  // data can hand that through despite the interface's `string[]` (the runtime shape that
+  // white-screened brent-dev-5's menus — every client-side gate funnels through UserAuth, so
+  // one `.includes` on null blanked the page). Contract: a null-roles user is simply
+  // role-less — every check DENIES, nothing throws. Tolerance only, no invented roles.
+  const setUserWithRawRoles = (roles: unknown) => {
+    (UserAuth as unknown as UserAuthInternals).userRepo = {
+      getUser: () => ({ email: 'legacy@test.local', roles: roles as string[] }),
+    };
+  };
+
+  beforeEach(() => {
+    clearUserRepo();
+  });
+
+  afterEach(() => {
+    clearUserRepo();
+  });
+
+  it.each([null, undefined])('hasRole denies without throwing when roles is %p', (roles) => {
+    setUserWithRawRoles(roles);
+    expect(UserAuth.hasRole('admin')).toBe(false);
+    expect(UserAuth.hasRole('ops')).toBe(false);
+  });
+
+  it.each([null, undefined])('hasRoles denies without throwing when roles is %p', (roles) => {
+    setUserWithRawRoles(roles);
+    expect(UserAuth.hasRoles(['ops'])).toBe(false);
+    expect(UserAuth.hasRoles(['ops', 'dev'], 'at least one')).toBe(false);
+  });
+
+  it.each([null, undefined])('hasPermission denies without throwing when roles is %p', (roles) => {
+    setUserWithRawRoles(roles);
+    setMapping({ ops: ['ops'] });
+    expect(UserAuth.hasPermission('ops')).toBe(false);
+  });
+
+  it('a null-roles user still reads as logged in — role-less, never a crash (the menus render)', () => {
+    setUserWithRawRoles(null);
+    expect(UserAuth.isLoggedIn()).toBe(true);
+  });
+});

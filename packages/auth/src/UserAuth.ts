@@ -48,12 +48,12 @@ export class UserAuth {
       return false;
     }
 
-    const user = userRepo.getUser();
-    if (user.roles.includes('admin')) {
+    const heldRoles = UserAuth.rolesOf(userRepo.getUser());
+    if (heldRoles.includes('admin')) {
       return true;
     }
 
-    return user.roles.includes(role);
+    return heldRoles.includes(role);
   }
 
   /**
@@ -94,8 +94,8 @@ export class UserAuth {
       return false;
     }
 
-    const user = userRepo.getUser();
-    if (user.roles.includes('admin')) {
+    const heldRoles = UserAuth.rolesOf(userRepo.getUser());
+    if (heldRoles.includes('admin')) {
       return true;
     }
 
@@ -109,7 +109,19 @@ export class UserAuth {
       return false;
     }
 
-    return roles.some((role) => user.roles.includes(role));
+    return roles.some((role) => heldRoles.includes(role));
+  }
+
+  /**
+   * A user's roles, tolerant of a NULL/absent list: rows that predate the roles backfill
+   * migration read as null, and a repo implementation fed by raw session data can hand that
+   * through despite the interface's `string[]` (the n3xa5 AccountMenu white-screen — every
+   * client-side gate funnels through this class, so one crash here blanked the page). A
+   * null-roles user is simply role-less: every check denies, nothing throws. Tolerance only —
+   * no roles are invented; UserRepo normalizes the same way at its own seam.
+   */
+  private static rolesOf(user: AuthenticatedUser): string[] {
+    return user.roles ?? [];
   }
 
   private static getUserRepo() {
