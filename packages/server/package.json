@@ -19,10 +19,11 @@
     "clean": "rm -rf dist/ generated/ node_modules/",
     "build": "reflection-build && tsc",
     "watch": "reflection-watch",
-    "test": "jest --passWithNoTests"
+    "test": "jest --runInBand --passWithNoTests"
   },
   "dependencies": {
     "@proteinjs/db": "^1.27.0",
+    "@proteinjs/db-file": "^1.4.5",
     "@proteinjs/email-server": "^1.2.18",
     "@proteinjs/logger": "^1.0.21",
     "@proteinjs/reflection": "^1.1.12",
@@ -31,9 +32,12 @@
     "@proteinjs/user": "^1.6.1",
     "crypto-js": "4.0.0",
     "express-session": "1.17.1",
-    "moment": "2.29.4"
+    "heic-decode": "^2.1.0",
+    "moment": "2.29.4",
+    "sharp": "0.33.4"
   },
   "devDependencies": {
+    "@proteinjs/db-driver-spanner": "^1.16.0",
     "@proteinjs/reflection-build": "^1.4.10",
     "@types/crypto-js": "4.0.1",
     "@types/express-session": "1.17.0",

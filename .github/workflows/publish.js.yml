@@ -19,6 +19,13 @@ jobs:
           MYSQL_DATABASE: test
         ports:
           - 3306:3306
+      # user-server's integration tests run on the Spanner emulator (they self-provision
+      # the instance/database via SpannerEmulatorProvisioner, so no gcloud setup is needed).
+      spanner-emulator:
+        image: gcr.io/cloud-spanner-emulator/emulator
+        ports:
+          - 9010:9010
+          - 9020:9020
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
