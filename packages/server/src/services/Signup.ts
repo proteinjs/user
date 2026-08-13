@@ -1,4 +1,4 @@
-import { getDb, getDbAsSystem } from '@proteinjs/db';
+import { getDbAsSystem } from '@proteinjs/db';
 import {
   SendInviteResponse,
   tables,
@@ -9,6 +9,7 @@ import {
   UserRepo,
   Invite,
   UserSignup,
+  USER_PERMISSIONS,
 } from '@proteinjs/user';
 import moment from 'moment';
 import { lib } from 'crypto-js';
@@ -57,11 +58,12 @@ export class Signup implements SignupService {
   public serviceMetadata = {
     auth: {
       canAccess: (methodName: string, args: any[]) => {
-        // Admin-only invite management. This previously evaluated hasRole WITHOUT returning it,
-        // which made sendInvite/revokeInvite effectively public — any caller (even logged out)
-        // could mint themselves a valid signup token and bypass invite-only signup.
+        // Invite management rides the 'users' permission (admin passes via break-glass). This
+        // previously evaluated the check WITHOUT returning it, which made sendInvite/revokeInvite
+        // effectively public — any caller (even logged out) could mint themselves a valid signup
+        // token and bypass invite-only signup.
         if (methodName === 'sendInvite' || methodName === 'revokeInvite') {
-          return UserAuth.hasRole('admin');
+          return UserAuth.hasPermission(USER_PERMISSIONS.users);
         }
 
         return true;
@@ -115,7 +117,7 @@ export class Signup implements SignupService {
       email,
       password: sha256(user.password).toString(),
       emailVerified: invite ? true : false, // because we retrieved the email from the invite record
-      roles: '',
+      roles: [],
       invitedBy: invite ? invite.invitedBy : null,
     });
 
@@ -193,7 +195,9 @@ export class Signup implements SignupService {
       throw new Error('No email was provided.');
     }
 
-    const db = getDb();
+    // The service door ('users' permission) is the wall; the write is the domain's own, so it
+    // runs as system like every other invite write here — the invite table's db door stays admin.
+    const db = getDbAsSystem();
     await db.delete(tables.Invite, { email: email.toLowerCase() });
   }
 

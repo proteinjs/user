@@ -58,7 +58,7 @@ describe('GET /avatar/:userId', () => {
 
     // A DIFFERENT, non-admin user fetches it — the file row is scoped to the owner, so this
     // only works through the route's narrow system read.
-    const viewer = await testEnv.createUser({ name: 'Viewer', email: 'viewer@test.local', roles: '' });
+    const viewer = await testEnv.createUser({ name: 'Viewer', email: 'viewer@test.local', roles: [] });
     testEnv.actAs(viewer);
     const response = await requestAvatar(owner.id);
 

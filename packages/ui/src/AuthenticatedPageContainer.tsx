@@ -1,6 +1,7 @@
 import React from 'react';
-import { Page, PageContainer, PageContainerProps } from '@proteinjs/ui';
+import { PageContainer, PageContainerProps } from '@proteinjs/ui';
 import { routes, guestUser, UserAuth, UserRepo, uiRoutes } from '@proteinjs/user';
+import { canViewPage } from './pageAuth';
 
 export type AuthenticatedPageContainerProps = Omit<PageContainerProps, 'auth'>;
 
@@ -12,21 +13,7 @@ export function AuthenticatedPageContainer(props: AuthenticatedPageContainerProp
     <PageContainer
       auth={{
         isLoggedIn,
-        canViewPage: (page: Page) => {
-          if (page.auth?.public) {
-            return true;
-          }
-
-          if (page.auth?.allUsers) {
-            return UserAuth.isLoggedIn();
-          }
-
-          if (!page.auth?.roles) {
-            return UserAuth.hasRole('admin');
-          }
-
-          return UserAuth.hasRoles(page.auth?.roles);
-        },
+        canViewPage,
         login: uiRoutes.auth.login,
         logout: async () => {
           const response = await fetch(routes.logout.path, {

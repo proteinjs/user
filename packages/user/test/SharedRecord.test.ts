@@ -40,7 +40,7 @@ const users = [
     email: 'test.user0',
     password: 'test',
     emailVerified: false,
-    roles: '',
+    roles: [] as string[],
     created: moment(),
     updated: moment(),
     id: 'user0',
@@ -50,7 +50,7 @@ const users = [
     email: 'test.user1',
     password: 'test',
     emailVerified: false,
-    roles: '',
+    roles: [] as string[],
     created: moment(),
     updated: moment(),
     id: 'user1',
@@ -60,7 +60,7 @@ const users = [
     email: 'test.user2',
     password: 'test',
     emailVerified: false,
-    roles: '',
+    roles: [] as string[],
     created: moment(),
     updated: moment(),
     id: 'user2',
@@ -69,6 +69,13 @@ const users = [
 
 export class SharedItemTable extends Table<SharedItem> {
   name = 'user_test_shared_item';
+  // Mirrors real shared tables: the table door is 'authenticated'; row visibility is the
+  // access-grant machinery under test. UserAuth is fail-closed, so the suite registers the real
+  // UserRepo below and the session user (set per test) is what the door sees.
+  auth: Table<SharedItem>['auth'] = {
+    db: { all: 'authenticated' },
+    service: { all: 'authenticated' },
+  };
   columns = withSharedRecordColumns<SharedItem>({
     name: new StringColumn('name'),
   });
@@ -101,6 +108,9 @@ describe('Shared Record', () => {
       tables.AccessGrant,
       new SharedItemTable() as Table<SharedItem>,
     ];
+    // UserAuth is fail-closed: register the real UserRepo so the table doors ('authenticated')
+    // see the session user each test sets via userRepo.setUser.
+    (SourceRepository.get() as any).objectCache['@proteinjs/user-auth/AuthenticatedUserRepo'] = [userRepo];
 
     Session.setData({
       sessionId: 'test-session',

@@ -1,6 +1,6 @@
 import { Fields, FormButton, FormButtons } from '@proteinjs/ui';
 import { RecordFormCustomization, recordTableLink } from '@proteinjs/db-ui';
-import { getSignupService, Invite, tables, UserAuth } from '@proteinjs/user';
+import { getSignupService, Invite, tables, UserAuth, USER_PERMISSIONS } from '@proteinjs/user';
 import { emailRegex } from '@proteinjs/util';
 
 /**
@@ -33,7 +33,7 @@ export class InviteRecordFormCustomization extends RecordFormCustomization {
     return {
       name: 'Send invite',
       accessibility: {
-        hidden: !!invite || !this.isAdmin(),
+        hidden: !!invite || !this.canManageUsers(),
       },
       style: {
         color: 'primary',
@@ -64,7 +64,7 @@ export class InviteRecordFormCustomization extends RecordFormCustomization {
     return {
       name: 'Revoke',
       accessibility: {
-        hidden: !invite || !this.isAdmin(),
+        hidden: !invite || !this.canManageUsers(),
       },
       style: {
         color: 'primary',
@@ -83,10 +83,11 @@ export class InviteRecordFormCustomization extends RecordFormCustomization {
   }
 
   /**
-   * The same admin gate the standalone invite page carried, so these actions aren't offered to users
-   * who can't perform them. `SignupService.serviceMetadata.auth` is what actually enforces it.
+   * The same 'users'-permission gate the service door carries, so these actions aren't offered to
+   * users who can't perform them. `SignupService.serviceMetadata.auth` is what actually enforces
+   * it; admin still passes via break-glass.
    */
-  private isAdmin(): boolean {
-    return UserAuth.hasRole('admin');
+  private canManageUsers(): boolean {
+    return UserAuth.hasPermission(USER_PERMISSIONS.users);
   }
 }

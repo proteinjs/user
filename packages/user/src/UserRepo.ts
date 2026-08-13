@@ -22,7 +22,9 @@ export class UserRepo implements AuthenticatedUserRepo {
 
   getUser(): Omit<User, 'roles'> & AuthenticatedUser {
     const user = Object.assign({}, Session.getDataByKey<User>(USER_SESSION_CACHE_KEY));
-    const roles = user.roles ? user.roles.split(',') : [];
+    // Roles are stored typed (`role_list`); rows that predate the roles backfill migration read
+    // as null, and a context without session data has none — both mean "no roles".
+    const roles = user.roles ?? [];
     return Object.assign(user, { roles });
   }
 

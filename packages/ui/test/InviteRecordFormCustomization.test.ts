@@ -4,18 +4,28 @@ import { InviteRecordFormCustomization } from '../src/form/InviteRecordFormCusto
 
 /**
  * Invites are managed from the invite record surface: the new-record form sends one, an existing
- * invite row revokes one. Both actions are admin-only — `SignupService.serviceMetadata.auth` is the
- * enforcement (covered in @proteinjs/user-server), and these assertions cover the affordances, so a
- * non-admin is never offered a button that can only fail.
+ * invite row revokes one. Both actions ride the 'users' permission (admin passes via
+ * break-glass) — `SignupService.serviceMetadata.auth` is the enforcement (covered in
+ * @proteinjs/user-server), and these assertions cover the affordances, so a caller who can't
+ * perform them is never offered a button that can only fail.
  *
  * `UserAuth` reads from a static repo; stubbing it directly is how the server-side authz tests do it.
  */
 
-type UserAuthInternals = { userRepo?: { getUser: () => { email: string; roles: string[] } } };
+type UserAuthInternals = {
+  userRepo?: { getUser: () => { email: string; roles: string[] } };
+  permissionRolesMapping?: { getRoles: (permission: string) => string[] | undefined };
+};
 
 const setRoles = (roles: string[]) => {
   (UserAuth as unknown as UserAuthInternals).userRepo = {
     getUser: () => ({ email: 'someone@n3xa.io', roles }),
+  };
+};
+
+const setMapping = (mapping: { [permission: string]: string[] }) => {
+  (UserAuth as unknown as UserAuthInternals).permissionRolesMapping = {
+    getRoles: (permission: string) => mapping[permission],
   };
 };
 
@@ -36,6 +46,7 @@ const visibleButtons = (record: Invite | undefined) => {
 describe('Invite record form customization', () => {
   afterEach(() => {
     (UserAuth as unknown as UserAuthInternals).userRepo = undefined;
+    (UserAuth as unknown as UserAuthInternals).permissionRolesMapping = undefined;
   });
 
   it('replaces raw record create/delete with send/revoke', () => {
@@ -53,12 +64,19 @@ describe('Invite record form customization', () => {
     expect(visibleButtons(existingInvite)).not.toContain('send');
   });
 
-  it('offers a non-admin neither action', () => {
+  it('offers a caller without the users permission neither action', () => {
     setRoles([]);
     expect(visibleButtons(undefined)).not.toContain('send');
     expect(visibleButtons(undefined)).not.toContain('revoke');
     expect(visibleButtons(existingInvite)).not.toContain('send');
     expect(visibleButtons(existingInvite)).not.toContain('revoke');
+  });
+
+  it(`offers a holder of the consumer's users-mapped role both actions in their places`, () => {
+    setRoles(['support']);
+    setMapping({ users: ['support'] });
+    expect(visibleButtons(undefined)).toContain('send');
+    expect(visibleButtons(existingInvite)).toContain('revoke');
   });
 
   it('asks only for an email when sending, and shows the whole record otherwise', () => {

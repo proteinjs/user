@@ -14,11 +14,20 @@ import { Signup } from '../src/services/Signup';
  * (same pattern as @proteinjs/db's TableServiceAuth.test.ts).
  */
 
-type UserAuthInternals = { userRepo?: { getUser: () => { email: string; roles: string[] } } };
+type UserAuthInternals = {
+  userRepo?: { getUser: () => { email: string; roles: string[] } };
+  permissionRolesMapping?: { getRoles: (permission: string) => string[] | undefined };
+};
 
 const setUser = (roles: string[]) => {
   (UserAuth as unknown as UserAuthInternals).userRepo = {
     getUser: () => ({ email: 'user@test.local', roles }),
+  };
+};
+
+const setMapping = (mapping: { [permission: string]: string[] }) => {
+  (UserAuth as unknown as UserAuthInternals).permissionRolesMapping = {
+    getRoles: (permission: string) => mapping[permission],
   };
 };
 
@@ -30,16 +39,24 @@ const canAccess = (methodName: string) => {
 describe('Signup service auth', () => {
   afterEach(() => {
     (UserAuth as unknown as UserAuthInternals).userRepo = undefined;
+    (UserAuth as unknown as UserAuthInternals).permissionRolesMapping = undefined;
   });
 
-  it('denies sendInvite and revokeInvite to a non-admin', () => {
+  it('denies sendInvite and revokeInvite to a caller without the users permission', () => {
     setUser([]);
     expect(canAccess('sendInvite')).toBe(false);
     expect(canAccess('revokeInvite')).toBe(false);
   });
 
-  it('allows sendInvite and revokeInvite for an admin', () => {
+  it('allows sendInvite and revokeInvite for an admin (break-glass)', () => {
     setUser(['admin']);
+    expect(canAccess('sendInvite')).toBe(true);
+    expect(canAccess('revokeInvite')).toBe(true);
+  });
+
+  it(`allows sendInvite and revokeInvite for a holder of the consumer's users-mapped role`, () => {
+    setUser(['support']);
+    setMapping({ users: ['support'] });
     expect(canAccess('sendInvite')).toBe(true);
     expect(canAccess('revokeInvite')).toBe(true);
   });

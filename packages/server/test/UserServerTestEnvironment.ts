@@ -67,13 +67,13 @@ export class UserServerTestEnvironment {
   }
 
   /** Insert a user row (as system) and return it. */
-  async createUser(args: { name: string; email: string; roles?: string }): Promise<User> {
+  async createUser(args: { name: string; email: string; roles?: string[] }): Promise<User> {
     return await getDbAsSystem().insert(userTables.User, {
       name: args.name,
       email: args.email,
       password: 'test',
       emailVerified: true,
-      roles: args.roles ?? '',
+      roles: args.roles ?? [],
     });
   }
 
