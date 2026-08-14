@@ -31,6 +31,13 @@ jobs:
           MYSQL_DATABASE: test
         ports:
           - 3306:3306
+      # user-server's Spanner integration suites (Roles + BackfillUserRolesArray, added with the
+      # roles cutover a296657) self-provision instance+database over the emulator's gRPC admin
+      # API — no gcloud steps or 9020 REST port needed, just the address.
+      spanner-emulator:
+        image: gcr.io/cloud-spanner-emulator/emulator
+        ports:
+          - 9010:9010
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -71,6 +78,7 @@ jobs:
 
       - name: Test packages
         env:
+          SPANNER_EMULATOR_HOST: localhost:9010
           MYSQL_HOST: 127.0.0.1
           MYSQL_USER: root
           MYSQL_PASSWORD: ""
