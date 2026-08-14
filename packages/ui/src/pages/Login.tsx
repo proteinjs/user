@@ -1,7 +1,78 @@
-import React from 'react';
-import { Page, Form, Fields, textField, FormButtons, clearButton, FormPage } from '@proteinjs/ui';
-import { routes, uiRoutes } from '@proteinjs/user';
+import React, { useState } from 'react';
+import { Box, Link } from '@mui/material';
+import { Page } from '@proteinjs/ui';
+import { uiRoutes } from '@proteinjs/user';
 import { Helmet } from 'react-helmet';
+import { AuthLayout } from '../auth/AuthLayout';
+import { AuthTextField } from '../auth/AuthTextField';
+import { AuthButton } from '../auth/AuthButton';
+import { AuthFormError } from '../auth/AuthFormError';
+import { AuthApi } from '../auth/AuthApi';
+
+const LoginComponent: React.FC = () => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | undefined>();
+  const [busy, setBusy] = useState(false);
+
+  const onSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(undefined);
+    setBusy(true);
+    try {
+      await new AuthApi().login(email, password);
+      window.location.href = '/';
+    } catch (error: any) {
+      setError(error.message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <Helmet>
+        <title>Log in</title>
+      </Helmet>
+      <AuthLayout title='Log in'>
+        <form onSubmit={onSubmit} noValidate>
+          <AuthTextField
+            label='Email'
+            value={email}
+            onChange={setEmail}
+            type='email'
+            autoComplete='email'
+            disabled={busy}
+          />
+          <AuthTextField
+            label='Password'
+            value={password}
+            onChange={setPassword}
+            password
+            autoComplete='current-password'
+            disabled={busy}
+          />
+          <AuthFormError message={error} />
+          <AuthButton busy={busy}>Log in</AuthButton>
+        </form>
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+          <Link
+            href={`/${uiRoutes.auth.forgotPassword}`}
+            underline='hover'
+            sx={{
+              fontSize: '0.875rem',
+              color: 'text.secondary',
+              // 44px touch target without visual bulk.
+              py: '13px',
+              px: 2,
+            }}
+          >
+            Forgot password?
+          </Link>
+        </Box>
+      </AuthLayout>
+    </>
+  );
+};
 
 export const loginPage: Page = {
   name: 'Login',
@@ -9,80 +80,5 @@ export const loginPage: Page = {
   auth: {
     public: true,
   },
-  component: () => (
-    <>
-      <Helmet>
-        <title>Login</title>
-      </Helmet>
-      <FormPage>
-        <Form<LoginFields, typeof buttons>
-          name='Login'
-          createFields={() => new LoginFields()}
-          fieldLayout={['email', 'password']}
-          buttons={buttons}
-          maxWidth={'xs'}
-        />
-      </FormPage>
-    </>
-  ),
-};
-
-class LoginFields extends Fields {
-  static create() {
-    return new LoginFields();
-  }
-
-  email = textField<LoginFields>({
-    name: 'email',
-  });
-
-  password = textField<LoginFields>({
-    name: 'password',
-    isPassword: true,
-  });
-}
-
-const buttons: FormButtons<LoginFields> = {
-  forgotPassword: {
-    name: 'Forgot password',
-    style: {
-      variant: 'text',
-      align: 'left',
-    },
-    redirect: async () => {
-      return { path: `/${uiRoutes.auth.forgotPassword}` };
-    },
-  },
-  clear: clearButton,
-  login: {
-    name: 'Login',
-    style: {
-      color: 'primary',
-      variant: 'contained',
-    },
-    onClick: async (fields: LoginFields, buttons: FormButtons<LoginFields>) => {
-      const response = await fetch(routes.login.path, {
-        method: routes.login.method,
-        body: JSON.stringify({
-          email: fields.email.field.value,
-          password: fields.password.field.value,
-        }),
-        redirect: 'follow',
-        credentials: 'same-origin',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      if (response.status != 200) {
-        throw new Error(`Failed to login, error: ${response.statusText}`);
-      }
-
-      const body = await response.json();
-      if (body.error) {
-        throw new Error(body.error);
-      }
-
-      window.location.href = '/';
-    },
-  },
+  component: LoginComponent,
 };

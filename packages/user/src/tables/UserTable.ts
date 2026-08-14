@@ -21,6 +21,16 @@ export type User = Record & {
   /** Role names from the roles catalog (see `RolesCatalog`). Written ONLY by the Roles service. */
   roles: string[];
   invitedBy?: string | null;
+  /**
+   * Emoji avatar. At most one of `avatarEmoji`/`avatarFileId` is set — the avatar mutations in
+   * UpdateUserInfo enforce it (every mutation assigns BOTH columns); nothing else writes these.
+   */
+  avatarEmoji?: string | null;
+  /**
+   * File id of the stored avatar photo (512x512 JPEG). A plain string, NOT a ReferenceColumn:
+   * @proteinjs/db-file depends on @proteinjs/user, so a user→file reference would be circular.
+   */
+  avatarFileId?: string | null;
 };
 
 export class UserTable extends Table<User> {
@@ -62,5 +72,7 @@ export class UserTable extends Table<User> {
      */
     roles: new ArrayColumn<string>('role_list'),
     invitedBy: new StringColumn('invited_by'),
+    avatarEmoji: new StringColumn('avatar_emoji'),
+    avatarFileId: new StringColumn('avatar_file_id'),
   });
 }

@@ -6,6 +6,19 @@ export const routes: { [name: string]: { path: string; method: 'get' | 'post' | 
   logout: { path: '/user/logout', method: 'get' },
 };
 
+/**
+ * Avatar-photo URL contract (server route: user-server src/routes/avatar.ts): the path is stable
+ * per user, so responses are cached hard (max-age=86400, immutable) and the `v` query param busts
+ * the cache — pass the user's current `avatarFileId`, which changes on every photo update. Users
+ * with an emoji avatar or no avatar answer 404 (clients render emoji/initials from the user
+ * record; the route serves photos only).
+ */
+export const avatarRoute = {
+  path: (userId: string, avatarFileId: string) =>
+    `/avatar/${encodeURIComponent(userId)}?v=${encodeURIComponent(avatarFileId)}`,
+  method: 'get' as const,
+};
+
 export const uiRoutes = {
   auth: {
     login: 'login',

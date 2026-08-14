@@ -1,6 +1,79 @@
-import React from 'react';
-import { Page, Form, Fields, textField, FormButtons, FormPage } from '@proteinjs/ui';
-import { routes, uiRoutes } from '@proteinjs/user';
+import React, { useState } from 'react';
+import { Box, Link } from '@mui/material';
+import { Page } from '@proteinjs/ui';
+import { uiRoutes } from '@proteinjs/user';
+import { Helmet } from 'react-helmet';
+import { AuthLayout } from '../auth/AuthLayout';
+import { AuthTextField } from '../auth/AuthTextField';
+import { AuthButton } from '../auth/AuthButton';
+import { AuthFormError } from '../auth/AuthFormError';
+import { AuthMessagePanel } from '../auth/AuthMessagePanel';
+import { AuthApi } from '../auth/AuthApi';
+
+const ForgotPasswordComponent: React.FC = () => {
+  const [email, setEmail] = useState('');
+  const [error, setError] = useState<string | undefined>();
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const onSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError(undefined);
+    setBusy(true);
+    try {
+      await new AuthApi().initiatePasswordReset(email);
+      setSent(true);
+    } catch (error: any) {
+      setError(error.message);
+      setBusy(false);
+    }
+  };
+
+  if (sent) {
+    return (
+      <AuthMessagePanel
+        title='Check your email'
+        body='We sent an email with a link to reset your password.'
+        actionName='Back to log in'
+        actionHref={`/${uiRoutes.auth.login}`}
+      />
+    );
+  }
+
+  return (
+    <>
+      <Helmet>
+        <title>Reset your password</title>
+      </Helmet>
+      <AuthLayout
+        title='Reset your password'
+        subtitle={`Enter your email and we'll send you a link to reset your password.`}
+      >
+        <form onSubmit={onSubmit} noValidate>
+          <AuthTextField
+            label='Email'
+            value={email}
+            onChange={setEmail}
+            type='email'
+            autoComplete='email'
+            disabled={busy}
+          />
+          <AuthFormError message={error} />
+          <AuthButton busy={busy}>Send reset link</AuthButton>
+        </form>
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+          <Link
+            href={`/${uiRoutes.auth.login}`}
+            underline='hover'
+            sx={{ fontSize: '0.875rem', color: 'text.secondary', py: '13px', px: 2 }}
+          >
+            Back to log in
+          </Link>
+        </Box>
+      </AuthLayout>
+    </>
+  );
+};
 
 export const forgotPasswordPage: Page = {
   name: 'Forgot Password',
@@ -8,57 +81,5 @@ export const forgotPasswordPage: Page = {
   auth: {
     public: true,
   },
-  component: () => (
-    <FormPage>
-      <Form<ForgotPasswordFields, typeof buttons>
-        name='Forgot Password'
-        createFields={() => new ForgotPasswordFields()}
-        fieldLayout={['email']}
-        buttons={buttons}
-      />
-    </FormPage>
-  ),
-};
-
-class ForgotPasswordFields extends Fields {
-  static create() {
-    return new ForgotPasswordFields();
-  }
-
-  email = textField<ForgotPasswordFields>({
-    name: 'email',
-  });
-}
-
-const buttons: FormButtons<ForgotPasswordFields> = {
-  submit: {
-    name: 'Submit',
-    style: {
-      color: 'primary',
-      variant: 'contained',
-    },
-    onClick: async (fields: ForgotPasswordFields, buttons: FormButtons<ForgotPasswordFields>) => {
-      const response = await fetch(routes.initiatePasswordReset.path, {
-        method: routes.initiatePasswordReset.method,
-        body: JSON.stringify({
-          email: fields.email.field.value,
-        }),
-        redirect: 'follow',
-        credentials: 'same-origin',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      if (response.status != 200) {
-        throw new Error(`Failed to initiate forgot password.`);
-      }
-
-      const body = await response.json();
-      if (body.error) {
-        throw new Error(`Failed to initiate forgot password.`);
-      }
-
-      return `Successfully sent an email with a link to reset your password.`;
-    },
-  },
+  component: ForgotPasswordComponent,
 };
