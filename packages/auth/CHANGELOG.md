@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.3.1](https://github.com/proteinjs/user/compare/@proteinjs/user-auth@1.3.0...@proteinjs/user-auth@1.3.1) (2026-08-14)
+
+**Note:** Version bump only for package @proteinjs/user-auth
+
+
+
+
+
 # [1.1.0](https://github.com/proteinjs/user/compare/@proteinjs/user-auth@1.0.15...@proteinjs/user-auth@1.1.0) (2024-08-06)
 
 

@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.7.2](https://github.com/proteinjs/user/compare/@proteinjs/user@1.7.1...@proteinjs/user@1.7.2) (2026-08-14)
+
+**Note:** Version bump only for package @proteinjs/user
+
+
+
+
+
 ## [1.5.11](https://github.com/proteinjs/user/compare/@proteinjs/user@1.5.10...@proteinjs/user@1.5.11) (2026-07-21)
 
 **Note:** Version bump only for package @proteinjs/user
