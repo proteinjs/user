@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.8.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.7.2...@proteinjs/user@1.8.0) (2026-08-14)
+
+
+### Features
+
+* createScopedIndex passes unique through ([bf0a738](https://github.com/proteinjs/user/commit/bf0a7387540d797ea9ea789acaf921e9af832f6a))
+* user avatars — photo/emoji schema, avatar mutations with session-cache refresh, shared /avatar route ([6af0bc5](https://github.com/proteinjs/user/commit/6af0bc5b34cf42fc3cc47706fc200fd8fdaa8d8d))
+
+
+
+
+
 ## [1.7.2](https://github.com/proteinjs/user/compare/@proteinjs/user@1.7.1...@proteinjs/user@1.7.2) (2026-08-14)
 
 **Note:** Version bump only for package @proteinjs/user

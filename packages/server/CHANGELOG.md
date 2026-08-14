@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.6.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.5.4...@proteinjs/user-server@1.6.0) (2026-08-14)
+
+
+### Bug Fixes
+
+* await session save in devLogin before redirecting ([c7476c8](https://github.com/proteinjs/user/commit/c7476c83a0ad760a9caf55e8d06e2edef9e0f1ac))
+* dedupe setupFiles in user-server jest config — merge artifact, both keys named the same setup module ([085a041](https://github.com/proteinjs/user/commit/085a0415397e93354a9aef2d00f24eacf2c13733))
+
+
+### Features
+
+* user avatars — photo/emoji schema, avatar mutations with session-cache refresh, shared /avatar route ([6af0bc5](https://github.com/proteinjs/user/commit/6af0bc5b34cf42fc3cc47706fc200fd8fdaa8d8d))
+
+
+
+
+
 ## [1.5.4](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.5.3...@proteinjs/user-server@1.5.4) (2026-08-14)
 
 **Note:** Version bump only for package @proteinjs/user-server

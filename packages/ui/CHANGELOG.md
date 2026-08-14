@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.5.0](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.4.2...@proteinjs/user-ui@1.5.0) (2026-08-14)
+
+
+### Features
+
+* modernize the logged-out auth surfaces (login, signup, forgot/reset password) ([215002e](https://github.com/proteinjs/user/commit/215002eb59cc71061bd07accd8750d801d51c4f4))
+
+
+
+
+
 ## [1.4.2](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.4.1...@proteinjs/user-ui@1.4.2) (2026-08-14)
 
 **Note:** Version bump only for package @proteinjs/user-ui
