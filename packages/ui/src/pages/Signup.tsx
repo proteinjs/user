@@ -1,134 +1,144 @@
 import React, { useEffect, useState } from 'react';
-import { Page, Form, Fields, textField, FormButtons, clearButton, FormPage } from '@proteinjs/ui';
+import { Skeleton, Stack } from '@mui/material';
+import { Page } from '@proteinjs/ui';
 import { getSignupService, uiRoutes } from '@proteinjs/user';
-import { Button, Skeleton, Stack, Typography } from '@mui/material';
-import { emailRegex } from '@proteinjs/util';
 import { Helmet } from 'react-helmet';
 import { useNavigate } from 'react-router-dom';
+import { AuthLayout } from '../auth/AuthLayout';
+import { AuthTextField } from '../auth/AuthTextField';
+import { AuthButton } from '../auth/AuthButton';
+import { AuthFormError } from '../auth/AuthFormError';
+import { AuthMessagePanel } from '../auth/AuthMessagePanel';
+import { AuthValidation } from '../auth/AuthValidation';
+
+function inviteTokenFromUrl(): string {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  return new URLSearchParams(window.location.search).get('token') || '';
+}
 
 const SignupComponent: React.FC = () => {
   const navigate = useNavigate();
-  const [token, setToken] = useState('');
-  const [isInviteOnly, setIsInviteOnly] = useState<boolean>(false);
-  const [isInitializing, setIsInitializing] = useState(false);
+  const [token] = useState(inviteTokenFromUrl);
+  const [initializing, setInitializing] = useState(true);
   const [initializationError, setInitializationError] = useState<string | null>(null);
-
-  const buttons: FormButtons<SignupFields> = {
-    clear: clearButton,
-    signup: {
-      name: 'Sign up',
-      style: {
-        color: 'primary',
-        variant: 'contained',
-      },
-      onClick: async (fields: SignupFields, buttons: FormButtons<SignupFields>) => {
-        if (!fields.name.field.value) {
-          return 'Please enter your name.';
-        }
-
-        const email = fields.email.field.value && fields.email.field.value.trim();
-
-        // invited users don't enter an email
-        if (!token && (!email || !emailRegex.test(email))) {
-          return 'Please enter a valid email address.';
-        }
-
-        if (!fields.password.field.value) {
-          return 'Please enter a password.';
-        }
-
-        try {
-          await getSignupService().createUser(
-            {
-              name: fields.name.field.value,
-              email,
-              password: fields.password.field.value,
-            },
-            token
-          );
-        } catch {
-          return 'Sign up failed.';
-        }
-
-        navigate(uiRoutes.auth.login.startsWith('/') ? uiRoutes.auth.login : '/' + uiRoutes.auth.login);
-      },
-    },
-  };
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState<string | undefined>();
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const inviteToken = searchParams.get('token');
-    if (inviteToken) {
-      setToken(inviteToken);
-      initializeSignup(inviteToken);
-    } else {
-      initializeSignup();
-    }
-  }, []);
+    let active = true;
+    getSignupService()
+      .initializeSignup(token || undefined)
+      .then((response) => {
+        if (active && !response.isReady && response.error) {
+          setInitializationError(response.error);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setInitializationError('An error occurred while initializing sign up.');
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setInitializing(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [token]);
 
-  const initializeSignup = async (token?: string) => {
-    setIsInitializing(true);
+  const onSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const validationError = AuthValidation.signup({ name, email, password, confirmPassword }, !!token);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setError(undefined);
+    setBusy(true);
     try {
-      const response = await getSignupService().initializeSignup(token);
-
-      if (response.isInviteOnly !== undefined) {
-        setIsInviteOnly(response.isInviteOnly);
-      }
-
-      if (!response.isReady && response.error) {
-        setInitializationError(response.error);
-      }
-    } catch (error) {
-      setInitializationError('An error occurred while initializing sign up.');
-    } finally {
-      setIsInitializing(false);
+      // invited users don't enter an email (the invite token carries it)
+      await getSignupService().createUser({ name, email: token ? undefined : email.trim(), password }, token);
+    } catch {
+      setError('Sign up failed.');
+      setBusy(false);
+      return;
     }
+
+    navigate(uiRoutes.auth.login.startsWith('/') ? uiRoutes.auth.login : '/' + uiRoutes.auth.login);
   };
+
+  if (initializing) {
+    return (
+      <AuthLayout title='Create your account'>
+        <Stack spacing={2.5}>
+          <Skeleton variant='rounded' height={48} sx={{ borderRadius: '12px' }} />
+          <Skeleton variant='rounded' height={48} sx={{ borderRadius: '12px' }} />
+          <Skeleton variant='rounded' height={48} sx={{ borderRadius: '12px' }} />
+          <Skeleton variant='rounded' height={48} sx={{ borderRadius: '999px' }} />
+        </Stack>
+      </AuthLayout>
+    );
+  }
+
+  if (initializationError) {
+    return (
+      <AuthMessagePanel
+        title='Sign up is not available'
+        body={initializationError}
+        actionName='Go to log in'
+        actionHref={`/${uiRoutes.auth.login}`}
+      />
+    );
+  }
 
   return (
     <>
       <Helmet>
         <title>Sign up</title>
       </Helmet>
-      <FormPage>
-        {isInitializing ? (
-          <Stack direction='column' spacing={2} sx={{ px: 2, py: 1 }}>
-            <Skeleton variant='text' width='500px' height='60px' />
-            <Skeleton variant='text' width='500px' height='60px' />
-            <Skeleton variant='text' width='500px' height='60px' />
-            <Skeleton variant='text' width='500px' height='60px' />
-            <Stack direction='row' spacing={2} justifyContent='flex-end'>
-              <Skeleton variant='text' width='100px' height='60px' />
-              <Skeleton variant='text' width='100px' height='60px' />
-            </Stack>
-          </Stack>
-        ) : initializationError ? (
-          <Stack alignItems='center' spacing={3} sx={{ p: 4 }}>
-            <Typography variant='h1' gutterBottom>
-              Sign up is not available
-            </Typography>
-            <Typography variant='body1' gutterBottom>
-              {initializationError}
-            </Typography>
-            <Button variant='contained' color='primary' href={`/${uiRoutes.auth.login}`}>
-              Go to login page
-            </Button>
-          </Stack>
-        ) : (
-          <Form<SignupFields, typeof buttons>
-            name='Sign Up'
-            createFields={() => new SignupFields()}
-            fieldLayout={['name', 'email', 'password', 'confirmPassword']}
-            buttons={buttons}
-            onLoad={async (fields) => {
-              fields.token.field.value = token;
-              if (token) {
-                fields.email.field.accessibility = { hidden: true };
-              }
-            }}
+      <AuthLayout title='Create your account'>
+        <form onSubmit={onSubmit} noValidate>
+          <AuthTextField label='Name' value={name} onChange={setName} autoComplete='name' disabled={busy} />
+          {!token && (
+            <AuthTextField
+              label='Email'
+              value={email}
+              onChange={setEmail}
+              type='email'
+              autoComplete='email'
+              disabled={busy}
+            />
+          )}
+          <AuthTextField
+            label='Password'
+            value={password}
+            onChange={setPassword}
+            password
+            autoComplete='new-password'
+            disabled={busy}
           />
-        )}
-      </FormPage>
+          <AuthTextField
+            label='Confirm password'
+            value={confirmPassword}
+            onChange={setConfirmPassword}
+            password
+            autoComplete='new-password'
+            disabled={busy}
+          />
+          <AuthFormError message={error} />
+          <AuthButton busy={busy}>Sign up</AuthButton>
+        </form>
+      </AuthLayout>
     </>
   );
 };
@@ -141,32 +151,3 @@ export const signupPage: Page = {
   },
   component: SignupComponent,
 };
-
-class SignupFields extends Fields {
-  static create() {
-    return new SignupFields();
-  }
-
-  token = textField<SignupFields>({
-    name: 'token',
-    accessibility: { hidden: true },
-  });
-
-  name = textField<SignupFields>({
-    name: 'name',
-  });
-
-  email = textField<SignupFields>({
-    name: 'email',
-  });
-
-  password = textField<SignupFields>({
-    name: 'password',
-    isPassword: true,
-  });
-
-  confirmPassword = textField<SignupFields>({
-    name: 'confirmPassword',
-    isPassword: true,
-  });
-}
