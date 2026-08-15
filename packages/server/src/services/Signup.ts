@@ -8,6 +8,7 @@ import {
   InitializeSignupResponse,
   UserRepo,
   Invite,
+  User,
   UserSignup,
   USER_PERMISSIONS,
 } from '@proteinjs/user';
@@ -96,8 +97,14 @@ export class Signup implements SignupService {
     const config = defaultEmailConfigFactory.getConfig();
     const emailSender = new EmailSender();
 
-    const userRecord = await db.get(tables.User, { email });
-    if (userRecord) {
+    const creation = await this.createAccount({
+      name: user.name,
+      email,
+      password: user.password,
+      emailVerified: invite ? true : false, // because we retrieved the email from the invite record
+      invitedBy: invite ? invite.invitedBy : null,
+    });
+    if (creation === 'exists') {
       logger.error({ message: `User with this email already exists`, obj: { email } });
       if (config.getExistingUserEmailContent) {
         const { text, html } = config.getExistingUserEmailContent();
@@ -111,15 +118,6 @@ export class Signup implements SignupService {
       }
       return;
     }
-
-    await db.insert(tables.User, {
-      name: user.name,
-      email,
-      password: sha256(user.password).toString(),
-      emailVerified: invite ? true : false, // because we retrieved the email from the invite record
-      roles: [],
-      invitedBy: invite ? invite.invitedBy : null,
-    });
 
     const { text, html } = config.getNewUserEmailContent();
     await emailSender.sendEmail({
@@ -255,6 +253,39 @@ export class Signup implements SignupService {
         error: 'Initializing sign up failed.',
       };
     }
+  }
+
+  /**
+   * Single owner of account-record creation: case-normalized existence check + sha256-hashed
+   * insert. Both doors into a user row go through here — the signup flow (`createUser`, which
+   * layers invite validation and confirmation emails on top) and the dev-login bootstrap
+   * (`devLogin`, which auto-creates missing same-domain test accounts). Not exposed as an RPC:
+   * the service surface is the `SignupService` INTERFACE (ServiceRouter walks its declared
+   * methods), so extra class methods stay server-internal.
+   */
+  async createAccount(account: {
+    name: string;
+    email: string;
+    password: string;
+    emailVerified: boolean;
+    invitedBy: User['invitedBy'];
+  }): Promise<'created' | 'exists'> {
+    const db = getDbAsSystem();
+    const email = account.email.toLowerCase();
+    const existingUser = await db.get(tables.User, { email });
+    if (existingUser) {
+      return 'exists';
+    }
+
+    await db.insert(tables.User, {
+      name: account.name,
+      email,
+      password: sha256(account.password).toString(),
+      emailVerified: account.emailVerified,
+      roles: [],
+      invitedBy: account.invitedBy,
+    });
+    return 'created';
   }
 
   /** Resolves an invite token, distinguishing "expired" from "never existed / already revoked". */
