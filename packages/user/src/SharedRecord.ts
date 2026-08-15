@@ -33,11 +33,25 @@ export const getSharedDbAsSystem = <R extends SharedRecord = SharedRecord>() =>
  * When true, skips AccessGrant creation during inserts and skips the
  * permission subquery filter on reads. Use in test environments where
  * AccessGrant accumulation degrades Spanner emulator performance.
+ *
+ * The flag lives on the global object (window in browser, globalThis elsewhere) rather than in
+ * module scope: per-package installs can put multiple live copies of @proteinjs/user in one
+ * process (each sibling package's nested node_modules hosts its own copy), and module-scoped
+ * state splits per copy — a caller toggling one copy while the AccessGrant closures enforce
+ * from another (silent authz-toggle no-op, 2026-08-14 incident). Anchoring on the global gives
+ * every copy the same state — same pattern as reflection's SourceRepository and db's
+ * ReferenceCache.
  */
-export let skipAccessGrants = false;
+const SKIP_ACCESS_GRANTS_GLOBAL_KEY = '__proteinjs_user_skipAccessGrants';
+
+const getGlobal = (): any => (typeof window !== 'undefined' ? window : globalThis);
 
 export function setSkipAccessGrants(value: boolean) {
-  skipAccessGrants = value;
+  getGlobal()[SKIP_ACCESS_GRANTS_GLOBAL_KEY] = value;
+}
+
+export function skipAccessGrantsEnabled(): boolean {
+  return getGlobal()[SKIP_ACCESS_GRANTS_GLOBAL_KEY] === true;
 }
 
 type SharedRecordOptions = {
@@ -54,7 +68,7 @@ const getSharedRecordColumns = ({
       defaultValue:
         permissionSourceDefaultValue ??
         (async (table, insertObj) => {
-          if (!skipAccessGrants) {
+          if (!skipAccessGrantsEnabled()) {
             const user = new UserRepo().getUser();
             const db = getDb<AccessGrant>();
 
@@ -69,7 +83,7 @@ const getSharedRecordColumns = ({
           return new Reference(table.name, insertObj.id);
         }),
       addToQuery: async (qb, runAsSystem, operation) => {
-        if (runAsSystem || skipAccessGrants) {
+        if (runAsSystem || skipAccessGrantsEnabled()) {
           return;
         }
 
