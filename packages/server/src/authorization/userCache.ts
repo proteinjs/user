@@ -1,8 +1,11 @@
 import moment from 'moment';
 import { SessionDataCache } from '@proteinjs/server-api';
 import { getDbAsSystem } from '@proteinjs/db';
+import { Logger } from '@proteinjs/logger';
 import { User, tables, guestUser, USER_SESSION_CACHE_KEY } from '@proteinjs/user';
 import { DefaultAdminCredentials } from '../authentication/DefaultAdminCredentials';
+
+const logger = new Logger({ name: 'userCache' });
 
 export const userCache: SessionDataCache<User> = {
   key: USER_SESSION_CACHE_KEY,
@@ -23,8 +26,20 @@ export const userCache: SessionDataCache<User> = {
         };
         user = adminUser;
       } else {
-        user = await getDbAsSystem().get(tables.User, { email: userEmail.toLowerCase() });
-        delete (user as any)['password'];
+        const accountUser = await getDbAsSystem().get(tables.User, { email: userEmail.toLowerCase() });
+        if (accountUser) {
+          delete (accountUser as any)['password'];
+          user = accountUser;
+        } else {
+          // A session can outlive its account (row deleted, or a dev auto-login for a never-created
+          // email). Resolve it to the unauthenticated guest session — the client sees no
+          // authenticated user and re-logs. Throwing here escapes the per-request session-cache
+          // build as an unhandled rejection and downs the process.
+          logger.warn({
+            message: `Session references an account that does not exist; resolving as unauthenticated`,
+            obj: { sessionId, userEmail },
+          });
+        }
       }
     }
 
