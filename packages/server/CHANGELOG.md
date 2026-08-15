@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.7.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.6.0...@proteinjs/user-server@1.7.0) (2026-08-15)
+
+
+### Bug Fixes
+
+* missing-account session resolves to guest instead of downing the process ([711d591](https://github.com/proteinjs/user/commit/711d5917eb4ef034f6fbac24c4b00f6bc9c20d5e))
+
+
+### Features
+
+* /dev/login?email= — multi-user dev sessions with domain rail and auto-create ([a9b1f73](https://github.com/proteinjs/user/commit/a9b1f733635ab9c7482ee66f05c3ac8f2ac75148))
+
+
+
+
+
 # [1.6.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.5.4...@proteinjs/user-server@1.6.0) (2026-08-14)
 
 
