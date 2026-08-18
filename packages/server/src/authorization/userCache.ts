@@ -27,7 +27,15 @@ export const userCache: SessionDataCache<User> = {
         user = adminUser;
       } else {
         const accountUser = await getDbAsSystem().get(tables.User, { email: userEmail.toLowerCase() });
-        if (accountUser) {
+        if (accountUser && accountUser.status === 'deactivated') {
+          // The session half of the deactivation gate (login half in authenticate): the session
+          // cache is rebuilt per request, so a live session stops resolving the moment the
+          // account is deactivated — every request runs as the unauthenticated guest.
+          logger.warn({
+            message: `Session references a deactivated account; resolving as unauthenticated`,
+            obj: { sessionId, userEmail },
+          });
+        } else if (accountUser) {
           delete (accountUser as any)['password'];
           user = accountUser;
         } else {

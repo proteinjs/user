@@ -5,6 +5,7 @@ import { Table } from '@proteinjs/db';
 import { Invite, InviteTable } from './InviteTable';
 import { AccessInvite, AccessInviteTable } from './AccessInviteTable';
 import { RoleGrantEvent, RoleGrantEventTable } from './RoleGrantEventTable';
+import { UserStatusEvent, UserStatusEventTable } from './UserStatusEventTable';
 
 export const tables = {
   AccessGrant: new AccessGrantTable() as Table<AccessGrant>,
@@ -12,5 +13,6 @@ export const tables = {
   Invite: new InviteTable() as Table<Invite>,
   RoleGrantEvent: new RoleGrantEventTable() as Table<RoleGrantEvent>,
   User: new UserTable() as Table<User>,
+  UserStatusEvent: new UserStatusEventTable() as Table<UserStatusEvent>,
   Session: new SessionTable() as Table<Session>,
 };

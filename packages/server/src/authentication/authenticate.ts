@@ -32,5 +32,12 @@ export async function authenticate(email: string, password: string): Promise<tru
     return 'User name or password incorrect';
   }
 
+  // Deactivated accounts are refused a new session even with correct credentials; the session
+  // side of the same gate lives in userCache (deactivated sessions resolve as guest).
+  if (users[0].status === 'deactivated') {
+    logger.warn({ message: 'Refused login for deactivated account', obj: { email: email.toLowerCase() } });
+    return 'This account has been deactivated';
+  }
+
   return true;
 }

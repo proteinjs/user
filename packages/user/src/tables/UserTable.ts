@@ -11,6 +11,10 @@ import {
 import { Moment } from 'moment';
 import { USER_PERMISSIONS } from '../permissions';
 
+/** Account standings. The vocabulary is owned here; every status write flows through the SetUserStatus service. */
+export const USER_STATUSES = ['active', 'deactivated'] as const;
+export type UserStatus = (typeof USER_STATUSES)[number];
+
 export type User = Record & {
   name: string;
   email: string;
@@ -31,6 +35,17 @@ export type User = Record & {
    * @proteinjs/db-file depends on @proteinjs/user, so a user→file reference would be circular.
    */
   avatarFileId?: string | null;
+  /**
+   * Account standing. Written ONLY by the SetUserStatus service (audited per change). New rows
+   * default to 'active'; rows predating the column read null, which every gate treats as active —
+   * only an explicit 'deactivated' is refused (authentication and session resolution both gate on
+   * it in @proteinjs/user-server).
+   */
+  status?: UserStatus | null;
+  /** When the user asked for their account to be deleted. Written by the account-deletion flow only. */
+  deleteRequestedAt?: Moment | null;
+  /** When the grace window ends and the purge walker may erase the account. Written by the account-deletion flow only. */
+  purgeAfter?: Moment | null;
 };
 
 export class UserTable extends Table<User> {
@@ -56,7 +71,13 @@ export class UserTable extends Table<User> {
       update: { permission: USER_PERMISSIONS.users },
       delete: { permission: USER_PERMISSIONS.users },
     },
-    serviceProtectedColumns: ['roles'],
+    /**
+     * `roles` is written only by the Roles service; `status` only by the SetUserStatus service
+     * (both audited per change — a generic RPC write would let the stored state diverge from its
+     * audit trail). `deleteRequestedAt`/`purgeAfter` drive the account purge machinery and are
+     * written only by the server-side deletion flow — never through the generic RPC path.
+     */
+    serviceProtectedColumns: ['roles', 'status', 'deleteRequestedAt', 'purgeAfter'],
   };
   columns = withRecordColumns<User>({
     name: new StringColumn('name'),
@@ -74,5 +95,8 @@ export class UserTable extends Table<User> {
     invitedBy: new StringColumn('invited_by'),
     avatarEmoji: new StringColumn('avatar_emoji'),
     avatarFileId: new StringColumn('avatar_file_id'),
+    status: new StringColumn<UserStatus>('status', { defaultValue: async () => 'active' }, 16),
+    deleteRequestedAt: new DateTimeColumn('delete_requested_at'),
+    purgeAfter: new DateTimeColumn('purge_after'),
   });
 }
