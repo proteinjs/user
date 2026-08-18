@@ -36,6 +36,16 @@ export class Roles implements RolesService {
       throw new Error(`No user found for id: ${userId}`);
     }
 
+    // Machine grants live in the MachineAccount declaration and reconcile at boot — git history
+    // is their audit ledger, role_grant_event is the HUMAN ledger, and the two never interleave
+    // on one row. A runtime grant here would also just be reverted by the next boot.
+    if (user.isLoadedFromSource === true) {
+      throw new Error(
+        `'${user.email}' is a machine account: its roles are declared in code (its MachineAccount ` +
+          `declaration) and reverted to the declaration on every boot. Change the declaration instead.`
+      );
+    }
+
     const roles = user.roles ?? [];
     if (action === 'grant' ? roles.includes(role) : !roles.includes(role)) {
       // No change, no audit row: the trail records what happened, not what was re-asked.

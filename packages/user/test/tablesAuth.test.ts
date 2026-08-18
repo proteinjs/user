@@ -38,9 +38,15 @@ describe('user table auth shape', () => {
   });
 
   it(`service-protects roles and status (single write paths: the Roles and SetUserStatus
-      services) plus the deletion-machinery datetimes (written only by the server-side
-      deletion flow)`, () => {
-    expect(tables.User.auth?.serviceProtectedColumns).toEqual(['roles', 'status', 'deleteRequestedAt', 'purgeAfter']);
+      services), the deletion-machinery datetimes (written only by the server-side
+      deletion flow), and machine-account ownership (written only by the boot sync)`, () => {
+    expect(tables.User.auth?.serviceProtectedColumns).toEqual([
+      'roles',
+      'status',
+      'deleteRequestedAt',
+      'purgeAfter',
+      'isLoadedFromSource',
+    ]);
   });
 });
 

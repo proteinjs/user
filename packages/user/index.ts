@@ -1,5 +1,6 @@
 export * from './src/services/AccessInviteService';
 export * from './src/services/AccountDeletionService';
+export * from './src/services/MachineCredentialsService';
 export * from './src/services/RolesService';
 export * from './src/services/SetUserStatusService';
 export * from './src/services/SignupService';
@@ -17,6 +18,7 @@ export * from './src/tables/tables';
 export * from './src/routes';
 export * from './src/cacheKeys';
 export * from './src/permissions';
+export * from './src/MachineAccount';
 export * from './src/RolesCatalog';
 export * from './src/UserRepo';
 export * from './src/ScopedRecord';
