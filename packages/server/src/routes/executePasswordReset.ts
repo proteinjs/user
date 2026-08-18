@@ -3,7 +3,7 @@ import { getDbAsSystem } from '@proteinjs/db';
 import { routes, tables } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
 import moment from 'moment';
-import sha256 from 'crypto-js/sha256';
+import { PasswordHasher } from '../authentication/PasswordHasher';
 
 /**
  * Route handler for executing a password reset.
@@ -42,7 +42,7 @@ export const executePasswordReset: Route = {
     }
 
     // Update user's password
-    const hashedPassword = sha256(newPassword).toString();
+    const hashedPassword = await new PasswordHasher().hash(newPassword);
     await db.update(tables.User, {
       id: user.id,
       password: hashedPassword,

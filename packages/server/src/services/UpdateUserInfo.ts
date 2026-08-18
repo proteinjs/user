@@ -1,10 +1,10 @@
 import sharp from 'sharp';
 import heicDecode from 'heic-decode';
-import sha256 from 'crypto-js/sha256';
 import { getDbAsSystem } from '@proteinjs/db';
 import { FileStorage } from '@proteinjs/db-file';
 import { tables, User, UserRepo, UpdatePasswordResponse, UpdatedUser, UpdateUserInfoService } from '@proteinjs/user';
 import { EmailSender, getDefaultPasswordUpdatedEmailConfigFactory } from '@proteinjs/email-server';
+import { PasswordHasher } from '../authentication/PasswordHasher';
 
 export class UpdateUserInfo implements UpdateUserInfoService {
   /** Stored avatar photos are exactly this: cover-cropped square JPEG. */
@@ -37,10 +37,9 @@ export class UpdateUserInfo implements UpdateUserInfoService {
     const db = getDbAsSystem();
     const userId = new UserRepo().getUser().id;
 
-    // verify current password
-    const hashedCurrentPassword = sha256(currentPassword).toString();
+    // verify current password (format-discriminating: legacy sha256 rows verify too)
     const user = await db.get(tables.User, { id: userId });
-    if (hashedCurrentPassword !== user.password) {
+    if (!(await new PasswordHasher().verify(user.password, currentPassword))) {
       return {
         updated: false,
         error: `Invalid password`,
@@ -70,7 +69,7 @@ export class UpdateUserInfo implements UpdateUserInfoService {
     // If email is sent successfully,
     // hash and store new password
     try {
-      const hashedNewPassword = sha256(newPassword).toString();
+      const hashedNewPassword = await new PasswordHasher().hash(newPassword);
       await this.saveUserInfo({ password: hashedNewPassword });
     } catch (error: any) {
       return {

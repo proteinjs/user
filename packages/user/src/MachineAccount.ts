@@ -25,9 +25,9 @@ export const getMachineAccounts = (): MachineAccount[] =>
  * sessions killed, never deleted — when the declaration is removed. Git history of the
  * declaration is the machine-grant audit trail; the Roles service refuses machine targets.
  *
- * A `password` is deliberately NOT declarable: a fresh machine row has a NULL password and
- * `authenticate` matches `email + sha256(password)`, so "account exists" can never reach
- * "account can log in" without the explicit credential mint (`MachineCredentialsService`).
+ * A `password` is deliberately NOT declarable: a fresh machine row has a NULL password, which
+ * `authenticate`'s verify treats as matching no password at all, so "account exists" can never
+ * reach "account can log in" without the explicit credential mint (`MachineCredentialsService`).
  */
 export abstract class MachineAccount implements SourceRecordLoader<User> {
   /** Stable id, used ONLY when inserting into a fresh env — existing rows adopt by email. */

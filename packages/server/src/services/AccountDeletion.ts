@@ -1,4 +1,3 @@
-import sha256 from 'crypto-js/sha256';
 import moment, { Moment } from 'moment';
 import { Db, QueryBuilderFactory, Reference, getDbAsSystem } from '@proteinjs/db';
 import { Logger } from '@proteinjs/logger';
@@ -13,6 +12,7 @@ import {
   tables,
 } from '@proteinjs/user';
 import { DefaultAdminCredentials } from '../authentication/DefaultAdminCredentials';
+import { PasswordHasher } from '../authentication/PasswordHasher';
 import { AccountDeletionEmails } from '../emails/AccountDeletionEmails';
 import { SetUserStatus } from './SetUserStatus';
 
@@ -154,15 +154,14 @@ export class AccountDeletion implements AccountDeletionService {
       throw new Error('Account deletion requires a signed-in account.');
     }
 
-    const matched = await getDbAsSystem().query(tables.User, {
-      email: sessionUser.email.toLowerCase(),
-      password: sha256(password).toString(),
-    });
-    if (matched.length < 1) {
+    // Fetch by email only and verify in code (both stored formats). No rehash here — this
+    // method's contract is "throws with nothing written"; legacy rows migrate at login.
+    const user = await getDbAsSystem().get(tables.User, { email: sessionUser.email.toLowerCase() });
+    if (!user || !(await new PasswordHasher().verify(user.password, password))) {
       throw new Error('Password incorrect');
     }
 
-    return matched[0];
+    return user;
   }
 
   /**

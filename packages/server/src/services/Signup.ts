@@ -20,8 +20,8 @@ import {
   getDefaultInviteEmailConfigFactory,
   getDefaultSignupConfirmationEmailConfigFactory,
 } from '@proteinjs/email-server';
-import sha256 from 'crypto-js/sha256';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
+import { PasswordHasher } from '../authentication/PasswordHasher';
 
 /**
  * How long an invite link stays usable. Deliberately generous: a legitimate invite that gets
@@ -256,8 +256,8 @@ export class Signup implements SignupService {
   }
 
   /**
-   * Single owner of account-record creation: case-normalized existence check + sha256-hashed
-   * insert. Both doors into a user row go through here — the signup flow (`createUser`, which
+   * Single owner of account-record creation: case-normalized existence check + argon2id-hashed
+   * insert (PasswordHasher). Both doors into a user row go through here — the signup flow (`createUser`, which
    * layers invite validation and confirmation emails on top) and the dev-login bootstrap
    * (`devLogin`, which auto-creates missing same-domain test accounts). Not exposed as an RPC:
    * the service surface is the `SignupService` INTERFACE (ServiceRouter walks its declared
@@ -280,7 +280,7 @@ export class Signup implements SignupService {
     await db.insert(tables.User, {
       name: account.name,
       email,
-      password: sha256(account.password).toString(),
+      password: await new PasswordHasher().hash(account.password),
       emailVerified: account.emailVerified,
       roles: [],
       invitedBy: account.invitedBy,

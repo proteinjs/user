@@ -1,6 +1,6 @@
-import sha256 from 'crypto-js/sha256';
 import { getDbAsSystem } from '@proteinjs/db';
 import { tables } from '@proteinjs/user';
+import { PasswordHasher } from '../src/authentication/PasswordHasher';
 import { devLogin } from '../src/routes/devLogin';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 
@@ -118,11 +118,12 @@ describe('devLogin route', () => {
     expect(outcome.sessionSaved).toBe(true);
     expect(outcome.redirect).toBe('/');
 
-    // Created through the normal signup creation path: sha256-hashed 'test' password (the seeded
-    // test-user convention — interactive login with password 'test' works too), no roles.
+    // Created through the normal signup creation path: argon2id-hashed 'test' password (the
+    // seeded test-user convention — interactive login with password 'test' works too), no roles.
     const created = await getUserRow('agent3@test.local');
     expect(created).toBeDefined();
-    expect(created!.password).toBe(sha256('test').toString());
+    expect(created!.password.startsWith('$argon2id$')).toBe(true);
+    expect(await new PasswordHasher().verify(created!.password, 'test')).toBe(true);
     expect(created!.roles).toEqual([]);
     expect(created!.name).toBeTruthy();
   });
