@@ -74,6 +74,17 @@ export function isScopedTable(table: Table<any>) {
   return !!scopeColumn;
 }
 
+/** Declares a scoped table whose rows deliberately SURVIVE account purge (billing ledger,
+ *  ops records — casing §7.2/§7.4). Rows become pseudonymous when the user row purges
+ *  (scope keeps the bare 36-char id). Default is PURGE: a new scoped table is erased unless
+ *  it declares otherwise — the safe default for a privacy obligation. */
+export interface AccountPurgePolicy {
+  readonly retainOnAccountPurge: true;
+}
+export function retainedOnAccountPurge(table: Table<any>): boolean {
+  return (table as Table<any> & Partial<AccountPurgePolicy>).retainOnAccountPurge === true;
+}
+
 /**
  * Wrapper function to add default ScopedRecord columns to your table's columns.
  *
