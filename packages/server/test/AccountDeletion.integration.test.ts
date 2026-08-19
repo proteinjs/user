@@ -126,6 +126,8 @@ describe('AccountDeletion — deactivation, manifest, resume, cancel-by-login', 
         loggedInAs = loginEmail;
         callback();
       },
+      // establishSession commits the session row before the route responds.
+      session: { save: (callback: () => void) => callback() },
     };
     await login.onRequest(request, response);
     return { loggedInAs, sent };

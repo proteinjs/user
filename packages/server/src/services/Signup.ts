@@ -55,6 +55,18 @@ export const getDefaultInviteConfigFactory = (): DefaultInviteConfigFactory => {
   return factory || defaultFactory;
 };
 
+/**
+ * `createUser`'s outcome, for the signup route's eyes only (it never crosses the wire): the
+ * route establishes a session on 'created' and must NOT on 'exists' — auto-login must never
+ * hand out a session for an account the caller didn't just create. The response body stays
+ * identical either way (existence is reported to the mailbox owner by email, not the caller).
+ */
+export type CreateUserResult = {
+  outcome: 'created' | 'exists';
+  /** The account email, lowercased — resolved from the invite when a token was provided. */
+  email: string;
+};
+
 export class Signup implements SignupService {
   public serviceMetadata = {
     auth: {
@@ -72,7 +84,13 @@ export class Signup implements SignupService {
     },
   };
 
-  async createUser(user: UserSignup, token?: string): Promise<void> {
+  /**
+   * The signup flow's account creation + notification emails. Not RPC-reachable (deliberately
+   * absent from the SignupService interface): its caller is the `routes.signup` ROUTE, which
+   * establishes the session (auto-login) from this result — a request-level concern services
+   * never see.
+   */
+  async createUser(user: UserSignup, token?: string): Promise<CreateUserResult> {
     const logger = new Logger({ name: 'Signup.createUser' });
     const db = getDbAsSystem();
 
@@ -116,7 +134,7 @@ export class Signup implements SignupService {
           ...config.options,
         });
       }
-      return;
+      return { outcome: 'exists', email };
     }
 
     const { text, html } = config.getNewUserEmailContent();
@@ -128,6 +146,7 @@ export class Signup implements SignupService {
       ...config.options,
     });
     logger.info({ message: `Created user`, obj: { email } });
+    return { outcome: 'created', email };
   }
 
   async sendInvite(email: string): Promise<SendInviteResponse> {

@@ -1,6 +1,7 @@
 import { Route } from '@proteinjs/server-api';
 import { routes } from '@proteinjs/user';
 import { authenticate } from '../authentication/authenticate';
+import { establishSession } from '../authentication/establishSession';
 import { AccountDeletion } from '../services/AccountDeletion';
 
 export const login: Route = {
@@ -44,9 +45,7 @@ export const login: Route = {
       return;
     }
 
-    await new Promise((resolve, reject) => {
-      request.login(credentials.email, resolve);
-    });
+    await establishSession(request, credentials.email);
     response.send({});
   },
 };

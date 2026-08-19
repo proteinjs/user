@@ -1,5 +1,6 @@
 import { Route } from '@proteinjs/server-api';
 import { Logger } from '@proteinjs/logger';
+import { establishSession } from '../authentication/establishSession';
 import { Signup } from '../services/Signup';
 
 const logger = new Logger({ name: 'devLogin' });
@@ -61,12 +62,9 @@ export const devLogin: Route = {
       logger.info({ message: 'Dev auto-login created missing test account', obj: { email } });
     }
 
-    await new Promise((resolve) => request.login(email, resolve));
-    // Explicit save before redirecting: with a DB-backed session store, save-on-response-end
-    // races the redirected GET / — the follow-up request can read the session row before the
-    // write commits and render the login page (observed: first /dev/login load lands on /login,
-    // second succeeds). Awaiting the store write closes the race.
-    await new Promise((resolve) => request.session.save(resolve));
+    // establishSession commits the session row before the redirect — the redirected GET / must
+    // never read the store ahead of the write (observed: first /dev/login load landed on /login).
+    await establishSession(request, email);
     logger.info({ message: 'Dev auto-login session established', obj: { email } });
     response.redirect('/');
   },

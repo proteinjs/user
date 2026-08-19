@@ -16,18 +16,19 @@ export type InitializeSignupResponse = {
   invite?: Omit<Invite, 'token'>;
 };
 
+/** The signup route's request body (`routes.signup`). `email` is required if no token is provided. */
 export type UserSignup = Pick<User, 'name' | 'password'> & {
   email?: User['email'];
 };
 
+/**
+ * Account CREATION is not on this interface: signing up establishes a session in the same
+ * request (auto-login), and session establishment is a request-level concern services never
+ * see — it lives on the `routes.signup` route (user-server `src/routes/signup.ts`), beside
+ * login. This service owns the rest of the signup flow: pre-submit initialization and invite
+ * management.
+ */
 export interface SignupService extends Service {
-  /**
-   * Creates a new user account.
-   * @param {UserSignup} user - User signup information. `user.email` is required if no token is provided.
-   * @param {string} [token] - Optional invite token. If provided, the corresponding invite record will be used to get the user's email.
-   * @returns {Promise<void>}
-   */
-  createUser(user: UserSignup, token?: string): Promise<void>;
   /** Creates invite record and sends email to the invited user.
    * If invite already exists for the email, it will update the existing record with a new token and send a new email.
    */

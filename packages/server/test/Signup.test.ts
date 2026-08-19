@@ -61,9 +61,11 @@ describe('Signup service auth', () => {
     expect(canAccess('revokeInvite')).toBe(true);
   });
 
-  it('keeps the signup flow itself open (createUser / initializeSignup)', () => {
+  it('keeps the pre-submit signup flow open (initializeSignup)', () => {
+    // Account creation itself is no longer RPC-reachable — it moved to the signup ROUTE
+    // (src/routes/signup.ts, covered by SignupRoute.test.ts), which establishes the session
+    // in the same request (auto-login).
     setUser([]);
-    expect(canAccess('createUser')).toBe(true);
     expect(canAccess('initializeSignup')).toBe(true);
   });
 });
