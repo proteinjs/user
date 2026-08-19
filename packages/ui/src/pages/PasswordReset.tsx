@@ -25,6 +25,7 @@ const PasswordResetComponent: React.FC = () => {
   const [token] = useState(resetTokenFromUrl);
   const [validating, setValidating] = useState(!!token);
   const [invalid, setInvalid] = useState(!token);
+  const [email, setEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | undefined>();
@@ -39,8 +40,13 @@ const PasswordResetComponent: React.FC = () => {
     let active = true;
     new AuthApi()
       .validateResetToken(token)
-      .then((errorMessage) => {
-        if (active && errorMessage) {
+      .then((result) => {
+        if (!active) {
+          return;
+        }
+        if (result.valid) {
+          setEmail(result.email);
+        } else {
           setInvalid(true);
         }
       })
@@ -118,6 +124,10 @@ const PasswordResetComponent: React.FC = () => {
       </Helmet>
       <AuthLayout title='Choose a new password'>
         <form onSubmit={onSubmit} noValidate>
+          {/* The account the reset is for, read-only and tagged `username`: without an
+              identifier field, password managers can't associate the new password with the
+              stored credential (read-only, not disabled — managers ignore disabled inputs). */}
+          <AuthTextField label='Email' value={email} type='email' autoComplete='username' readOnly />
           <AuthTextField
             label='New password'
             value={newPassword}

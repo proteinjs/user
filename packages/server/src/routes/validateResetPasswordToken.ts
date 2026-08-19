@@ -34,6 +34,10 @@ export const validateResetPasswordToken: Route = {
       return;
     }
 
-    response.status(200).send({ isValid: true });
+    // The account email rides the VALID response only: the reset page renders it as the
+    // read-only `autocomplete="username"` field so password managers associate the updated
+    // password with the stored credential. The token was delivered to this very inbox, so a
+    // valid-token holder learns nothing new; invalid/expired verdicts stay email-free.
+    response.status(200).send({ isValid: true, email: user.email });
   },
 };

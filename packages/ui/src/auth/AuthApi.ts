@@ -64,16 +64,22 @@ export class AuthApi {
     }
   }
 
-  /** Resolves with an error message when the token is invalid; undefined when it's valid. */
-  async validateResetToken(token: string): Promise<string | undefined> {
+  /**
+   * A valid token resolves with the account email the reset is for — the page renders it as
+   * the read-only `autocomplete="username"` field so password managers can associate the
+   * updated password with the stored credential.
+   */
+  async validateResetToken(token: string): Promise<{ valid: true; email: string } | { valid: false; message: string }> {
     const response = await fetch(`${routes.validateResetToken.path}?token=${token}`, {
       method: routes.validateResetToken.method,
       credentials: 'same-origin',
     });
     const body = await response.json();
     if (!body.isValid) {
-      return body.message || 'Invalid or expired token';
+      return { valid: false, message: body.message || 'Invalid or expired token' };
     }
+
+    return { valid: true, email: body.email };
   }
 
   async executePasswordReset(token: string, newPassword: string): Promise<void> {

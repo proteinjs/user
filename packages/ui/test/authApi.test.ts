@@ -61,14 +61,28 @@ describe('AuthApi.initiatePasswordReset', () => {
 });
 
 describe('AuthApi.validateResetToken', () => {
-  it('returns undefined for a valid token', async () => {
-    mockFetch({ body: { isValid: true } });
-    await expect(new AuthApi().validateResetToken('tok')).resolves.toBeUndefined();
+  it('resolves valid WITH the account email the reset is for (the form renders it as the identifier)', async () => {
+    mockFetch({ body: { isValid: true, email: 'ada@example.com' } });
+    await expect(new AuthApi().validateResetToken('tok')).resolves.toEqual({
+      valid: true,
+      email: 'ada@example.com',
+    });
   });
 
-  it('returns the server message for an invalid token', async () => {
+  it('resolves invalid with the server message', async () => {
     mockFetch({ body: { isValid: false, message: 'Token expired' } });
-    await expect(new AuthApi().validateResetToken('tok')).resolves.toBe('Token expired');
+    await expect(new AuthApi().validateResetToken('tok')).resolves.toEqual({
+      valid: false,
+      message: 'Token expired',
+    });
+  });
+
+  it('falls back to a generic message when the server sends none', async () => {
+    mockFetch({ body: { isValid: false } });
+    await expect(new AuthApi().validateResetToken('tok')).resolves.toEqual({
+      valid: false,
+      message: 'Invalid or expired token',
+    });
   });
 });
 
