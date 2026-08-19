@@ -21,8 +21,11 @@ describe('auth pages', () => {
     // Real submit semantics: Enter submits the form.
     expect(html).toContain('type="submit"');
     // Mobile keyboards + autofill: proper autocomplete tokens (HTML attribute names are
-    // case-insensitive; SSR emits the camelCase form).
-    expect(html.toLowerCase()).toContain('autocomplete="email"');
+    // case-insensitive; SSR emits the camelCase form). The identifier field is tagged
+    // `username` — the token password managers fill from the stored credential — while
+    // type="email" keeps the email keyboard.
+    expect(html.toLowerCase()).toContain('autocomplete="username"');
+    expect(html.toLowerCase()).toContain('type="email"');
     expect(html.toLowerCase()).toContain('autocomplete="current-password"');
   });
 
@@ -32,6 +35,8 @@ describe('auth pages', () => {
     expect(html).toContain('Reset your password');
     expect(html).toContain('Send reset link');
     expect(html).toContain('href="/login"');
+    // Same identifier token as login, so the password manager fills the stored username here.
+    expect(html.toLowerCase()).toContain('autocomplete="username"');
   });
 
   it('password reset without a token renders the invalid-link state, never the form', () => {

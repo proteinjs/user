@@ -25,6 +25,7 @@ const SignupComponent: React.FC = () => {
   const [initializationError, setInitializationError] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | undefined>();
@@ -35,8 +36,13 @@ const SignupComponent: React.FC = () => {
     getSignupService()
       .initializeSignup(token || undefined)
       .then((response) => {
-        if (active && !response.isReady && response.error) {
+        if (!active) {
+          return;
+        }
+        if (!response.isReady && response.error) {
           setInitializationError(response.error);
+        } else if (response.invite) {
+          setInviteEmail(response.invite.email);
         }
       })
       .catch(() => {
@@ -111,13 +117,20 @@ const SignupComponent: React.FC = () => {
       <AuthLayout title='Create your account'>
         <form onSubmit={onSubmit} noValidate>
           <AuthTextField label='Name' value={name} onChange={setName} autoComplete='name' disabled={busy} />
-          {!token && (
+          {token ? (
+            // The invite fixes the email; render it read-only, tagged as the username. Without
+            // an email field here, password managers captured the NAME field as the saved
+            // credential's username — which then autofilled the login email field and failed.
+            <AuthTextField label='Email' value={inviteEmail} type='email' autoComplete='username' readOnly />
+          ) : (
+            // 'username' (not 'email'): this is the credential identifier password managers
+            // save and fill; type='email' still gives the email keyboard.
             <AuthTextField
               label='Email'
               value={email}
               onChange={setEmail}
               type='email'
-              autoComplete='email'
+              autoComplete='username'
               disabled={busy}
             />
           )}

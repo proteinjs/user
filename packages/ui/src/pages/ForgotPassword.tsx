@@ -50,12 +50,14 @@ const ForgotPasswordComponent: React.FC = () => {
         subtitle={`Enter your email and we'll send you a link to reset your password.`}
       >
         <form onSubmit={onSubmit} noValidate>
+          {/* Same identifier token as login ('username'), so the password manager fills the
+              stored username here too. */}
           <AuthTextField
             label='Email'
             value={email}
             onChange={setEmail}
             type='email'
-            autoComplete='email'
+            autoComplete='username'
             disabled={busy}
           />
           <AuthFormError message={error} />

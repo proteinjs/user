@@ -35,12 +35,14 @@ const LoginComponent: React.FC = () => {
       </Helmet>
       <AuthLayout title='Log in'>
         <form onSubmit={onSubmit} noValidate>
+          {/* 'username' (not 'email'): this is the credential identifier password managers
+              fill from the saved login; type='email' still gives the email keyboard. */}
           <AuthTextField
             label='Email'
             value={email}
             onChange={setEmail}
             type='email'
-            autoComplete='email'
+            autoComplete='username'
             disabled={busy}
           />
           <AuthTextField
