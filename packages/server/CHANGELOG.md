@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.9.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.8.0...@proteinjs/user-server@1.9.0) (2026-08-19)
+
+
+### Bug Fixes
+
+* one owner of session regeneration - passport 0.6's login ([4710711](https://github.com/proteinjs/user/commit/47107112e5903ec52e5a04cb77ba1a4827092c5b))
+* regenerate the session id on privilege change (session fixation) ([87c35d9](https://github.com/proteinjs/user/commit/87c35d925f0362ee950f07945df3e4821f8d4ee6))
+* the password-reset form renders the account email — password managers had no identifier to update the credential by ([456176a](https://github.com/proteinjs/user/commit/456176accf2960461e1f554e7a20e62ee2d0f08f))
+
+
+### Features
+
+* auto-login after signup — the signup request now establishes the session ([c505e67](https://github.com/proteinjs/user/commit/c505e6742f9022b6eca23a42c2599e76009f299a))
+
+
+
+
+
 # [1.8.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.7.0...@proteinjs/user-server@1.8.0) (2026-08-19)
 
 

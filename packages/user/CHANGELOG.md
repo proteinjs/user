@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.10.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.9.0...@proteinjs/user@1.10.0) (2026-08-19)
+
+
+### Bug Fixes
+
+* anchor skip-access-grants state on globalThis (duplicate-module-instance class) ([5faa559](https://github.com/proteinjs/user/commit/5faa5592fbafb27a2193d78f892113ab5aa8940c))
+
+
+### Features
+
+* auto-login after signup — the signup request now establishes the session ([c505e67](https://github.com/proteinjs/user/commit/c505e6742f9022b6eca23a42c2599e76009f299a))
+
+
+
+
+
 # [1.9.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.8.0...@proteinjs/user@1.9.0) (2026-08-19)
 
 

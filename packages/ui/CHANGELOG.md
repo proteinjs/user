@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.6.0](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.5.1...@proteinjs/user-ui@1.6.0) (2026-08-19)
+
+
+### Bug Fixes
+
+* invite signup renders the invite email — password managers were saving the name as the username ([918dd98](https://github.com/proteinjs/user/commit/918dd9845627d18349b2d3debff79d3064ecf05a))
+* the password-reset form renders the account email — password managers had no identifier to update the credential by ([456176a](https://github.com/proteinjs/user/commit/456176accf2960461e1f554e7a20e62ee2d0f08f))
+
+
+### Features
+
+* auto-login after signup — the signup request now establishes the session ([c505e67](https://github.com/proteinjs/user/commit/c505e6742f9022b6eca23a42c2599e76009f299a))
+
+
+
+
+
 ## [1.5.1](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.5.0...@proteinjs/user-ui@1.5.1) (2026-08-19)
 
 **Note:** Version bump only for package @proteinjs/user-ui
