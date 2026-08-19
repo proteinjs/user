@@ -94,8 +94,9 @@ export class DbSessionStore extends Store {
   }
 
   /**
-   * Does not get called since request.logout is broken
-   * See logout.ts
+   * Called by express-session whenever a session id is retired — most notably from
+   * `session.regenerate` inside passport's login (fixation rotation) and logout (see logout.ts):
+   * the old id's row is deleted, which also disconnects its sockets (SocketIOSessionWatcher).
    */
   destroy = (sessionId: string, cb?: (error?: any) => void) => {
     (async () => {

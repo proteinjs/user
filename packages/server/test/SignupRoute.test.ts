@@ -38,6 +38,7 @@ import { getDbAsSystem } from '@proteinjs/db';
 import { SourceRepository } from '@proteinjs/reflection';
 import { tables } from '@proteinjs/user';
 import { signup } from '../src/routes/signup';
+import { createPassportRequest } from './passportSessionHarness';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 
 const testEnv = new UserServerTestEnvironment();
@@ -54,10 +55,12 @@ const setInviteConfig = (factories: unknown[]) => {
 type RouteOutcome = {
   loggedInAs?: string;
   /**
-   * 'regenerate' / 'login' / 'save' in call order. The full contract of session establishment:
-   * regenerate FIRST (a fresh session id on privilege change — passport 0.4's req.login does
-   * NOT regenerate, so an attacker-planted pre-auth sid would otherwise survive signup/login:
-   * session fixation), then login, then save (the row must commit before the response).
+   * 'regenerate' / 'login' / 'save' in call order — recorded by the REAL passport 0.6 login
+   * machinery (see passportSessionHarness): regenerate FIRST (a fresh session id on privilege
+   * change, so an attacker-planted pre-auth sid never survives signup/login: session fixation),
+   * then the bind of the account onto the fresh session, then save (the row must commit before
+   * the response). Exactly one of each — a wrapper-level regenerate or save around
+   * `request.login` would double up and break the single-owner contract.
    */
   sessionEvents: string[];
   status?: number;
@@ -65,25 +68,8 @@ type RouteOutcome = {
 };
 
 const invokeSignup = async (body: Record<string, unknown>): Promise<RouteOutcome> => {
-  const outcome: RouteOutcome = { sessionEvents: [] };
-  const request = {
-    body,
-    login: (email: string, done: () => void) => {
-      outcome.loggedInAs = email;
-      outcome.sessionEvents.push('login');
-      done();
-    },
-    session: {
-      regenerate: (done: () => void) => {
-        outcome.sessionEvents.push('regenerate');
-        done();
-      },
-      save: (done: () => void) => {
-        outcome.sessionEvents.push('save');
-        done();
-      },
-    },
-  };
+  const { request, events } = await createPassportRequest({ body });
+  const outcome: RouteOutcome = { sessionEvents: events };
   const response = {
     status(code: number) {
       outcome.status = code;
@@ -94,6 +80,8 @@ const invokeSignup = async (body: Record<string, unknown>): Promise<RouteOutcome
     },
   };
   await signup.onRequest(request as never, response as never);
+  // The OUTCOME of establishment: the account email bound onto the (post-regeneration) session.
+  outcome.loggedInAs = request.session.passport?.user;
   return outcome;
 };
 

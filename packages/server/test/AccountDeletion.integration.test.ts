@@ -9,6 +9,7 @@ import { AccessGrant, ManifestGrant, User, UserRepo, guestUser, tables } from '@
 import { AccountDeletion } from '../src/services/AccountDeletion';
 import { authenticate } from '../src/authentication/authenticate';
 import { login } from '../src/routes/login';
+import { createPassportRequest } from './passportSessionHarness';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 
 const testEnv = new UserServerTestEnvironment();
@@ -110,10 +111,13 @@ describe('AccountDeletion — deactivation, manifest, resume, cancel-by-login', 
     { id: outbound2.id, principal: userB.id, resource: r2, resourceTable: RESOURCE_TABLE, accessLevel: 'write' },
   ];
 
-  /** Drive the real login route with a fake request/response pair. */
+  /**
+   * Drive the real login route over REAL passport login machinery (passportSessionHarness):
+   * establishSession regenerates the id (fixation) and commits the session row before the route
+   * responds — both live inside passport's `request.login` now; ordering is pinned by
+   * SignupRoute.test.ts.
+   */
   const invokeLogin = async (email: string, password: string) => {
-    let loggedInAs: string | undefined;
-    let regenerated = false;
     let sent: any;
     const response: any = {
       send: (body: any) => {
@@ -121,24 +125,13 @@ describe('AccountDeletion — deactivation, manifest, resume, cancel-by-login', 
       },
       status: () => response,
     };
-    const request: any = {
-      body: { email, password },
-      login: (loginEmail: string, callback: () => void) => {
-        loggedInAs = loginEmail;
-        callback();
-      },
-      // establishSession regenerates the id (fixation) and commits the session row before the
-      // route responds; ordering is pinned by SignupRoute.test.ts.
-      session: {
-        regenerate: (callback: () => void) => {
-          regenerated = true;
-          callback();
-        },
-        save: (callback: () => void) => callback(),
-      },
-    };
+    const { request, events } = await createPassportRequest({ body: { email, password } });
     await login.onRequest(request, response);
-    return { loggedInAs, regenerated, sent };
+    return {
+      loggedInAs: request.session.passport?.user as string | undefined,
+      regenerated: events.includes('regenerate'),
+      sent,
+    };
   };
 
   it('the service door admits any signed-in account and refuses guests', () => {
