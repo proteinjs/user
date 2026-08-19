@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.8.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.7.0...@proteinjs/user-server@1.8.0) (2026-08-19)
+
+
+### Bug Fixes
+
+* login response never carries internal error detail — cancel-restore failures answer a generic message and log loudly (no account-state oracle at the login boundary) ([8a60d5f](https://github.com/proteinjs/user/commit/8a60d5f003104821acd5d04c1be0ee003552281a))
+
+
+### Features
+
+* account deletion — deactivation + manifest, cancel-by-login, purge-retention seam, deletion emails ([6a309c3](https://github.com/proteinjs/user/commit/6a309c32211ad66453cdf3f1b5f558f69ddb883d))
+* machine accounts as source records — user-table sync wiring, MachineAccount base, deactivation watcher, credential minting ([93deaa4](https://github.com/proteinjs/user/commit/93deaa44715e484fe98162718048913f5226196a))
+* password hashing upgraded to argon2id with transparent per-login migration ([a137d6c](https://github.com/proteinjs/user/commit/a137d6c98f5cf750003046a4e0692c766c53f611))
+* user account standing — status/deletion columns, deactivation auth gate, admin SetUserStatus service ([ca4d6f2](https://github.com/proteinjs/user/commit/ca4d6f284b1edcce8717f330988215c4507eb768))
+
+
+
+
+
 # [1.7.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.6.0...@proteinjs/user-server@1.7.0) (2026-08-15)
 
 
