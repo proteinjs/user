@@ -20,6 +20,7 @@ const ENV_EMAIL = 'dev@test.local';
 
 type RouteOutcome = {
   loggedInAs?: string;
+  sessionRegenerated: boolean;
   sessionSaved: boolean;
   status?: number;
   body?: unknown;
@@ -27,7 +28,7 @@ type RouteOutcome = {
 };
 
 const invokeDevLogin = async (query?: Record<string, unknown>): Promise<RouteOutcome> => {
-  const outcome: RouteOutcome = { sessionSaved: false };
+  const outcome: RouteOutcome = { sessionRegenerated: false, sessionSaved: false };
   const request = {
     query,
     login: (email: string, done: () => void) => {
@@ -35,6 +36,12 @@ const invokeDevLogin = async (query?: Record<string, unknown>): Promise<RouteOut
       done();
     },
     session: {
+      // establishSession's full contract (regenerate → login → save); ordering is pinned by
+      // SignupRoute.test.ts — here we assert the dev door INHERITS it.
+      regenerate: (done: () => void) => {
+        outcome.sessionRegenerated = true;
+        done();
+      },
       save: (done: () => void) => {
         outcome.sessionSaved = true;
         done();
@@ -94,6 +101,7 @@ describe('devLogin route', () => {
     const outcome = await invokeDevLogin();
 
     expect(outcome.loggedInAs).toBe(ENV_EMAIL);
+    expect(outcome.sessionRegenerated).toBe(true); // fresh id on privilege change (fixation)
     expect(outcome.sessionSaved).toBe(true);
     expect(outcome.redirect).toBe('/');
     expect(outcome.status).toBeUndefined();

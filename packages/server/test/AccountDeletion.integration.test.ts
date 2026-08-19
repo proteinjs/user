@@ -113,6 +113,7 @@ describe('AccountDeletion — deactivation, manifest, resume, cancel-by-login', 
   /** Drive the real login route with a fake request/response pair. */
   const invokeLogin = async (email: string, password: string) => {
     let loggedInAs: string | undefined;
+    let regenerated = false;
     let sent: any;
     const response: any = {
       send: (body: any) => {
@@ -126,11 +127,18 @@ describe('AccountDeletion — deactivation, manifest, resume, cancel-by-login', 
         loggedInAs = loginEmail;
         callback();
       },
-      // establishSession commits the session row before the route responds.
-      session: { save: (callback: () => void) => callback() },
+      // establishSession regenerates the id (fixation) and commits the session row before the
+      // route responds; ordering is pinned by SignupRoute.test.ts.
+      session: {
+        regenerate: (callback: () => void) => {
+          regenerated = true;
+          callback();
+        },
+        save: (callback: () => void) => callback(),
+      },
     };
     await login.onRequest(request, response);
-    return { loggedInAs, sent };
+    return { loggedInAs, regenerated, sent };
   };
 
   it('the service door admits any signed-in account and refuses guests', () => {
@@ -360,10 +368,11 @@ describe('AccountDeletion — deactivation, manifest, resume, cancel-by-login', 
     testEnv.actAs(userA);
     await new AccountDeletion().requestDeletion(PASSWORD_A);
 
-    const { loggedInAs, sent } = await invokeLogin(userA.email, PASSWORD_A);
+    const { loggedInAs, regenerated, sent } = await invokeLogin(userA.email, PASSWORD_A);
 
     expect(sent).toEqual({});
     expect(loggedInAs).toBe(userA.email);
+    expect(regenerated).toBe(true); // the login door inherits fresh-id-on-privilege-change
     expect((await userRow(userA.id)).status).toBe('active');
     expect(await grantRows()).toHaveLength(6);
     expect(await deletionRow(userA.id)).toBeFalsy();

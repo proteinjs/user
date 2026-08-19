@@ -53,7 +53,12 @@ const setInviteConfig = (factories: unknown[]) => {
 
 type RouteOutcome = {
   loggedInAs?: string;
-  /** 'login' / 'save' in call order — the session write must commit before the response. */
+  /**
+   * 'regenerate' / 'login' / 'save' in call order. The full contract of session establishment:
+   * regenerate FIRST (a fresh session id on privilege change — passport 0.4's req.login does
+   * NOT regenerate, so an attacker-planted pre-auth sid would otherwise survive signup/login:
+   * session fixation), then login, then save (the row must commit before the response).
+   */
   sessionEvents: string[];
   status?: number;
   body?: { error?: string };
@@ -69,6 +74,10 @@ const invokeSignup = async (body: Record<string, unknown>): Promise<RouteOutcome
       done();
     },
     session: {
+      regenerate: (done: () => void) => {
+        outcome.sessionEvents.push('regenerate');
+        done();
+      },
       save: (done: () => void) => {
         outcome.sessionEvents.push('save');
         done();
@@ -118,9 +127,9 @@ describe('signup route — auto-login after signup', () => {
 
     expect(outcome.body).toEqual({});
     expect(outcome.loggedInAs).toBe('signup.plain@test.local');
-    // The session row must be committed before the response goes out (login, then save) —
-    // otherwise the client's follow-up navigation races the store write and lands on /login.
-    expect(outcome.sessionEvents).toEqual(['login', 'save']);
+    // Fresh id on privilege change (fixation), then login, then commit-before-response (the
+    // client's follow-up navigation must never race the store write and land on /login).
+    expect(outcome.sessionEvents).toEqual(['regenerate', 'login', 'save']);
 
     const created = await getUserRow('signup.plain@test.local');
     expect(created).toBeDefined();
@@ -147,7 +156,7 @@ describe('signup route — auto-login after signup', () => {
 
     expect(outcome.body).toEqual({});
     expect(outcome.loggedInAs).toBe('invited@test.local');
-    expect(outcome.sessionEvents).toEqual(['login', 'save']);
+    expect(outcome.sessionEvents).toEqual(['regenerate', 'login', 'save']);
 
     const created = await getUserRow('invited@test.local');
     expect(created).toBeDefined();
