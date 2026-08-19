@@ -1,4 +1,3 @@
-import sha256 from 'crypto-js/sha256';
 import moment from 'moment';
 
 /**
@@ -121,7 +120,10 @@ describe('signup route — auto-login after signup', () => {
 
     const created = await getUserRow('signup.plain@test.local');
     expect(created).toBeDefined();
-    expect(created!.password).toBe(sha256('pw-plain-1').toString());
+    // At-rest contract: argon2id from the first write (the per-login-migration KDF stores
+    // new credentials as argon2id directly — never a legacy sha256 row).
+    expect(created!.password).toMatch(/^\$argon2id\$/);
+    expect(created!.password).not.toContain('pw-plain-1');
     expect(created!.emailVerified).toBe(false);
     expect(created!.roles).toEqual([]);
     expect(sendEmail).toHaveBeenCalledTimes(1); // welcome email still goes out
