@@ -140,6 +140,33 @@ export class AccessGrantTable extends Table<AccessGrant> {
             value: adminResourceSubQuery,
           },
         ]);
+
+        // OWNER CEILING on the DELETE side (owner-immutability, defense-in-depth with the
+        // ThoughtSharing service). The scope above lets a caller delete any grant on a resource they
+        // ADMIN — which includes the resource OWNER's own grant. Without this, a merely-admin
+        // collaborator skips ThoughtSharing entirely and calls getDb().delete(AccessGrant, {principal:
+        // ownerId, resource, resourceTable}) directly through the generic DbService, deleting the
+        // owner's grant. That is strictly worse than a revoke: conferring a replacement owner itself
+        // requires an already-existing owner (the insert ceiling), so the thought is orphaned with no
+        // recovery path. Mirror the insert ceiling on the delete side — deleting an OWNER grant
+        // requires the caller to ALREADY hold owner on that resource. Non-owner grants are unaffected;
+        // an owner-holder (already top of the ladder) retains owner-grant management for an atomic
+        // transfer. Scoped to delete — read visibility is deliberately unchanged.
+        if (operation === 'delete') {
+          const ownerResourceSubQuery = new QueryBuilder(new AccessGrantTable().name);
+          ownerResourceSubQuery.select({ fields: ['resource'] });
+          ownerResourceSubQuery.condition({ field: 'principal', operator: '=', value: currentUser.id });
+          ownerResourceSubQuery.condition({ field: 'accessLevel', operator: '=', value: 'owner' });
+
+          qb.or([
+            { field: 'accessLevel', operator: 'IN', value: ['read', 'write', 'admin'] },
+            {
+              field: 'resource',
+              operator: 'IN',
+              value: ownerResourceSubQuery,
+            },
+          ]);
+        }
       },
     }),
   });
