@@ -1,7 +1,19 @@
 import { UserRepo } from '../src/UserRepo';
 
 import moment from 'moment';
-import { Db, DbDriver, getDb, getDbAsSystem, QueryBuilderFactory, Reference, StringColumn, Table } from '@proteinjs/db';
+import {
+  Db,
+  DbDriver,
+  getDb,
+  getDbAsSystem,
+  ObjectColumn,
+  QueryBuilderFactory,
+  Reference,
+  ReferenceArray,
+  ReferenceArrayColumn,
+  StringColumn,
+  Table,
+} from '@proteinjs/db';
 import { KnexDriver } from '@proteinjs/db-driver-knex';
 import { getSharedDb, getSharedDbAsSystem, SharedRecord, withSharedRecordColumns } from '../src/SharedRecord';
 import { AccessGrant, AccessGrantTable } from '../src/tables/AccessGrantTable';
@@ -31,6 +43,10 @@ import { tables } from '../src/tables/tables';
 
 export interface SharedItem extends SharedRecord {
   name: string;
+  /** ReferenceArrayColumn — exercises the updateArrayMembership write shape. */
+  related?: ReferenceArray<SharedItem>;
+  /** Plain-JSON ObjectColumn — exercises the updatePreserving write shape. */
+  meta?: any;
 }
 
 class TestSessionDataStorage implements SessionDataStorage {
@@ -63,6 +79,8 @@ export class SharedItemTable extends Table<SharedItem> {
   };
   columns = withSharedRecordColumns<SharedItem>({
     name: new StringColumn('name'),
+    related: new ReferenceArrayColumn<SharedItem>('related', 'user_test_shared_item', false),
+    meta: new ObjectColumn<any>('meta'),
   });
 }
 
@@ -286,6 +304,80 @@ describe('Sharing capability enforcement floor', () => {
     await getSharedDb().update(sharedItemTable, { id: item.id, name: 'edited by writer' });
     const persisted = await getSharedDbAsSystem().get(sharedItemTable, { id: item.id });
     expect(persisted?.name).toBe('edited by writer');
+  });
+
+  it('DEFECT 3 — a read holder updateArrayMembership is a typed refusal, not a silent 0', async () => {
+    runAs(0);
+    const item = await getSharedDbAsSystem().insert(sharedItemTable, { name: 'original' });
+    await getDb().insert(tables.AccessGrant, {
+      principal: new Reference('user', users[1].id),
+      resource: new Reference(sharedItemTable.name, item.id),
+      resourceTable: sharedItemTable.name,
+      accessLevel: 'read',
+    });
+
+    runAs(1);
+    let caught: any;
+    try {
+      await getSharedDb().updateArrayMembership(sharedItemTable, {
+        recordId: item.id,
+        columnPropertyName: 'related',
+        ops: [{ op: 'add', id: 'some-ref-id', afterId: null }],
+      });
+    } catch (e) {
+      caught = e;
+    }
+    // Before the fix this bailed with a silent `return 0` (row filtered out by the write scope),
+    // indistinguishable from a legit no-op. It must now surface the same typed refusal as update.
+    expect(caught?.name).toBe('RecordAccessError');
+
+    const persisted = await getSharedDbAsSystem().get(sharedItemTable, { id: item.id });
+    expect(persisted?.related?._ids ?? []).toEqual([]);
+  });
+
+  it('DEFECT 3 — a read holder updatePreserving is a typed refusal, not a silent 0', async () => {
+    runAs(0);
+    const item = await getSharedDbAsSystem().insert(sharedItemTable, { name: 'original', meta: { a: 1 } });
+    await getDb().insert(tables.AccessGrant, {
+      principal: new Reference('user', users[1].id),
+      resource: new Reference(sharedItemTable.name, item.id),
+      resourceTable: sharedItemTable.name,
+      accessLevel: 'read',
+    });
+
+    runAs(1);
+    let caught: any;
+    try {
+      await getSharedDb().updatePreserving(sharedItemTable, { id: item.id, meta: { a: 2 } } as Partial<SharedItem>, [
+        { columnPropertyName: 'meta', paths: ['a'] },
+      ]);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught?.name).toBe('RecordAccessError');
+
+    const persisted = await getSharedDbAsSystem().get(sharedItemTable, { id: item.id });
+    expect(persisted?.meta).toEqual({ a: 1 });
+  });
+
+  it('DEFECT 3 — a write holder updateArrayMembership is NOT mis-flagged (positive path)', async () => {
+    runAs(0);
+    const item = await getSharedDbAsSystem().insert(sharedItemTable, { name: 'original' });
+    await getDb().insert(tables.AccessGrant, {
+      principal: new Reference('user', users[1].id),
+      resource: new Reference(sharedItemTable.name, item.id),
+      resourceTable: sharedItemTable.name,
+      accessLevel: 'write',
+    });
+
+    runAs(1);
+    await getSharedDb().updateArrayMembership(sharedItemTable, {
+      recordId: item.id,
+      columnPropertyName: 'related',
+      ops: [{ op: 'add', id: 'ref-a', afterId: null }],
+    });
+    const persisted = await getSharedDbAsSystem().get(sharedItemTable, { id: item.id });
+    expect(persisted?.related?._ids ?? []).toEqual(['ref-a']);
   });
 
   // ————————————————————————————————— REGRESSIONS —————————————————————————————————
