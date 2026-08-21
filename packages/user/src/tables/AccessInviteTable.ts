@@ -25,6 +25,7 @@ export type AccessInvite<T extends Record = any> = Record & {
   resource: Reference<T>;
   resourceTable: string;
   accessLevel: AccessGrant['accessLevel'];
+  /** LAST-accept telemetry only — invites are multi-use until expiry; these never gate acceptance. */
   accepted?: boolean;
   acceptedBy?: Reference<User>;
   acceptedAt?: Moment;

@@ -22,6 +22,34 @@ export type AccessGrant = Record & {
   accessLevel: 'read' | 'write' | 'admin' | 'owner';
 };
 
+/**
+ * Capability ordering for access levels — the one owner for "which level outranks which".
+ * Mirrors SharedRecord's operation filters (read ⊂ write ⊂ admin ⊂ owner); consumers that
+ * pick among multiple grants or compare an invite's level to an existing grant use this
+ * instead of hand-rolling an order.
+ */
+export const ACCESS_LEVEL_RANK: { [L in AccessGrant['accessLevel']]: number } = {
+  read: 0,
+  write: 1,
+  admin: 2,
+  owner: 3,
+};
+
+/**
+ * The highest-capability level among `levels`, or undefined when empty. A principal can hold
+ * several grants on one resource (an owner grant plus an accepted invite's write, say) —
+ * capability questions must resolve to the MAX, never an arbitrary row.
+ */
+export function maxAccessLevel(levels: AccessGrant['accessLevel'][]): AccessGrant['accessLevel'] | undefined {
+  let best: AccessGrant['accessLevel'] | undefined;
+  for (const level of levels) {
+    if (!best || ACCESS_LEVEL_RANK[level] > ACCESS_LEVEL_RANK[best]) {
+      best = level;
+    }
+  }
+  return best;
+}
+
 export class AccessGrantTable extends Table<AccessGrant> {
   name = 'access_grant';
   auth: Table<AccessGrant>['auth'] = {

@@ -26,7 +26,11 @@ export interface AccessInviteService<T extends Record> extends Service {
    */
   createAccessInvite(params: CreateAccessInviteParams): Promise<CreateAccessInviteResponse>;
   /**
-   * Accepts an access invite using the provided token. The current authenticated user will be granted access.
+   * Accepts an access invite using the provided token. The current authenticated user's grant on
+   * the resource is reconciled up to the invite's access level (created when absent, upgraded when
+   * lower — never downgraded or duplicated). Invite links are multi-use: any number of holders can
+   * accept until the token expires, and re-accepting is idempotent. Throws only for an unknown or
+   * expired token.
    */
   acceptAccessInvite(token: string): Promise<T | undefined>;
 }
