@@ -76,13 +76,22 @@ export class AccessGrantTable extends Table<AccessGrant> {
           return;
         }
 
-        // Require the caller to ALREADY hold admin/owner on the resource, queried directly as
+        // Require the caller to ALREADY hold sufficient access on the resource, queried directly as
         // SYSTEM (mirrors AccessInviteTable.onBeforeInsert). The former `resource.get()` escape —
         // "if the object doesn't exist yet, allow" — ran the fetch under the caller's READ scope,
         // so a caller with NO access saw undefined and skipped this check entirely, self-granting
         // admin/owner from a read grant or from zero/revoked access (the escalation hole). The
         // legitimate first-owner bootstrap no longer relies on this path: SharedRecord confers the
         // creator's owner grant as a system-context insert (runAsSystem short-circuits above).
+        //
+        // OWNER CEILING: conferring an OWNER grant requires the caller ALREADY hold owner — only an
+        // owner makes another owner, so a merely-admin collaborator cannot mint themselves (or a
+        // peer) an owner grant. Any lesser grant still requires admin/owner. Invite-accept confers
+        // its grant as SYSTEM (runAsSystem short-circuits above), so this ceiling is not reachable
+        // through an accepted invite — the mint side (AccessInviteTable) carries the matching gate.
+        const grantsOwner = insertObj.accessLevel === 'owner';
+        const acceptableCallerLevels = grantsOwner ? ['owner'] : ['admin', 'owner'];
+
         const adminAccessQb = new QueryBuilderFactory().createQueryBuilder(
           new AccessGrantTable() as Table<AccessGrant>,
           {
@@ -95,13 +104,15 @@ export class AccessGrantTable extends Table<AccessGrant> {
         adminAccessQb.condition({
           field: 'accessLevel',
           operator: 'IN',
-          value: ['admin', 'owner'],
+          value: acceptableCallerLevels,
         });
 
-        const hasAdminAccess = (await getDbAsSystem().query(new AccessGrantTable(), adminAccessQb)).length > 0;
+        const hasSufficientAccess = (await getDbAsSystem().query(new AccessGrantTable(), adminAccessQb)).length > 0;
 
-        if (!hasAdminAccess) {
-          throw new Error(`User does not have admin access to resource`);
+        if (!hasSufficientAccess) {
+          throw new Error(
+            grantsOwner ? `Only an owner can confer owner access` : `User does not have admin access to resource`
+          );
         }
       },
       // Prevent direct updates and limit access to own or admin-accessible grants

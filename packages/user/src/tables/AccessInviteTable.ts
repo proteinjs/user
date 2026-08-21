@@ -58,6 +58,15 @@ export class AccessInviteTable extends Table<AccessInvite> {
           return;
         }
 
+        // OWNER CEILING: an accepted invite confers its grant as SYSTEM (AccessGrant's insert hook
+        // short-circuits for system context), so the grant-side owner ceiling is not reachable
+        // through acceptance. Enforce the same ceiling at the MINT: minting an OWNER invite requires
+        // the caller ALREADY hold owner — otherwise a merely-admin collaborator could mint an
+        // owner-invite and confer owner through acceptance, bypassing the ceiling. Any lesser invite
+        // still requires admin/owner.
+        const invitesOwner = insertObj.accessLevel === 'owner';
+        const acceptableCallerLevels = invitesOwner ? ['owner'] : ['admin', 'owner'];
+
         const adminAccessQb = new QueryBuilderFactory().createQueryBuilder(
           new AccessGrantTable() as Table<AccessGrant>,
           {
@@ -70,14 +79,16 @@ export class AccessInviteTable extends Table<AccessInvite> {
         adminAccessQb.condition({
           field: 'accessLevel',
           operator: 'IN',
-          value: ['admin', 'owner'],
+          value: acceptableCallerLevels,
         });
 
-        const hasAdminAccess =
+        const hasSufficientAccess =
           (await getDbAsSystem().query(new AccessGrantTable() as Table<AccessGrant>, adminAccessQb)).length > 0;
 
-        if (!hasAdminAccess) {
-          throw new Error(`User does not have admin access to resource`);
+        if (!hasSufficientAccess) {
+          throw new Error(
+            invitesOwner ? `Only an owner can confer owner access` : `User does not have admin access to resource`
+          );
         }
       },
     }),
