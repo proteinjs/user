@@ -117,7 +117,7 @@ const getSharedRecordColumns = ({
       // insert hooks run (defaults run before hooks); a derived source (e.g. a Task inheriting its
       // Thought's scope) passes only for a caller who can write that Thought.
       onBeforeInsert: async (insertObj, runAsSystem) => {
-        if (runAsSystem || skipAccessGrants) {
+        if (runAsSystem || skipAccessGrantsEnabled()) {
           return;
         }
 
@@ -143,7 +143,7 @@ const getSharedRecordColumns = ({
       // error. An absent row, or a caller who DOES hold write+ (e.g. a same-value no-op), is left
       // as a legitimate 0 — never mis-flagged.
       onZeroRowFilteredWrite: async (table, id, operation, runAsSystem) => {
-        if (runAsSystem || skipAccessGrants) {
+        if (runAsSystem || skipAccessGrantsEnabled()) {
           return;
         }
 
