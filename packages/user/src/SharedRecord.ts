@@ -3,9 +3,11 @@ import {
   Db,
   QueryBuilder,
   Record,
+  RecordAccessError,
   Table,
   getColumnByName,
   getDb,
+  getDbAsSystem,
   getTables,
   withRecordColumns,
   Reference,
@@ -17,6 +19,26 @@ import { AccessGrant, AccessGrantTable } from './tables/AccessGrantTable';
 import { UserRepo } from './UserRepo';
 import { UserTable } from './tables/UserTable';
 import { tables } from './tables/tables';
+
+/** Levels that satisfy a WRITE capability on a permission source (read ⊂ write ⊂ admin ⊂ owner). */
+const WRITE_ACCESS_LEVELS: AccessGrant['accessLevel'][] = ['write', 'admin', 'owner'];
+
+/**
+ * Does the CURRENT caller hold a write-or-greater grant on the given permission source? Queries
+ * the caller's own grants directly as SYSTEM — never through the read-scoped `resource.get()` that
+ * let a no-access caller's undefined fetch skip the check (the escalation-hole shape). This is the
+ * one owner for "can this caller write into this permission scope", shared by the insert guard and
+ * the zero-row write refusal below.
+ */
+async function callerHasWriteAccess(permissionSourceId: string, permissionSourceTableName: string): Promise<boolean> {
+  const qb = new QueryBuilder(tables.AccessGrant.name);
+  qb.condition({ field: 'principal', operator: '=', value: new UserRepo().getUser().id });
+  qb.condition({ field: 'resource', operator: '=', value: permissionSourceId });
+  qb.condition({ field: 'resourceTable', operator: '=', value: permissionSourceTableName });
+  qb.condition({ field: 'accessLevel', operator: 'IN', value: WRITE_ACCESS_LEVELS });
+  const grants = await getDbAsSystem<AccessGrant>().query(tables.AccessGrant, qb);
+  return grants.length > 0;
+}
 
 export interface SharedRecord<T extends SharedRecord = any> extends Record {
   permissionSource: Reference<T>;
@@ -70,7 +92,12 @@ const getSharedRecordColumns = ({
         (async (table, insertObj) => {
           if (!skipAccessGrantsEnabled()) {
             const user = new UserRepo().getUser();
-            const db = getDb<AccessGrant>();
+            // The creator's owner grant is PLATFORM-CONFERRED, not something the user grants
+            // themselves — write it as SYSTEM. Running it as the caller only ever worked because
+            // AccessGrantTable.onBeforeInsert opened with a read-scoped bypass; with that bypass
+            // removed (escalation fix) a caller-context bootstrap grant would be denied for having
+            // no pre-existing admin grant. System context is both correct and self-authorizing.
+            const db = getDbAsSystem<AccessGrant>();
 
             await db.insert(tables.AccessGrant, {
               principal: new Reference(new UserTable().name, user.id),
@@ -82,6 +109,59 @@ const getSharedRecordColumns = ({
 
           return new Reference(table.name, insertObj.id);
         }),
+      // ROW-INJECTION GUARD (the unguarded-insert hole): db.insert had no capability check, and
+      // supplying `permissionSource` explicitly skips the owner-grant default above — so any
+      // authenticated caller could attach a row into ANY resource's permission scope. Require the
+      // caller to hold write+ on the referenced source for every non-system insert. The bootstrap
+      // owner insert passes because the system-context owner grant already exists by the time
+      // insert hooks run (defaults run before hooks); a derived source (e.g. a Task inheriting its
+      // Thought's scope) passes only for a caller who can write that Thought.
+      onBeforeInsert: async (insertObj, runAsSystem) => {
+        if (runAsSystem || skipAccessGrants) {
+          return;
+        }
+
+        const permissionSource = insertObj.permissionSource as Reference<any> | undefined;
+        const sourceId = permissionSource?._id;
+        const sourceTable = permissionSourceTableName ?? (insertObj as any).permissionSourceTable;
+        if (!sourceId || !sourceTable) {
+          // Malformed shared record — let the serializer's missing-field failure surface it rather
+          // than silently allowing an unscoped row.
+          return;
+        }
+
+        if (!(await callerHasWriteAccess(sourceId, sourceTable))) {
+          throw new RecordAccessError(
+            `User does not have write access to the permission source (${sourceTable}:${sourceId})`
+          );
+        }
+      },
+      // TYPED REFUSAL (silent-refusal defect): an id-targeted single-row content write by a caller
+      // whose grant is insufficient matches 0 rows through the subquery below and used to return a
+      // silent 0 — a tool reports false success. When such a write matches nothing AND the row in
+      // fact exists (system truth) AND the caller lacks write+ on its source, surface a typed
+      // error. An absent row, or a caller who DOES hold write+ (e.g. a same-value no-op), is left
+      // as a legitimate 0 — never mis-flagged.
+      onZeroRowFilteredWrite: async (table, id, operation, runAsSystem) => {
+        if (runAsSystem || skipAccessGrants) {
+          return;
+        }
+
+        const systemRow = await getSharedDbAsSystem().get(table as Table<SharedRecord>, { id });
+        if (!systemRow) {
+          return;
+        }
+
+        const sourceId = systemRow.permissionSource?._id;
+        const sourceTable = permissionSourceTableName ?? systemRow.permissionSourceTable ?? table.name;
+        if (!sourceId) {
+          return;
+        }
+
+        if (!(await callerHasWriteAccess(sourceId, sourceTable))) {
+          throw new RecordAccessError(`User does not have ${operation} access to ${table.name}:${id}`);
+        }
+      },
       addToQuery: async (qb, runAsSystem, operation) => {
         if (runAsSystem || skipAccessGrantsEnabled()) {
           return;
