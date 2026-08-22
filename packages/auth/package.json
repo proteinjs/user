@@ -22,11 +22,11 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
-    "@proteinjs/reflection": "^1.1.12",
+    "@proteinjs/reflection": "^1.1.14",
     "moment": "2.29.4"
   },
   "devDependencies": {
-    "@proteinjs/reflection-build": "^1.4.10",
+    "@proteinjs/reflection-build": "^2.0.1",
     "@types/jest": "29.5.5",
     "@types/node": "14.0.13",
     "@typescript-eslint/eslint-plugin": "7.8.0",
