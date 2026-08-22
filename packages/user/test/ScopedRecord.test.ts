@@ -19,7 +19,7 @@ export class FavoriteTable extends Table<Favorite> {
     db: { all: 'public' },
     service: { all: 'public' },
   };
-  columns = withRecordColumns<Favorite>({
+  columns: Table<Favorite>['columns'] = withRecordColumns<Favorite>({
     name: new StringColumn('name'),
     scope: new StringColumn('scope', {
       defaultValue: async (table: any, favorite: Favorite) =>

@@ -26,7 +26,7 @@ export class UserStatusEventTable extends Table<UserStatusEvent> {
       query: ['admin'],
     },
   };
-  columns = withRecordColumns<UserStatusEvent>({
+  columns: Table<UserStatusEvent>['columns'] = withRecordColumns<UserStatusEvent>({
     actor: new StringColumn('actor', {}, 36),
     target: new StringColumn('target', {}, 36),
     status: new StringColumn<UserStatus>('status', {}, 16),

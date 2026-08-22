@@ -26,7 +26,7 @@ export class RoleGrantEventTable extends Table<RoleGrantEvent> {
       query: { permission: USER_PERMISSIONS.roles },
     },
   };
-  columns = withRecordColumns<RoleGrantEvent>({
+  columns: Table<RoleGrantEvent>['columns'] = withRecordColumns<RoleGrantEvent>({
     actor: new StringColumn('actor', {}, 36),
     target: new StringColumn('target', {}, 36),
     role: new StringColumn('role'),

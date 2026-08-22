@@ -24,7 +24,7 @@ export class SessionTable extends Table<Session> {
       query: { permission: USER_PERMISSIONS.sessions },
     },
   };
-  columns = withRecordColumns<Session>({
+  columns: Table<Session>['columns'] = withRecordColumns<Session>({
     sessionId: new StringColumn('session_id'),
     session: new StringColumn('serialized_session', {}, 4000),
     expires: new DateColumn('expires'),
