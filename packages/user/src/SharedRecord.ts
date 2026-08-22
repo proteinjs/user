@@ -40,6 +40,17 @@ async function callerHasWriteAccess(permissionSourceId: string, permissionSource
   return grants.length > 0;
 }
 
+/**
+ * Is this insert a SCOPE ROOT — a row that is its OWN permission source, in its own table? The
+ * one shape that creates a brand-new permission scope (vs. attaching a row to an existing one).
+ * Both halves matter: a derived-source row (a Task carrying its Thought's scope) can share the
+ * root's id without being a root, and a row pointing at a same-id record in another table is an
+ * attach, not a birth.
+ */
+function isScopeRootInsert(table: Table<any>, insertObj: any, sourceId: string, sourceTable: string): boolean {
+  return sourceId === insertObj.id && sourceTable === table.name;
+}
+
 export interface SharedRecord<T extends SharedRecord = any> extends Record {
   permissionSource: Reference<T>;
   permissionSourceTable: string;
@@ -87,36 +98,23 @@ const getSharedRecordColumns = ({
 }: SharedRecordOptions = {}) => {
   return {
     permissionSource: new DynamicReferenceColumn('permission_source', 'permission_source_table', false, {
+      // PURE default: a root shared record is its own permission source. Column defaults run
+      // wherever the insert is assembled — including the browser's client `Transaction` queue,
+      // which has NO db driver — so the default must never touch the db. The owner-grant
+      // bootstrap that used to live here is a server-side act: see `onAfterInsert` below.
       defaultValue:
-        permissionSourceDefaultValue ??
-        (async (table, insertObj) => {
-          if (!skipAccessGrantsEnabled()) {
-            const user = new UserRepo().getUser();
-            // The creator's owner grant is PLATFORM-CONFERRED, not something the user grants
-            // themselves — write it as SYSTEM. Running it as the caller only ever worked because
-            // AccessGrantTable.onBeforeInsert opened with a read-scoped bypass; with that bypass
-            // removed (escalation fix) a caller-context bootstrap grant would be denied for having
-            // no pre-existing admin grant. System context is both correct and self-authorizing.
-            const db = getDbAsSystem<AccessGrant>();
-
-            await db.insert(tables.AccessGrant, {
-              principal: new Reference(new UserTable().name, user.id),
-              resource: new Reference(table.name, insertObj.id),
-              resourceTable: table.name,
-              accessLevel: 'owner',
-            });
-          }
-
-          return new Reference(table.name, insertObj.id);
-        }),
+        permissionSourceDefaultValue ?? (async (table, insertObj) => new Reference(table.name, insertObj.id)),
       // ROW-INJECTION GUARD (the unguarded-insert hole): db.insert had no capability check, and
-      // supplying `permissionSource` explicitly skips the owner-grant default above — so any
+      // supplying `permissionSource` explicitly skips the self-scope default above — so any
       // authenticated caller could attach a row into ANY resource's permission scope. Require the
-      // caller to hold write+ on the referenced source for every non-system insert. The bootstrap
-      // owner insert passes because the system-context owner grant already exists by the time
-      // insert hooks run (defaults run before hooks); a derived source (e.g. a Task inheriting its
-      // Thought's scope) passes only for a caller who can write that Thought.
-      onBeforeInsert: async (insertObj, runAsSystem) => {
+      // caller to hold write+ on the referenced source for every non-system insert. A SCOPE-ROOT
+      // insert (the row is its own permission source, in its own table) is exempt: it creates a
+      // brand-new scope rather than attaching to one, and its owner grant cannot exist yet — it
+      // is minted in `onAfterInsert`, only once the row's insert actually succeeds (so an insert
+      // refused here or failed at the DML, e.g. a duplicate id aimed at an existing resource, can
+      // never leave a grant behind). A derived source (e.g. a Task inheriting its Thought's
+      // scope) passes only for a caller who can write that Thought.
+      onBeforeInsert: async (table, insertObj, runAsSystem) => {
         if (runAsSystem || skipAccessGrantsEnabled()) {
           return;
         }
@@ -130,11 +128,44 @@ const getSharedRecordColumns = ({
           return;
         }
 
+        if (isScopeRootInsert(table, insertObj, sourceId, sourceTable)) {
+          return;
+        }
+
         if (!(await callerHasWriteAccess(sourceId, sourceTable))) {
           throw new RecordAccessError(
             `User does not have write access to the permission source (${sourceTable}:${sourceId})`
           );
         }
+      },
+      // OWNER-GRANT BOOTSTRAP (server-side, post-DML): a scope root's creator gets an `owner`
+      // grant the moment the row lands. The grant is PLATFORM-CONFERRED, not something the user
+      // grants themselves — written as SYSTEM, which is both correct and self-authorizing
+      // (AccessGrantTable.onBeforeInsert's escalation gate short-circuits on runAsSystem; a
+      // caller-context write would be refused for having no pre-existing admin grant). This hook
+      // only ever runs inside `Db.insert` — the server — so the browser assembling the insert
+      // (client Transaction defaults) needs no db, and it runs AFTER the DML, so no failed insert
+      // can mint a grant. Runs for system-context creations too (parity with the old bootstrap):
+      // server flows creating roots as system still confer the session user's owner grant.
+      onAfterInsert: async (table, insertObj) => {
+        if (skipAccessGrantsEnabled()) {
+          return;
+        }
+
+        const permissionSource = insertObj.permissionSource as Reference<any> | undefined;
+        const sourceId = permissionSource?._id;
+        const sourceTable = permissionSourceTableName ?? (insertObj as any).permissionSourceTable;
+        if (!sourceId || !sourceTable || !isScopeRootInsert(table, insertObj, sourceId, sourceTable)) {
+          return;
+        }
+
+        const user = new UserRepo().getUser();
+        await getDbAsSystem<AccessGrant>().insert(tables.AccessGrant, {
+          principal: new Reference(new UserTable().name, user.id),
+          resource: new Reference(table.name, insertObj.id),
+          resourceTable: table.name,
+          accessLevel: 'owner',
+        });
       },
       // TYPED REFUSAL (silent-refusal defect): an id-targeted single-row content write by a caller
       // whose grant is insufficient matches 0 rows through the subquery below and used to return a

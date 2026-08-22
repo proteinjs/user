@@ -53,7 +53,7 @@ export class AccessInviteTable extends Table<AccessInvite> {
     accessLevel: new StringColumn('access_level'),
     resource: new DynamicReferenceColumn('resource', 'resource_table'),
     resourceTable: new DynamicReferenceTableNameColumn('resource_table', 'resource', {
-      onBeforeInsert: async (insertObj: AccessInvite, runAsSystem) => {
+      onBeforeInsert: async (_table, insertObj: AccessInvite, runAsSystem) => {
         if (runAsSystem) {
           return;
         }

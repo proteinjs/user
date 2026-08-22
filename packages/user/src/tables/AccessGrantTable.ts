@@ -66,12 +66,12 @@ export class AccessGrantTable extends Table<AccessGrant> {
       columns: ['principal', 'resourceTable', 'accessLevel', 'resource'] satisfies (keyof AccessGrant)[],
     },
   ];
-  columns = withRecordColumns<AccessGrant>({
+  columns: Table<AccessGrant>['columns'] = withRecordColumns<AccessGrant>({
     accessLevel: new StringColumn('access_level'),
     principal: new ReferenceColumn<User>('principal', UserTable.name, false),
     resource: new DynamicReferenceColumn<any>('resource', 'resource_table', false),
     resourceTable: new DynamicReferenceTableNameColumn('resource_table', 'resource', {
-      onBeforeInsert: async (insertObj: AccessGrant, runAsSystem) => {
+      onBeforeInsert: async (_table, insertObj: AccessGrant, runAsSystem) => {
         if (runAsSystem) {
           return;
         }
