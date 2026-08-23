@@ -62,6 +62,7 @@ describe('Roles service — grant/revoke outcomes and audit trail', () => {
     ];
     (SourceRepository.get() as any).objectCache['@proteinjs/user/RoleCatalogEntry'] = [
       { role: 'ops', description: 'Run the ops cockpit' } as RoleCatalogEntry,
+      { role: 'dev', description: 'Drive the dev tooling' } as RoleCatalogEntry,
     ];
     jest.spyOn(Db, 'getDefaultDbDriver').mockImplementation(() => spannerDriver);
 
@@ -131,14 +132,38 @@ describe('Roles service — grant/revoke outcomes and audit trail', () => {
   it('revoke removes the role and audits the revoke', async () => {
     const roles = new Roles();
     await roles.grantRole(targetId, 'ops');
-    await roles.grantRole(targetId, 'admin');
+    await roles.grantRole(targetId, 'dev');
     await roles.revokeRole(targetId, 'ops');
 
-    expect(await targetRoles()).toEqual(['admin']);
+    expect(await targetRoles()).toEqual(['dev']);
     const events = await auditRows();
     expect(events).toHaveLength(3);
     const revoke = events.find((event) => event.action === 'revoke');
     expect(revoke).toMatchObject({ actor: 'actor-1', target: targetId, role: 'ops' });
+  }, 60000);
+
+  it('refuses to grant the break-glass role, and writes nothing — the only path to admin is a manual UPDATE in Spanner Studio', async () => {
+    // The error teaches: names break-glass, refuses the grant, and points at the one real path.
+    await expect(new Roles().grantRole(targetId, 'admin')).rejects.toThrow(
+      /break-glass role — this service refuses to grant it.*manual UPDATE on the user row in Spanner Studio/
+    );
+
+    // A refusal is not a role change: no user write, no audit row (the trail records what
+    // happened, and nothing happened).
+    expect(await targetRoles()).toEqual([]);
+    expect(await auditRows()).toHaveLength(0);
+  }, 60000);
+
+  it('revokes the break-glass role — de-escalation through the audited path stays available', async () => {
+    // Admin arrives only via the manual database path; mirror that here with a system write.
+    await getDbAsSystem().update(tables.User, { id: targetId, roles: ['admin'] });
+
+    await new Roles().revokeRole(targetId, 'admin');
+
+    expect(await targetRoles()).toEqual([]);
+    const events = await auditRows();
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ actor: 'actor-1', target: targetId, role: 'admin', action: 'revoke' });
   }, 60000);
 
   it('revoking a role the user does not hold changes nothing and writes no audit row', async () => {
