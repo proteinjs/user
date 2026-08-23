@@ -1,5 +1,6 @@
 import { Route } from '@proteinjs/server-api';
 import { Logger } from '@proteinjs/logger';
+import { emailRegex } from '@proteinjs/util';
 import { establishSession } from '../authentication/establishSession';
 import { Signup } from '../services/Signup';
 
@@ -23,6 +24,11 @@ const emailDomain = (address: string) => address.slice(address.lastIndexOf('@') 
  * Domain rail: `?email` must share `DEV_AUTO_LOGIN_EMAIL`'s domain — even a dev server must not
  * mint sessions (much less accounts) for arbitrary domains; anything else answers 400.
  *
+ * Shape rail: `?email` must be a well-formed address (the house `emailRegex`). The domain rail
+ * alone let `?email=brent+lane-a@…` through when the `+` was left unencoded — a query-string `+`
+ * decodes to a SPACE, so the route minted a stray `brent lane-a@…` account. The 400 names the
+ * remedy (`%2B`) because plus-addressing is the fan-out convention this door exists for.
+ *
  * A missing account is created through the normal signup creation path (`Signup.createAccount`)
  * as a normal test user — password `test`, matching the seeded test-account convention, so
  * interactive login works for the same identity. Composes with userCache's missing-account→guest
@@ -45,6 +51,15 @@ export const devLogin: Route = {
       const requested = typeof emailParam === 'string' ? emailParam.trim() : '';
       if (emailDomain(requested) !== emailDomain(envEmail)) {
         response.status(400).send(`/dev/login only accepts accounts on the @${emailDomain(envEmail)} domain`);
+        return;
+      }
+      if (!emailRegex.test(requested)) {
+        response
+          .status(400)
+          .send(
+            `/dev/login: "${requested}" is not a valid email address — an unencoded "+" in the query ` +
+              `decodes to a space; write it as %2B (e.g. ?email=name%2Blane@${emailDomain(envEmail)})`
+          );
         return;
       }
       email = requested;

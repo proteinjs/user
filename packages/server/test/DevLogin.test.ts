@@ -135,6 +135,32 @@ describe('devLogin route', () => {
     expect(await getUserRow('intruder@evil.example')).toBeUndefined();
   });
 
+  it('rejects a malformed same-domain ?email with 400 — no session, no stray account', async () => {
+    // The observed shape: an unencoded `+` in the query decodes to a space, so
+    // `?email=brent+shareproof-a@...` arrived as `brent shareproof-a@...` and minted a stray
+    // account. The domain rail alone let it through (the domain half was fine).
+    const malformed = 'brent shareproof-a@test.local';
+
+    const outcome = await invokeDevLogin({ email: malformed });
+
+    expect(outcome.status).toBe(400);
+    expect(String(outcome.body)).toMatch(/not a valid email/i);
+    expect(String(outcome.body)).toMatch(/%2B/); // the remedy: percent-encode the `+`
+    expect(outcome.loggedInAs).toBeUndefined();
+    expect(outcome.sessionSaved).toBe(false);
+    expect(outcome.redirect).toBeUndefined();
+    expect(await getUserRow(malformed)).toBeUndefined();
+  });
+
+  it('still accepts a plus-addressed ?email once it is encoded (the fan-out convention)', async () => {
+    const outcome = await invokeDevLogin({ email: 'agent6+lane-a@test.local' });
+
+    expect(outcome.loggedInAs).toBe('agent6+lane-a@test.local');
+    expect(outcome.sessionSaved).toBe(true);
+    expect(outcome.redirect).toBe('/');
+    expect(await getUserRow('agent6+lane-a@test.local')).toBeDefined();
+  });
+
   it('404s when DEVELOPMENT is unset, even with a ?email', async () => {
     delete process.env.DEVELOPMENT;
 
