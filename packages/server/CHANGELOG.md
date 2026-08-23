@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.9.1](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.9.0...@proteinjs/user-server@1.9.1) (2026-08-23)
+
+
+### Bug Fixes
+
+* invite links are durable multi-use capabilities — idempotent accept reconciles the grant up to the invite's level; minting requires admin on the resource ([4abb4cc](https://github.com/proteinjs/user/commit/4abb4cc9adacdaa91a499b3ad7134491948b038a))
+
+
+
+
+
 # [1.9.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.8.0...@proteinjs/user-server@1.9.0) (2026-08-19)
 
 

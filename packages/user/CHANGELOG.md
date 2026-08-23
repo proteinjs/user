@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.10.1](https://github.com/proteinjs/user/compare/@proteinjs/user@1.10.0...@proteinjs/user@1.10.1) (2026-08-23)
+
+
+### Bug Fixes
+
+* adapt row-injection/zero-row guards to main's skipAccessGrantsEnabled() accessor ([0b5dc21](https://github.com/proteinjs/user/commit/0b5dc213d2de07cafdbb60f6fbd651de0b00cd58))
+* browser root creation — pure permissionSource default, owner grant minted server-side post-insert ([a6bd1b8](https://github.com/proteinjs/user/commit/a6bd1b86823244009d4cba0a103d04ed80f27bb7))
+* close SharedRecord/AccessGrant capability holes — escalation, row injection, silent refusal ([8343f17](https://github.com/proteinjs/user/commit/8343f17376cfd4063e6f10a2550ccdc5cc2f0eb1))
+* close the AccessGrant DELETE door in the owner ceiling ([801009a](https://github.com/proteinjs/user/commit/801009a7c86a6ef1ae7157e19b697fdcb6b0e41f))
+* invite links are durable multi-use capabilities — idempotent accept reconciles the grant up to the invite's level; minting requires admin on the resource ([4abb4cc](https://github.com/proteinjs/user/commit/4abb4cc9adacdaa91a499b3ad7134491948b038a))
+* owner ceiling on AccessGrant/AccessInvite inserts — only an owner confers owner ([da90956](https://github.com/proteinjs/user/commit/da90956a9cff73a2838bd85c3302bb4416179bbd))
+
+
+
+
+
 # [1.10.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.9.0...@proteinjs/user@1.10.0) (2026-08-19)
 
 
