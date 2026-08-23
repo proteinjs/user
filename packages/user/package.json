@@ -19,7 +19,7 @@
     "clean": "rm -rf dist/ generated/ node_modules/",
     "build": "reflection-build && tsc",
     "watch": "reflection-watch",
-    "test": "jest --passWithNoTests"
+    "test": "jest --runInBand --passWithNoTests"
   },
   "dependencies": {
     "@proteinjs/db": "^1.34.3",
