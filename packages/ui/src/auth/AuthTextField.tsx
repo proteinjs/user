@@ -20,6 +20,10 @@ export interface AuthTextFieldProps {
   autoComplete?: string;
   /** HTML input type when not a password field (e.g. 'email'). */
   type?: string;
+  /** Renders a fixed-height textarea of this many rows (mutually exclusive with `password`). */
+  multilineRows?: number;
+  /** Optional helper line under the field (e.g. 'Optional'). */
+  helperText?: string;
   autoFocus?: boolean;
   disabled?: boolean;
 }
@@ -30,7 +34,19 @@ export interface AuthTextFieldProps {
  * target; 1rem input text so mobile browsers don't auto-zoom the field on focus.
  */
 export function AuthTextField(props: AuthTextFieldProps) {
-  const { label, value, onChange, password, readOnly, autoComplete, type, autoFocus, disabled } = props;
+  const {
+    label,
+    value,
+    onChange,
+    password,
+    readOnly,
+    autoComplete,
+    type,
+    multilineRows,
+    helperText,
+    autoFocus,
+    disabled,
+  } = props;
   const [revealed, setRevealed] = useState(false);
 
   return (
@@ -51,6 +67,9 @@ export function AuthTextField(props: AuthTextFieldProps) {
         autoComplete={autoComplete}
         autoFocus={autoFocus}
         disabled={disabled}
+        multiline={!!multilineRows}
+        rows={multilineRows}
+        helperText={helperText}
         InputProps={{
           readOnly,
           endAdornment: password ? (
@@ -74,6 +93,8 @@ export function AuthTextField(props: AuthTextFieldProps) {
             backgroundColor: readOnly ? 'action.hover' : 'background.paper',
             fontSize: '1rem',
             '& input': { py: '12.5px', px: '14px' },
+            // Multiline renders a textarea; keep the same inner padding the input wears.
+            ...(multilineRows ? { p: '12.5px 14px' } : {}),
             '& fieldset': { borderColor: 'divider' },
             '&:hover fieldset': { borderColor: readOnly ? 'divider' : 'text.disabled' },
             '&.Mui-focused fieldset': { borderColor: 'primary.main', borderWidth: '1.5px' },
