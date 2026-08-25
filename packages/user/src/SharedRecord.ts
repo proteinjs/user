@@ -14,6 +14,7 @@ import {
   DynamicReferenceColumn,
   DynamicReferenceTableNameColumn,
 } from '@proteinjs/db';
+import { Logger } from '@proteinjs/logger';
 
 import { AccessGrant, AccessGrantTable } from './tables/AccessGrantTable';
 import { UserRepo } from './UserRepo';
@@ -147,6 +148,13 @@ const getSharedRecordColumns = ({
       // (client Transaction defaults) needs no db, and it runs AFTER the DML, so no failed insert
       // can mint a grant. Runs for system-context creations too (parity with the old bootstrap):
       // server flows creating roots as system still confer the session user's owner grant.
+      //
+      // NO SESSION USER (background executors, boot-time migrations — `getUser()` is `{}` there):
+      // there is no creator to confer to. The old bootstrap minted a grant for nobody
+      // (`principal = Reference('user', undefined)` → NULL, the malformed-grant class); the
+      // AccessGrant table now refuses that row, and refusing AFTER the DML would strand the
+      // creator with a landed row and a thrown insert. So the case is named here: no grant,
+      // one warning — the root is system-only until a grant is conferred explicitly.
       onAfterInsert: async (table, insertObj) => {
         if (skipAccessGrantsEnabled()) {
           return;
@@ -160,6 +168,14 @@ const getSharedRecordColumns = ({
         }
 
         const user = new UserRepo().getUser();
+        if (!user.id) {
+          new Logger({ name: 'SharedRecord' }).warn({
+            message: 'Scope root created with no session user — no owner grant conferred',
+            obj: { table: table.name, id: insertObj.id },
+          });
+          return;
+        }
+
         await getDbAsSystem<AccessGrant>().insert(tables.AccessGrant, {
           principal: new Reference(new UserTable().name, user.id),
           resource: new Reference(table.name, insertObj.id),
