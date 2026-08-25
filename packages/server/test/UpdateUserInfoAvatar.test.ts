@@ -15,7 +15,8 @@ const isJpeg = (buffer: Buffer) => buffer[0] === 0xff && buffer[1] === 0xd8 && b
 const getFileRow = async (fileId: string) => await getScopedDbAsSystem<File>().get(fileTables.File, { id: fileId });
 
 /**
- * Avatars are photo OR emoji — exactly one active — stored as 512x512 JPEG, previous photo file
+ * Avatars are photo OR emoji — exactly one active — stored as a square JPEG capped at 512px
+ * (never enlarged past the source's honest pixels; see AvatarPhotoFidelity.test.ts), previous photo file
  * deleted on every change, and the server session cache refreshed in the same stroke (the same
  * helper that fixes the updateName rename-staleness wart). All assertions are outcomes: rows,
  * bytes, cache reads.
@@ -85,9 +86,11 @@ describe('UpdateUserInfo avatar mutations', () => {
     expect(await getFileRow(second.avatarFileId!)).toBeTruthy();
   });
 
-  it('updateAvatarPhoto normalizes HEIC (default iPhone camera format) to JPEG', async () => {
+  it('updateAvatarPhoto normalizes HEIC (default iPhone camera format) to JPEG at its honest size', async () => {
     const user = await testEnv.createUser({ name: 'iPhone user', email: 'heic@test.local' });
     testEnv.actAs(user);
+    // The fixture is 96x64 — small on purpose: the stored master is its centered 64px square,
+    // NOT an enlarged 512 (enlargement invents pixels that read as permanent blur).
     const heic = fs.readFileSync(path.join(__dirname, 'fixtures', 'fixture.heic'));
 
     const updated = await service.updateAvatarPhoto(heic.toString('base64'), 'image/heic');
@@ -95,8 +98,8 @@ describe('UpdateUserInfo avatar mutations', () => {
     const bytes = Buffer.from(await new FileStorage().getFileData(updated.avatarFileId!), 'base64');
     expect(isJpeg(bytes)).toBe(true);
     const metadata = await sharp(bytes).metadata();
-    expect(metadata.width).toBe(512);
-    expect(metadata.height).toBe(512);
+    expect(metadata.width).toBe(64);
+    expect(metadata.height).toBe(64);
   });
 
   it('updateAvatarEmoji sets the emoji, nulls the photo, and deletes the previous photo file', async () => {
