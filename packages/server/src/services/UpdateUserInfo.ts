@@ -2,13 +2,27 @@ import sharp from 'sharp';
 import heicDecode from 'heic-decode';
 import { getDbAsSystem } from '@proteinjs/db';
 import { FileStorage } from '@proteinjs/db-file';
-import { tables, User, UserRepo, UpdatePasswordResponse, UpdatedUser, UpdateUserInfoService } from '@proteinjs/user';
+import {
+  tables,
+  User,
+  UserRepo,
+  UpdatePasswordResponse,
+  UpdatedUser,
+  UpdateUserInfoService,
+  AvatarCrop,
+} from '@proteinjs/user';
 import { EmailSender, getDefaultPasswordUpdatedEmailConfigFactory } from '@proteinjs/email-server';
 import { PasswordHasher } from '../authentication/PasswordHasher';
 
 export class UpdateUserInfo implements UpdateUserInfoService {
-  /** Stored avatar photos are exactly this: cover-cropped square JPEG. */
-  private static readonly AVATAR_SIZE = 512;
+  /**
+   * Stored avatar photos are square JPEGs capped at this edge — and never ENLARGED to it: a
+   * source (or crop) smaller than the cap keeps its honest pixel count. Upscaling a small photo
+   * to a fixed 512 invents pixels that read as permanent blur on every chip that renders it
+   * (the founder's fuzzy-avatar defect); the display layer downscales crisply from whatever
+   * honest size is stored.
+   */
+  private static readonly AVATAR_MAX_SIZE = 512;
   private static readonly AVATAR_JPEG_QUALITY = 85;
   private static readonly MAX_AVATAR_PHOTO_BYTES = 10 * 1024 * 1024;
   private static readonly ACCEPTED_AVATAR_MIME_TYPES = [
@@ -83,7 +97,7 @@ export class UpdateUserInfo implements UpdateUserInfoService {
     };
   }
 
-  async updateAvatarPhoto(fileData: string, mimeType: string): Promise<UpdatedUser> {
+  async updateAvatarPhoto(fileData: string, mimeType: string, crop?: AvatarCrop): Promise<UpdatedUser> {
     if (!UpdateUserInfo.ACCEPTED_AVATAR_MIME_TYPES.includes(mimeType)) {
       throw new Error(
         `Unsupported avatar image type '${mimeType}'. Accepted: ${UpdateUserInfo.ACCEPTED_AVATAR_MIME_TYPES.join(', ')}`
@@ -95,7 +109,7 @@ export class UpdateUserInfo implements UpdateUserInfoService {
       throw new Error(`Avatar photo is too large (max 10MB)`);
     }
 
-    const jpeg = await this.toAvatarJpeg(imageBytes, mimeType);
+    const jpeg = await this.toAvatarJpeg(imageBytes, mimeType, crop);
     const file = await new FileStorage().createFile(
       { name: 'avatar.jpg', type: 'image/jpeg', size: jpeg.length },
       jpeg.toString('base64')
@@ -158,22 +172,72 @@ export class UpdateUserInfo implements UpdateUserInfoService {
   }
 
   /**
-   * Minimal avatar pipeline: decode, auto-orient from EXIF, cover-crop square, re-encode JPEG.
+   * THE avatar image pipeline — the only place avatar pixels are ever resampled: decode,
+   * auto-orient from EXIF, extract the crop frame (client-framed, or the centered square),
+   * one high-quality resize down to at most AVATAR_MAX_SIZE (never up), re-encode JPEG.
+   * Clients send ORIGINAL bytes; a client-side canvas export would resample a second time
+   * (and with the browser's low-default smoothing), baking blur into the stored master.
    * sharp drops metadata (EXIF orientation/GPS) on re-encode by default — the stored avatar
    * carries no camera metadata. HEIC/HEIF (default iPhone camera format) is decoded with WASM
    * libheif (`heic-decode`) because sharp's prebuilt libvips has no HEVC decoder. NOTE: this
    * duplicates the HEIC-normalization approach of chat-server's FileTransformer, which this
    * package cannot import (layering) — future extraction target: a shared image-transform seam.
    */
-  private async toAvatarJpeg(imageBytes: Buffer, mimeType: string): Promise<Buffer> {
+  private async toAvatarJpeg(imageBytes: Buffer, mimeType: string, crop?: AvatarCrop): Promise<Buffer> {
     const pipeline =
       mimeType === 'image/heic' || mimeType === 'image/heif'
         ? await this.decodeHeic(imageBytes)
         : sharp(imageBytes).rotate();
+    const { width, height } = await this.orientedDimensions(pipeline);
+    const frame = this.clampCrop(crop, width, height);
+    const target = Math.min(UpdateUserInfo.AVATAR_MAX_SIZE, frame.size);
     return await pipeline
-      .resize(UpdateUserInfo.AVATAR_SIZE, UpdateUserInfo.AVATAR_SIZE, { fit: 'cover' })
+      .extract({ left: frame.left, top: frame.top, width: frame.size, height: frame.size })
+      .resize(target, target, { fit: 'cover' })
       .jpeg({ quality: UpdateUserInfo.AVATAR_JPEG_QUALITY })
       .toBuffer();
+  }
+
+  /**
+   * The decoded image's dimensions in DISPLAYED (EXIF-oriented) pixel space — the space the
+   * client framed its crop in, and the space `.rotate()` makes `.extract` operate in.
+   * Orientations 5-8 transpose the encoded axes.
+   */
+  private async orientedDimensions(pipeline: sharp.Sharp): Promise<{ width: number; height: number }> {
+    const metadata = await pipeline.metadata();
+    if (!metadata.width || !metadata.height) {
+      throw new Error(`Could not read avatar image dimensions`);
+    }
+
+    const transposed = (metadata.orientation ?? 1) >= 5;
+    return {
+      width: transposed ? metadata.height : metadata.width,
+      height: transposed ? metadata.width : metadata.height,
+    };
+  }
+
+  /**
+   * Resolve the crop request against the real image: round to whole pixels and clamp fully
+   * inside the oriented bounds, staying square. Absent crop = the centered square (identical
+   * to the old `fit: cover` center-crop, so no-crop clients keep byte-equivalent behavior).
+   */
+  private clampCrop(
+    crop: AvatarCrop | undefined,
+    width: number,
+    height: number
+  ): { left: number; top: number; size: number } {
+    const maxSize = Math.min(width, height);
+    if (!crop) {
+      return { left: Math.floor((width - maxSize) / 2), top: Math.floor((height - maxSize) / 2), size: maxSize };
+    }
+
+    if (![crop.sx, crop.sy, crop.size].every(Number.isFinite)) {
+      throw new Error(`Avatar crop must be numeric`);
+    }
+
+    const size = Math.min(Math.max(1, Math.round(crop.size)), maxSize);
+    const clampOffset = (value: number, max: number) => Math.min(Math.max(0, Math.round(value)), max);
+    return { left: clampOffset(crop.sx, width - size), top: clampOffset(crop.sy, height - size), size };
   }
 
   private async decodeHeic(imageBytes: Buffer): Promise<sharp.Sharp> {

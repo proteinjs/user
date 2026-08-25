@@ -70,8 +70,10 @@ describe('GET /avatar/:userId', () => {
     expect(bytes[0]).toBe(0xff); // JPEG SOI
     expect(bytes[1]).toBe(0xd8);
     const metadata = await sharp(bytes).metadata();
-    expect(metadata.width).toBe(512);
-    expect(metadata.height).toBe(512);
+    // The 100px source stays its honest 100px square — masters are capped at 512, never
+    // enlarged to it (AvatarPhotoFidelity.test.ts owns the pipeline contract).
+    expect(metadata.width).toBe(100);
+    expect(metadata.height).toBe(100);
 
     // The client-side URL contract carries the cache-buster.
     expect(avatarRoute.path(owner.id, updated.avatarFileId!)).toBe(`/avatar/${owner.id}?v=${updated.avatarFileId}`);
