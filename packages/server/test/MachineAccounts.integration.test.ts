@@ -28,7 +28,13 @@ class TestOpsMachineAccount extends MachineAccount {
   secretName = 'test-ops-secret';
 }
 
-type SourceRepositoryInternals = { objectCache: { [qualifiedName: string]: unknown[] } };
+type SourceRepositoryInternals = {
+  objectCache: { [qualifiedName: string]: unknown[] };
+  // db >=1.34.4 reads loaders through objectsWithNames (declaration provenance — the
+  // source-ownership grain), which resolves from THIS cache; seeding objectCache alone is
+  // invisible to it.
+  namedObjectCache: { [type: string]: { qualifiedName: string; packageName: string; object: unknown }[] };
+};
 
 /**
  * Reset `TableWatcherRunner`'s static watcher map so the NEXT Db construction recomputes it from
@@ -49,10 +55,19 @@ const resetTableWatcherMap = () => {
  */
 describe('Machine accounts as source records', () => {
   const objectCache = () => (SourceRepository.get() as unknown as SourceRepositoryInternals).objectCache;
+  const namedObjectCache = () => (SourceRepository.get() as unknown as SourceRepositoryInternals).namedObjectCache;
+  const seedLoaders = (declarations: unknown[]) => {
+    objectCache()['@proteinjs/db/SourceRecordLoader'] = declarations;
+    namedObjectCache()['@proteinjs/db/SourceRecordLoader'] = declarations.map((object, i) => ({
+      qualifiedName: `@proteinjs/user-server-test/MachineAccountFixture${i}`,
+      packageName: '@proteinjs/user-server',
+      object,
+    }));
+  };
 
   /** One boot of Db.init's source-record leg with these MachineAccount declarations. */
   const boot = async (declarations: MachineAccount[]) => {
-    objectCache()['@proteinjs/db/SourceRecordLoader'] = declarations;
+    seedLoaders(declarations);
     await new SourceRecordSyncRunner().load();
   };
 
@@ -82,6 +97,7 @@ describe('Machine accounts as source records', () => {
 
   afterAll(async () => {
     delete objectCache()['@proteinjs/db/SourceRecordLoader'];
+    delete namedObjectCache()['@proteinjs/db/SourceRecordLoader'];
     delete objectCache()['@proteinjs/db/TableWatcher'];
     delete objectCache()['@proteinjs/user/RoleCatalogEntry'];
     resetTableWatcherMap();
@@ -149,7 +165,17 @@ describe('Machine accounts as source records', () => {
     await insertSession('machine-session', 'machine-ops@test.local');
     await insertSession('human-session', human.email);
 
-    await boot([]);
+    // Removal under the db >=1.34.4 ownership law: the reconcile only touches rows whose
+    // sourcePackage the RUNNING build still declares from (shared-db safety — a build missing a
+    // package must never deactivate that package's rows). The real removal case is the package
+    // still booting with THIS declaration gone — modeled by keeping another declaration from
+    // the same package aboard. boot([]) would model "package vanished", which the law protects.
+    class SurvivingSibling extends TestOpsMachineAccount {
+      email = 'machine-sibling@test.local';
+      name = 'Surviving sibling machine';
+      secretName = 'sibling-secret';
+    }
+    await boot([new SurvivingSibling()]);
 
     const removed = await machineRow();
     expect(removed).toBeDefined();
@@ -246,7 +272,7 @@ describe('Machine accounts as source records', () => {
         email = 'machine-not-booted@test.local';
         secretName = 'not-booted-secret';
       }
-      objectCache()['@proteinjs/db/SourceRecordLoader'] = [new TestOpsMachineAccount(), new NotBooted()];
+      seedLoaders([new TestOpsMachineAccount(), new NotBooted()]);
 
       const before = await new MachineCredentials().listMachineAccounts();
       expect(before).toEqual([
@@ -289,7 +315,7 @@ describe('Machine accounts as source records', () => {
         email = 'machine-not-booted@test.local';
       }
       // Declared (discoverable) but never booted: no source-owned row exists.
-      objectCache()['@proteinjs/db/SourceRecordLoader'] = [new TestOpsMachineAccount(), new NotBooted()];
+      seedLoaders([new TestOpsMachineAccount(), new NotBooted()]);
       await expect(new MachineCredentials().mintCredential('machine-not-booted@test.local')).rejects.toThrow(
         /has not been loaded from source yet/
       );
