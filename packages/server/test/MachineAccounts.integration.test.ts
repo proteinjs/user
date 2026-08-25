@@ -170,9 +170,12 @@ describe('Machine accounts as source records', () => {
     // package must never deactivate that package's rows). The real removal case is the package
     // still booting with THIS declaration gone — modeled by keeping another declaration from
     // the same package aboard. boot([]) would model "package vanished", which the law protects.
+    // The sibling is a DISTINCT account (its own declared id): re-using the stable id under a
+    // new email is the rename-adopt case, pinned by the next test.
     class SurvivingSibling extends TestOpsMachineAccount {
+      id = 'machine-sibling';
       email = 'machine-sibling@test.local';
-      name = 'Surviving sibling machine';
+      accountName = 'Surviving sibling machine';
       secretName = 'sibling-secret';
     }
     await boot([new SurvivingSibling()]);
@@ -190,6 +193,44 @@ describe('Machine accounts as source records', () => {
     await boot([new TestOpsMachineAccount()]);
     expect((await machineRow()).status).toBe('active');
     expect(await authenticate('machine-ops@test.local', 'bridge-pw')).toBe(true);
+  });
+
+  it('re-declared under a renamed email: the soft-removed row is adopted by its stable id — reactivated, re-derived from the declaration, credential preserved', async () => {
+    // The user table SOFT-removes (deactivate, never delete — rows carry grants/history), so a
+    // re-declaration whose email no longer matches the kept row (an account rename, or any
+    // re-declare-after-removal under a changed natural key) must adopt the row by its stable
+    // declared id instead of INSERTing into a PK collision.
+    await boot([new TestOpsMachineAccount()]);
+    // Runtime-owned credential on the row, plus role drift the re-derivation must NOT resurrect.
+    await getDbAsSystem().update(tables.User, {
+      id: 'machine-test-ops',
+      password: sha256('cred').toString(),
+      roles: ['ops', 'stale-role'],
+    });
+    await insertSession('machine-session', 'machine-ops@test.local');
+
+    class RenamedOps extends TestOpsMachineAccount {
+      email = 'machine-ops-renamed@test.local';
+    }
+    await boot([new RenamedOps()]);
+
+    // One row, adopted in place: id kept (references + credential survive), email re-derived,
+    // reactivated, grants exactly the declaration's (no resurrection of stale grants).
+    expect(await getDbAsSystem().query(tables.User, {})).toHaveLength(1);
+    expect(await getDbAsSystem().get(tables.User, { email: 'machine-ops@test.local' })).toBeUndefined();
+    const adopted = await getDbAsSystem().get(tables.User, { email: 'machine-ops-renamed@test.local' });
+    expect(adopted).toMatchObject({
+      id: 'machine-test-ops',
+      name: 'Test ops machine',
+      roles: ['ops'],
+      status: 'active',
+      isLoadedFromSource: true,
+    });
+    expect(adopted.password).toBe(sha256('cred').toString());
+    // The rename transited the removal patch: the categorical watcher killed the old sessions...
+    expect(await sessionEmails()).toEqual([]);
+    // ...and the surviving credential logs in under the new email.
+    expect(await authenticate('machine-ops-renamed@test.local', 'cred')).toBe(true);
   });
 
   it(`the staff toggle rides the same watcher: SetUserStatus deactivation kills the target's sessions`, async () => {
