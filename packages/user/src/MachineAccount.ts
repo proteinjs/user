@@ -9,10 +9,14 @@ import { User } from './tables/UserTable';
  * a user-table source-record declaration carrying a `secretName` is a machine account.
  */
 export const getMachineAccounts = (): MachineAccount[] =>
-  getSourceRecordLoaders<User>().filter(
-    (loader): loader is MachineAccount =>
-      loader.table.name === tables.User.name && typeof (loader as MachineAccount).secretName === 'string'
-  );
+  getSourceRecordLoaders<User>()
+    // db ≥1.34.4 pairs each loader with its owning source package (the shared-db ownership
+    // grain); the machine-account read wants the loaders themselves.
+    .map(({ loader }) => loader)
+    .filter(
+      (loader): loader is MachineAccount =>
+        loader.table.name === tables.User.name && typeof (loader as MachineAccount).secretName === 'string'
+    );
 
 /**
  * A code-declared machine account: identity in source, credentials at runtime.

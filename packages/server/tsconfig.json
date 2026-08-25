@@ -14,6 +14,12 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "jsx": "react"
+    "jsx": "react",
+    "baseUrl": "./",
+    "paths": {
+      "@proteinjs/*": [
+        "node_modules/@proteinjs/*"
+      ]
+    }
   }
 }
