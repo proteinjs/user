@@ -164,38 +164,41 @@ describe('Machine accounts as source records', () => {
   // (integration/r5-db ba9f4ba7 — the sync currently INSERTs the existing machine-test-ops row
   // instead of adopting it). Green everywhere else against db ^1.35.0; this leg lands with the
   // R5 db mint. Exact repro + the semantics call recorded on this suite's landing commit.
-  it.failing('removed from source: deactivated (never deleted), sessions killed, login refused; re-declaring reactivates', async () => {
-    const human = await testEnv.createUser({ name: 'A human', email: 'human@test.local' });
-    await boot([new TestOpsMachineAccount()]);
-    await insertSession('machine-session', 'machine-ops@test.local');
-    await insertSession('human-session', human.email);
+  it.failing(
+    'removed from source: deactivated (never deleted), sessions killed, login refused; re-declaring reactivates',
+    async () => {
+      const human = await testEnv.createUser({ name: 'A human', email: 'human@test.local' });
+      await boot([new TestOpsMachineAccount()]);
+      await insertSession('machine-session', 'machine-ops@test.local');
+      await insertSession('human-session', human.email);
 
-    // Removal under the db >=1.34.4 ownership law: the reconcile only touches rows whose
-    // sourcePackage the RUNNING build still declares from (shared-db safety — a build missing a
-    // package must never deactivate that package's rows). The real removal case is the package
-    // still booting with THIS declaration gone — modeled by keeping another declaration from
-    // the same package aboard. boot([]) would model "package vanished", which the law protects.
-    class SurvivingSibling extends TestOpsMachineAccount {
-      email = 'machine-sibling@test.local';
-      name = 'Surviving sibling machine';
-      secretName = 'sibling-secret';
+      // Removal under the db >=1.34.4 ownership law: the reconcile only touches rows whose
+      // sourcePackage the RUNNING build still declares from (shared-db safety — a build missing a
+      // package must never deactivate that package's rows). The real removal case is the package
+      // still booting with THIS declaration gone — modeled by keeping another declaration from
+      // the same package aboard. boot([]) would model "package vanished", which the law protects.
+      class SurvivingSibling extends TestOpsMachineAccount {
+        email = 'machine-sibling@test.local';
+        name = 'Surviving sibling machine';
+        secretName = 'sibling-secret';
+      }
+      await boot([new SurvivingSibling()]);
+
+      const removed = await machineRow();
+      expect(removed).toBeDefined();
+      expect(removed.status).toBe('deactivated');
+      // The categorical watcher killed the machine sessions; the human session is untouched.
+      expect(await sessionEmails()).toEqual([human.email]);
+      // The one login door refuses a deactivated account even with matching credentials.
+      await getDbAsSystem().update(tables.User, { id: removed.id, password: sha256('bridge-pw').toString() });
+      expect(await authenticate('machine-ops@test.local', 'bridge-pw')).toBe('This account has been deactivated');
+
+      // Decommission is reversible in code: re-declaring reverts status via drift reversion.
+      await boot([new TestOpsMachineAccount()]);
+      expect((await machineRow()).status).toBe('active');
+      expect(await authenticate('machine-ops@test.local', 'bridge-pw')).toBe(true);
     }
-    await boot([new SurvivingSibling()]);
-
-    const removed = await machineRow();
-    expect(removed).toBeDefined();
-    expect(removed.status).toBe('deactivated');
-    // The categorical watcher killed the machine sessions; the human session is untouched.
-    expect(await sessionEmails()).toEqual([human.email]);
-    // The one login door refuses a deactivated account even with matching credentials.
-    await getDbAsSystem().update(tables.User, { id: removed.id, password: sha256('bridge-pw').toString() });
-    expect(await authenticate('machine-ops@test.local', 'bridge-pw')).toBe('This account has been deactivated');
-
-    // Decommission is reversible in code: re-declaring reverts status via drift reversion.
-    await boot([new TestOpsMachineAccount()]);
-    expect((await machineRow()).status).toBe('active');
-    expect(await authenticate('machine-ops@test.local', 'bridge-pw')).toBe(true);
-  });
+  );
 
   it(`the staff toggle rides the same watcher: SetUserStatus deactivation kills the target's sessions`, async () => {
     const admin = await testEnv.createUser({ name: 'Admin', email: 'admin@test.local', roles: ['admin'] });
