@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.7.0](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.6.1...@proteinjs/user-ui@1.7.0) (2026-08-26)
+
+
+### Features
+
+* export the auth-surface building blocks from user-ui + multiline/helper support on AuthTextField ([aa053bf](https://github.com/proteinjs/user/commit/aa053bf897531e39f4cc97c020a50fce70a6fc74))
+
+
+
+
+
 ## [1.6.1](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.6.0...@proteinjs/user-ui@1.6.1) (2026-08-23)
 
 **Note:** Version bump only for package @proteinjs/user-ui

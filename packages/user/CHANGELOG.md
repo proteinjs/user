@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.10.2](https://github.com/proteinjs/user/compare/@proteinjs/user@1.10.1...@proteinjs/user@1.10.2) (2026-08-26)
+
+
+### Bug Fixes
+
+* avatar photo fidelity — the server pipeline owns the one resize (founder fuzzy-avatar defect) ([629f411](https://github.com/proteinjs/user/commit/629f411ac614bfe0a1e5c326a647a6de9f212500))
+
+
+
+
+
 ## [1.10.1](https://github.com/proteinjs/user/compare/@proteinjs/user@1.10.0...@proteinjs/user@1.10.1) (2026-08-23)
 
 
