@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.10.3](https://github.com/proteinjs/user/compare/@proteinjs/user@1.10.2...@proteinjs/user@1.10.3) (2026-08-26)
+
+
+### Bug Fixes
+
+* MachineAccounts harness meets db >=1.34.4 — getMachineAccounts maps the new {source, loader} declaration pairs; the test seeds namedObjectCache beside objectCache (objectsWithNames reads only the former — user's next CI red without this); the removal case models IN-PACKAGE removal (a surviving sibling declaration) per the ownership law boot([]) now deliberately protects. HONEST RESIDUE: the re-declare-after-removal leg still reds (sync INSERTs the existing machine-test-ops row instead of adopting — the new sync's adopt query vs the deactivated row's stamps; a user+db semantics call for the mint owners, exact repro in this suite) — 10/11 green, was 1/11 at origin/main against db 1.34.4 ([895f5fe](https://github.com/proteinjs/user/commit/895f5fedf47064299f184e7a2a14068bd7acbdd0))
+
+
+
+
+
 ## [1.10.2](https://github.com/proteinjs/user/compare/@proteinjs/user@1.10.1...@proteinjs/user@1.10.2) (2026-08-26)
 
 
