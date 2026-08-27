@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.10.2](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.10.1...@proteinjs/user-server@1.10.2) (2026-08-27)
+
+
+### Bug Fixes
+
+* /dev/login first-hit lands on the login form — diagnosed to runtime passport skew; establishSession now refuses a non-regenerating login instead of silently racing ([a34a85e](https://github.com/proteinjs/user/commit/a34a85e088dcf212d4bb1e79c162b716e8d6a444))
+
+
+
+
+
 ## [1.10.1](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.10.0...@proteinjs/user-server@1.10.1) (2026-08-26)
 
 
