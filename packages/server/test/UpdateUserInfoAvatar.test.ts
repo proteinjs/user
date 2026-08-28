@@ -79,9 +79,10 @@ describe('UpdateUserInfo avatar mutations', () => {
     const second = await service.updateAvatarPhoto(png.toString('base64'), 'image/png');
     expect(second.avatarFileId).not.toBe(first.avatarFileId);
 
-    // The prior file is gone — row and bytes.
+    // The prior file is gone — row and bytes (the byte store checked directly through the
+    // driver: the gated service read now refuses ids with no readable row by design).
     expect(await getFileRow(first.avatarFileId!)).toBeFalsy();
-    expect(await new FileStorage().getFileData(first.avatarFileId!)).toBe('');
+    expect(await FileStorage.getDriver().getFileData(first.avatarFileId!)).toBe('');
     // The new one is intact.
     expect(await getFileRow(second.avatarFileId!)).toBeTruthy();
   });

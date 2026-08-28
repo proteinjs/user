@@ -15,7 +15,10 @@ const logger = new Logger({ name: 'avatarRoute' });
  * System-read surface is exactly: the user row (for `avatarFileId`), that one file row (for the
  * Content-Type), and its bytes. The file id is never taken from the request — only the id stored
  * on the user row is served, so this can never read arbitrary files. `:userId` is a keyed lookup
- * (no path/filesystem interpretation).
+ * (no path/filesystem interpretation). Bytes come through the deliberately-unscoped DRIVER read:
+ * the route has already made its own access decision above, and the gated service read
+ * (`FileStorage.getFileData` — the caller's row-read as the byte-access check) would refuse every
+ * viewer but the avatar's owner.
  *
  * Cache contract (mirrored by `avatarRoute` in @proteinjs/user routes.ts): the path is stable per
  * user, so responses carry `max-age=86400, immutable`; clients bust with `?v=<avatarFileId>`,
@@ -45,7 +48,7 @@ export const avatar: Route = {
         return;
       }
 
-      const fileDataBase64 = await new FileStorage().getFileData(file.id);
+      const fileDataBase64 = await FileStorage.getDriver().getFileData(file.id);
       response.setHeader('Content-Type', file.type);
       response.setHeader('Cache-Control', 'public, max-age=86400, immutable');
       response.send(Buffer.from(fileDataBase64, 'base64'));
