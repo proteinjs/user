@@ -63,7 +63,13 @@ describe('Roles service — grant/revoke outcomes and audit trail', () => {
     (SourceRepository.get() as any).objectCache['@proteinjs/user/RoleCatalogEntry'] = [
       { role: 'ops', description: 'Run the ops cockpit' } as RoleCatalogEntry,
       { role: 'dev', description: 'Drive the dev tooling' } as RoleCatalogEntry,
+      // Admin-grant-only entry (the consumer compliance-grant shape): granting requires the
+      // caller to BE an admin; the ordinary 'roles' grant does not cover it.
+      { role: 'data-access', description: 'Compliance decrypt grant', adminGrantOnly: true } as RoleCatalogEntry,
     ];
+    // The admin-grant-only check resolves the CALLER through UserAuth — same session-backed
+    // repo the services use.
+    (SourceRepository.get() as any).objectCache['@proteinjs/user-auth/AuthenticatedUserRepo'] = [new UserRepo()];
     jest.spyOn(Db, 'getDefaultDbDriver').mockImplementation(() => spannerDriver);
 
     await SpannerEmulatorProvisioner.ensureProvisioned({
@@ -184,5 +190,39 @@ describe('Roles service — grant/revoke outcomes and audit trail', () => {
   it('refuses a grant to a user that does not exist', async () => {
     await expect(new Roles().grantRole('nobody-1', 'ops')).rejects.toThrow('No user found for id: nobody-1');
     expect(await auditRows()).toHaveLength(0);
+  }, 60000);
+
+  it('refuses to grant an admin-grant-only role when the caller is not an admin — and writes nothing', async () => {
+    // A user-admin's full day-to-day grant set — pointedly including 'roles' (the door this
+    // service sits behind) — must NOT be able to hand out an admin-grant-only role.
+    new UserRepo().setUser({ ...actor, roles: ['users', 'roles', 'sessions'] });
+    try {
+      await expect(new Roles().grantRole(targetId, 'data-access')).rejects.toThrow(/can only be granted by an admin/);
+      expect(await targetRoles()).toEqual([]);
+      expect(await auditRows()).toHaveLength(0);
+    } finally {
+      new UserRepo().setUser(actor);
+    }
+  }, 60000);
+
+  it('grants an admin-grant-only role when the caller IS an admin, audited like any grant', async () => {
+    await new Roles().grantRole(targetId, 'data-access');
+
+    expect(await targetRoles()).toEqual(['data-access']);
+    const events = await auditRows();
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ actor: 'actor-1', target: targetId, role: 'data-access', action: 'grant' });
+  }, 60000);
+
+  it('a roles-holder can still REVOKE an admin-grant-only role — de-escalation stays open (the break-glass precedent)', async () => {
+    await new Roles().grantRole(targetId, 'data-access');
+    new UserRepo().setUser({ ...actor, roles: ['roles'] });
+    try {
+      await new Roles().revokeRole(targetId, 'data-access');
+      expect(await targetRoles()).toEqual([]);
+      expect((await auditRows()).map((event) => event.action).sort()).toEqual(['grant', 'revoke']);
+    } finally {
+      new UserRepo().setUser(actor);
+    }
   }, 60000);
 });

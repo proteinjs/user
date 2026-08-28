@@ -1,5 +1,5 @@
 import { getDbAsSystem } from '@proteinjs/db';
-import { RolesService, RolesCatalog, UserRepo, tables, USER_PERMISSIONS } from '@proteinjs/user';
+import { RolesService, RolesCatalog, UserAuth, UserRepo, tables, USER_PERMISSIONS } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
 import { Service } from '@proteinjs/service';
 
@@ -42,6 +42,17 @@ export class Roles implements RolesService {
         `'${role}' is a break-glass role — this service refuses to grant it. The only path to ` +
           `break-glass is a manual UPDATE on the user row in Spanner Studio. (Revoking it here ` +
           `stays allowed.)`
+      );
+    }
+
+    // Admin-grant-only roles (catalog `adminGrantOnly`) exceed the people-management trust the
+    // 'roles' permission carries — only an admin may hand them out. Server-side and fail-closed:
+    // the service door admits 'roles' holders, so this check is what keeps a user-admin from
+    // granting such a role. Revoke stays open — the break-glass de-escalation precedent above.
+    if (entry.adminGrantOnly && action === 'grant' && !UserAuth.hasRole('admin')) {
+      throw new Error(
+        `'${role}' can only be granted by an admin — the 'roles' grant does not cover it. ` +
+          `(Revoking it here stays allowed.)`
       );
     }
 
