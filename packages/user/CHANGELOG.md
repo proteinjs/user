@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.11.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.10.3...@proteinjs/user@1.11.0) (2026-08-28)
+
+
+### Features
+
+* hide password-reset token columns from the generic record UI — auth-internal state (server write paths only) has no business on the admin user table or form; ui.hidden at the schema like password ([4e61728](https://github.com/proteinjs/user/commit/4e6172866cf291b8e476001cf2c39f933a72b4fb))
+
+
+
+
+
 ## [1.10.3](https://github.com/proteinjs/user/compare/@proteinjs/user@1.10.2...@proteinjs/user@1.10.3) (2026-08-26)
 
 
