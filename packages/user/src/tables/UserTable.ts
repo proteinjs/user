@@ -110,8 +110,10 @@ export class UserTable extends Table<User> {
      */
     email: new StringColumn('email', { unique: { unique: true, indexName: 'user_email_unique' } }, 250),
     password: new PasswordColumn('password'),
-    passwordResetToken: new StringColumn('password_reset_token'),
-    passwordResetTokenExpiration: new DateTimeColumn('password_reset_token_expiration'),
+    // Auth-internal reset-token state: server write paths only — no admin surface (table or
+    // form) has business rendering it, so it hides from the generic record UI like `password`.
+    passwordResetToken: new StringColumn('password_reset_token', { ui: { hidden: true } }),
+    passwordResetTokenExpiration: new DateTimeColumn('password_reset_token_expiration', { ui: { hidden: true } }),
     emailVerified: new BooleanColumn('email_verified'),
     /**
      * Typed array in the `role_list` column. The legacy comma-string `roles` column (STRING(255))
