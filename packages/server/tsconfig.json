@@ -17,9 +17,7 @@
     "jsx": "react",
     "baseUrl": "./",
     "paths": {
-      "@proteinjs/*": [
-        "node_modules/@proteinjs/*"
-      ]
+      "@proteinjs/*": ["node_modules/@proteinjs/*"]
     }
   }
 }

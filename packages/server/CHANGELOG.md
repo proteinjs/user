@@ -3,6 +3,44 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.10.2](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.10.1...@proteinjs/user-server@1.10.2) (2026-08-27)
+
+
+### Bug Fixes
+
+* /dev/login first-hit lands on the login form — diagnosed to runtime passport skew; establishSession now refuses a non-regenerating login instead of silently racing ([a34a85e](https://github.com/proteinjs/user/commit/a34a85e088dcf212d4bb1e79c162b716e8d6a444))
+
+
+
+
+
+## [1.10.1](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.10.0...@proteinjs/user-server@1.10.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* MachineAccounts harness meets db >=1.34.4 — getMachineAccounts maps the new {source, loader} declaration pairs; the test seeds namedObjectCache beside objectCache (objectsWithNames reads only the former — user's next CI red without this); the removal case models IN-PACKAGE removal (a surviving sibling declaration) per the ownership law boot([]) now deliberately protects. HONEST RESIDUE: the re-declare-after-removal leg still reds (sync INSERTs the existing machine-test-ops row instead of adopting — the new sync's adopt query vs the deactivated row's stamps; a user+db semantics call for the mint owners, exact repro in this suite) — 10/11 green, was 1/11 at origin/main against db 1.34.4 ([895f5fe](https://github.com/proteinjs/user/commit/895f5fedf47064299f184e7a2a14068bd7acbdd0))
+
+
+
+
+
+# [1.10.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.9.1...@proteinjs/user-server@1.10.0) (2026-08-26)
+
+
+### Bug Fixes
+
+* avatar photo fidelity — the server pipeline owns the one resize (founder fuzzy-avatar defect) ([629f411](https://github.com/proteinjs/user/commit/629f411ac614bfe0a1e5c326a647a6de9f212500))
+
+
+### Features
+
+* export the Signup class from user-server ([117651a](https://github.com/proteinjs/user/commit/117651a920b1d3489bc867e47d010ed5f24e972c))
+
+
+
+
+
 ## [1.9.1](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.9.0...@proteinjs/user-server@1.9.1) (2026-08-23)
 
 

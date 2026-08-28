@@ -19,15 +19,33 @@
  * real passport machinery.
  *
  * COUPLED to the passport 0.6 upgrade in @proteinjs/server (which supplies the runtime passport
- * middleware): under passport 0.4, `request.login` neither regenerates nor saves — shipping this
- * package against a pre-0.6 @proteinjs/server would silently reopen both holes.
+ * middleware): under passport 0.4, `request.login` neither regenerates nor saves. That skew is
+ * NOT silent here: the post-login guard below verifies the one observable trace of the contract —
+ * express-session's regenerate always REPLACES `request.session` with a fresh Session — and
+ * REFUSES (rejects) when the session object survived the login. A pre-0.6 runtime (a stale
+ * @proteinjs/server < 3.5.1 checkout symlinked into a dev workspace, live-observed as
+ * DEV_SMOKE_OVERNIGHT 2026-08-26 finding 7: /dev/login's redirected navigation raced the
+ * deferred session write and landed on the login form) then fails loudly at the seam instead of
+ * degrading into fixation-vulnerable, race-prone logins. The guard is a post-condition, not a
+ * fallback — establishSession never does passport's regenerate/save itself.
  *
  * `request` is typed loosely because passport augments the express request at runtime; the
  * routes in this package share that convention. A login failure (regenerate/serialize/save
  * error) rejects — a door must never answer success for a session that did not commit.
  */
 export async function establishSession(request: any, email: string): Promise<void> {
+  const preLoginSession = request.session;
   await new Promise<void>((resolve, reject) =>
     request.login(email, (error: unknown) => (error ? reject(error) : resolve()))
   );
+  if (request.session === preLoginSession) {
+    throw new Error(
+      'establishSession: request.login resolved without replacing request.session, so the runtime passport ' +
+        'did not regenerate the session id (pre-0.6 shape — the runtime middleware comes from ' +
+        '@proteinjs/server, which supplies passport 0.6 as of 3.5.1; check for a stale checkout or ' +
+        'node_modules). Refusing to answer success: without regenerate → save-before-response, the ' +
+        'post-login navigation races the session write (first hit lands unauthenticated) and session ' +
+        'fixation (CVE-2022-25896) reopens.'
+    );
+  }
 }

@@ -3,6 +3,36 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.7.2](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.7.1...@proteinjs/user-ui@1.7.2) (2026-08-27)
+
+
+### Bug Fixes
+
+* AuthMessagePanel keeps the login form's column — an optional read-only field carries the fixed value the status is about (e.g. the waitlist confirmation's email), so status pages render title, field, action instead of floating two text lines over a lone button ([d156bee](https://github.com/proteinjs/user/commit/d156bee5e4178ea7394c3df4aed62444dbde2ff6))
+
+
+
+
+
+## [1.7.1](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.7.0...@proteinjs/user-ui@1.7.1) (2026-08-26)
+
+**Note:** Version bump only for package @proteinjs/user-ui
+
+
+
+
+
+# [1.7.0](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.6.1...@proteinjs/user-ui@1.7.0) (2026-08-26)
+
+
+### Features
+
+* export the auth-surface building blocks from user-ui + multiline/helper support on AuthTextField ([aa053bf](https://github.com/proteinjs/user/commit/aa053bf897531e39f4cc97c020a50fce70a6fc74))
+
+
+
+
+
 ## [1.6.1](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.6.0...@proteinjs/user-ui@1.6.1) (2026-08-23)
 
 **Note:** Version bump only for package @proteinjs/user-ui
