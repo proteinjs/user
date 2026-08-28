@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.10.3](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.10.2...@proteinjs/user-server@1.10.3) (2026-08-28)
+
+
+### Bug Fixes
+
+* avatar route reads bytes through the driver door — its own access decision, not the gated service read ([0fbf954](https://github.com/proteinjs/user/commit/0fbf95439b11bb4c67ad6109eb7d519d0c8788e1))
+
+
+
+
+
 ## [1.10.2](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.10.1...@proteinjs/user-server@1.10.2) (2026-08-27)
 
 
