@@ -89,7 +89,9 @@ describe('invite token lifetime', () => {
     expect(dbInsert).toHaveBeenCalledTimes(1);
     const [, inserted] = dbInsert.mock.calls[0];
     expect(inserted.email).toBe('invitee@test.local');
-    expect(inserted.invitedBy).toBe('inviter-1');
+    // The inviter is stamped as a REFERENCE to the user record (the id string rides inside it).
+    expect(inserted.invitedBy?._table).toBe('user');
+    expect(inserted.invitedBy?._id).toBe('inviter-1');
     expect(secondsFromExpectedTtl(inserted.tokenExpiresAt, INVITE_TOKEN_TTL_DAYS)).toBeLessThan(
       CLOCK_SKEW_TOLERANCE_SECONDS
     );

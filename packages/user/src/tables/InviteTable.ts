@@ -1,12 +1,21 @@
-import { StringColumn, Table, Record, withRecordColumns, DateTimeColumn } from '@proteinjs/db';
+import {
+  StringColumn,
+  Table,
+  Record,
+  withRecordColumns,
+  DateTimeColumn,
+  Reference,
+  ReferenceColumn,
+} from '@proteinjs/db';
 import { Moment } from 'moment';
 import { USER_PERMISSIONS } from '../permissions';
+import { User, UserTable } from './UserTable';
 
 export type Invite = Record & {
   email: string;
   token: string | null;
   tokenExpiresAt: Moment | null;
-  invitedBy: string;
+  invitedBy: Reference<User>;
 };
 
 export class InviteTable extends Table<Invite> {
@@ -33,6 +42,12 @@ export class InviteTable extends Table<Invite> {
     email: new StringColumn('email', {}, 250),
     token: new StringColumn('token'),
     tokenExpiresAt: new DateTimeColumn('token_expires_at'),
-    invitedBy: new StringColumn('invited_by'),
+    /**
+     * A reference at the column's ORIGINAL string width: `invited_by` predates the reference
+     * type as a STRING(255) uuid column, and a reference stores the same id bytes — adopting
+     * the existing width (`maxLength`) makes the retype invisible to the schema sync (zero DDL;
+     * Spanner could not narrow to the 36 default in place anyway).
+     */
+    invitedBy: new ReferenceColumn<User>('invited_by', new UserTable().name, false, { maxLength: 255 }),
   });
 }

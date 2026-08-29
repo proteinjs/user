@@ -33,7 +33,7 @@ jest.mock('@proteinjs/email-server', () => ({
   }),
 }));
 
-import { getDbAsSystem } from '@proteinjs/db';
+import { getDbAsSystem, Reference } from '@proteinjs/db';
 import { SourceRepository } from '@proteinjs/reflection';
 import { tables } from '@proteinjs/user';
 import { signup } from '../src/routes/signup';
@@ -135,7 +135,7 @@ describe('signup route — auto-login after signup', () => {
       email: 'invited@test.local',
       token: 'invite-token-1',
       tokenExpiresAt: moment().add(1, 'day'),
-      invitedBy: 'inviter-1',
+      invitedBy: new Reference(tables.User.name, 'inviter-1'),
     });
 
     const outcome = await invokeSignup({
@@ -151,7 +151,10 @@ describe('signup route — auto-login after signup', () => {
     const created = await getUserRow('invited@test.local');
     expect(created).toBeDefined();
     expect(created!.emailVerified).toBe(true); // the email came from the invite record
-    expect(created!.invitedBy).toBe('inviter-1');
+    // The inviter carries over from the invite as a reference to the user record — the stored
+    // bytes stay the raw id, so it reads back as a reference to the same id.
+    expect(created!.invitedBy?._table).toBe(tables.User.name);
+    expect(created!.invitedBy?._id).toBe('inviter-1');
     expect(await db.get(tables.Invite, { token: 'invite-token-1' })).toBeUndefined();
   });
 

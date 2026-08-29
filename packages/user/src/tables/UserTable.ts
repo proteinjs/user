@@ -7,6 +7,8 @@ import {
   SourceRecord,
   withSourceRecordColumns,
   DateTimeColumn,
+  Reference,
+  ReferenceColumn,
 } from '@proteinjs/db';
 import { Moment } from 'moment';
 import { USER_PERMISSIONS } from '../permissions';
@@ -31,7 +33,12 @@ export type User = SourceRecord & {
   emailVerified: boolean;
   /** Role names from the roles catalog (see `RolesCatalog`). Written ONLY by the Roles service. */
   roles: string[];
-  invitedBy?: string | null;
+  /**
+   * The user who invited this account (resolved from the invite at signup). Left DANGLING when
+   * the inviter's account purges — that unresolvable id IS the pseudonymization the account
+   * purge relies on; nothing rewrites it.
+   */
+  invitedBy?: Reference<User> | null;
   /**
    * Emoji avatar. At most one of `avatarEmoji`/`avatarFileId` is set — the avatar mutations in
    * UpdateUserInfo enforce it (every mutation assigns BOTH columns); nothing else writes these.
@@ -121,7 +128,13 @@ export class UserTable extends Table<User> {
      * new column + backfill (`@proteinjs/user-server` BackfillUserRolesArray) + this code cutover.
      */
     roles: new ArrayColumn<string>('role_list'),
-    invitedBy: new StringColumn('invited_by'),
+    /**
+     * A reference at the column's ORIGINAL string width: `invited_by` predates the reference
+     * type as a STRING(255) uuid column, and a reference stores the same id bytes — adopting
+     * the existing width (`maxLength`) makes the retype invisible to the schema sync (zero DDL;
+     * Spanner could not narrow to the 36 default in place anyway).
+     */
+    invitedBy: new ReferenceColumn<User>('invited_by', 'user', false, { maxLength: 255 }),
     avatarEmoji: new StringColumn('avatar_emoji'),
     avatarFileId: new StringColumn('avatar_file_id'),
     status: new StringColumn<UserStatus>('status', { defaultValue: async () => 'active' }, 16),

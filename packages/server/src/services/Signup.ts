@@ -1,4 +1,4 @@
-import { getDbAsSystem } from '@proteinjs/db';
+import { getDbAsSystem, Reference } from '@proteinjs/db';
 import {
   SendInviteResponse,
   tables,
@@ -184,7 +184,7 @@ export class Signup implements SignupService {
           email: caseInsensitiveEmail,
           token,
           tokenExpiresAt,
-          invitedBy: userId,
+          invitedBy: new Reference(tables.User.name, userId),
         });
       }
 
