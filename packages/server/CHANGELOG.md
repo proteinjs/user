@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.11.1](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.11.0...@proteinjs/user-server@1.11.1) (2026-08-29)
+
+
+### Bug Fixes
+
+* AccessGrant.principal names its reference table 'user', not the class name — UserTable.name is the class's static JS name ('UserTable'), which deserialize stamped onto every read-back principal, so principal.get() threw (Unable to find table: UserTable) and the admin grant table could never render principals as linked names. Stored cells are bare ids — verified against the live emulator (the raw principal cell is exactly the user id; nothing 'UserTable'-shaped in the row) — so the fix is declaration-only: zero data touched, zero DDL (same STRING(36) column). Tests: user-server emulator suite (stored-bare-id premise, read-back principal resolves the user record, admin/owner insert-gate id-equality pin) + user-ui admin grant-table linked-name rendering bound over the real declaration (the adminInvitedByRendering pattern). Red-before-green: the resolution and rendering legs fail at the pre-fix declaration ('UserTable' stamped on the reference; link at ?table=UserTable). ([037f3ef](https://github.com/proteinjs/user/commit/037f3efd316b56d557c044639f7cd8e044e7d313))
+
+
+
+
+
 # [1.11.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.10.4...@proteinjs/user-server@1.11.0) (2026-08-29)
 
 
