@@ -15,6 +15,14 @@ export interface RoleCatalogEntry extends Loadable {
    * held by NOBODY day-to-day. Only 'admin' ships with this flag.
    */
   breakGlass?: boolean;
+  /**
+   * Admin-grant-only roles can be GRANTED only by a caller holding the 'admin' role — the
+   * ordinary 'roles' grant does not cover them (the Roles service refuses, fail-closed).
+   * For roles whose power exceeds the people-management trust that day-to-day role granting
+   * carries (e.g. a consumer's compliance data-access grant). Revoking stays open to 'roles'
+   * holders: de-escalation should ride the audited path, the break-glass precedent.
+   */
+  adminGrantOnly?: boolean;
 }
 
 export const getRoleCatalogEntries = () =>

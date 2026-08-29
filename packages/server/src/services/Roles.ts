@@ -1,5 +1,5 @@
 import { getDbAsSystem } from '@proteinjs/db';
-import { RolesService, RolesCatalog, UserRepo, tables, USER_PERMISSIONS } from '@proteinjs/user';
+import { RolesService, RolesCatalog, UserAuth, UserRepo, tables, USER_PERMISSIONS } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
 import { Service } from '@proteinjs/service';
 
@@ -8,6 +8,8 @@ import { Service } from '@proteinjs/service';
  * record writes cannot touch it). Grants and revokes are validated against the roles catalog and
  * audited: the role update and its `role_grant_event` row (actor, target, role, action; `created`
  * is the timestamp) commit in one transaction, so the trail cannot diverge from the grants.
+ *
+ * Break-glass roles are never granted here — see `changeRole`; revoking one stays allowed.
  */
 export class Roles implements RolesService {
   public serviceMetadata: Service['serviceMetadata'] = {
@@ -26,8 +28,32 @@ export class Roles implements RolesService {
 
   private async changeRole(userId: string, role: string, action: 'grant' | 'revoke'): Promise<void> {
     const logger = new Logger({ name: `Roles.${action}Role` });
-    if (!RolesCatalog.isKnownRole(role)) {
+    const entry = RolesCatalog.getEntry(role);
+    if (!entry) {
       throw new Error(`'${role}' is not a known role. Pick one from the roles catalog.`);
+    }
+
+    // Break-glass passes every permission check, so no permission-mapped role — including
+    // 'roles' — may mint it: the only path to break-glass is a manual UPDATE on the user row
+    // in Spanner Studio, by a human, on purpose. Revoke stays open: de-escalation toward
+    // "held by nobody day-to-day" should ride the audited path, not require database access.
+    if (entry.breakGlass && action === 'grant') {
+      throw new Error(
+        `'${role}' is a break-glass role — this service refuses to grant it. The only path to ` +
+          `break-glass is a manual UPDATE on the user row in Spanner Studio. (Revoking it here ` +
+          `stays allowed.)`
+      );
+    }
+
+    // Admin-grant-only roles (catalog `adminGrantOnly`) exceed the people-management trust the
+    // 'roles' permission carries — only an admin may hand them out. Server-side and fail-closed:
+    // the service door admits 'roles' holders, so this check is what keeps a user-admin from
+    // granting such a role. Revoke stays open — the break-glass de-escalation precedent above.
+    if (entry.adminGrantOnly && action === 'grant' && !UserAuth.hasRole('admin')) {
+      throw new Error(
+        `'${role}' can only be granted by an admin — the 'roles' grant does not cover it. ` +
+          `(Revoking it here stays allowed.)`
+      );
     }
 
     const db = getDbAsSystem();

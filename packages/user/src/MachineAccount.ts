@@ -26,8 +26,11 @@ export const getMachineAccounts = (): MachineAccount[] =>
  * ADOPTS an existing row by email in deployed envs (id kept — rows the account filed reference
  * it; password kept — the credential is runtime-owned), reverts the declared fields on every
  * boot (a runtime grant/revoke on a machine account is drift), and deactivates the account —
- * sessions killed, never deleted — when the declaration is removed. Git history of the
- * declaration is the machine-grant audit trail; the Roles service refuses machine targets.
+ * sessions killed, never deleted — when the declaration is removed. Re-declaring a removed
+ * account reactivates it, even under a renamed email: the user table soft-removes (keeps rows),
+ * so the sync re-adopts the kept row by its stable declared id and re-derives its state from
+ * the declaration (id and minted credential survive; no stale grants resurrect). Git history of
+ * the declaration is the machine-grant audit trail; the Roles service refuses machine targets.
  *
  * A `password` is deliberately NOT declarable: a fresh machine row has a NULL password, which
  * `authenticate`'s verify treats as matching no password at all, so "account exists" can never

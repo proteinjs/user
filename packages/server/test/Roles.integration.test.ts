@@ -62,7 +62,14 @@ describe('Roles service — grant/revoke outcomes and audit trail', () => {
     ];
     (SourceRepository.get() as any).objectCache['@proteinjs/user/RoleCatalogEntry'] = [
       { role: 'ops', description: 'Run the ops cockpit' } as RoleCatalogEntry,
+      { role: 'dev', description: 'Drive the dev tooling' } as RoleCatalogEntry,
+      // Admin-grant-only entry (the consumer compliance-grant shape): granting requires the
+      // caller to BE an admin; the ordinary 'roles' grant does not cover it.
+      { role: 'data-access', description: 'Compliance decrypt grant', adminGrantOnly: true } as RoleCatalogEntry,
     ];
+    // The admin-grant-only check resolves the CALLER through UserAuth — same session-backed
+    // repo the services use.
+    (SourceRepository.get() as any).objectCache['@proteinjs/user-auth/AuthenticatedUserRepo'] = [new UserRepo()];
     jest.spyOn(Db, 'getDefaultDbDriver').mockImplementation(() => spannerDriver);
 
     await SpannerEmulatorProvisioner.ensureProvisioned({
@@ -131,14 +138,38 @@ describe('Roles service — grant/revoke outcomes and audit trail', () => {
   it('revoke removes the role and audits the revoke', async () => {
     const roles = new Roles();
     await roles.grantRole(targetId, 'ops');
-    await roles.grantRole(targetId, 'admin');
+    await roles.grantRole(targetId, 'dev');
     await roles.revokeRole(targetId, 'ops');
 
-    expect(await targetRoles()).toEqual(['admin']);
+    expect(await targetRoles()).toEqual(['dev']);
     const events = await auditRows();
     expect(events).toHaveLength(3);
     const revoke = events.find((event) => event.action === 'revoke');
     expect(revoke).toMatchObject({ actor: 'actor-1', target: targetId, role: 'ops' });
+  }, 60000);
+
+  it('refuses to grant the break-glass role, and writes nothing — the only path to admin is a manual UPDATE in Spanner Studio', async () => {
+    // The error teaches: names break-glass, refuses the grant, and points at the one real path.
+    await expect(new Roles().grantRole(targetId, 'admin')).rejects.toThrow(
+      /break-glass role — this service refuses to grant it.*manual UPDATE on the user row in Spanner Studio/
+    );
+
+    // A refusal is not a role change: no user write, no audit row (the trail records what
+    // happened, and nothing happened).
+    expect(await targetRoles()).toEqual([]);
+    expect(await auditRows()).toHaveLength(0);
+  }, 60000);
+
+  it('revokes the break-glass role — de-escalation through the audited path stays available', async () => {
+    // Admin arrives only via the manual database path; mirror that here with a system write.
+    await getDbAsSystem().update(tables.User, { id: targetId, roles: ['admin'] });
+
+    await new Roles().revokeRole(targetId, 'admin');
+
+    expect(await targetRoles()).toEqual([]);
+    const events = await auditRows();
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ actor: 'actor-1', target: targetId, role: 'admin', action: 'revoke' });
   }, 60000);
 
   it('revoking a role the user does not hold changes nothing and writes no audit row', async () => {
@@ -159,5 +190,39 @@ describe('Roles service — grant/revoke outcomes and audit trail', () => {
   it('refuses a grant to a user that does not exist', async () => {
     await expect(new Roles().grantRole('nobody-1', 'ops')).rejects.toThrow('No user found for id: nobody-1');
     expect(await auditRows()).toHaveLength(0);
+  }, 60000);
+
+  it('refuses to grant an admin-grant-only role when the caller is not an admin — and writes nothing', async () => {
+    // A user-admin's full day-to-day grant set — pointedly including 'roles' (the door this
+    // service sits behind) — must NOT be able to hand out an admin-grant-only role.
+    new UserRepo().setUser({ ...actor, roles: ['users', 'roles', 'sessions'] });
+    try {
+      await expect(new Roles().grantRole(targetId, 'data-access')).rejects.toThrow(/can only be granted by an admin/);
+      expect(await targetRoles()).toEqual([]);
+      expect(await auditRows()).toHaveLength(0);
+    } finally {
+      new UserRepo().setUser(actor);
+    }
+  }, 60000);
+
+  it('grants an admin-grant-only role when the caller IS an admin, audited like any grant', async () => {
+    await new Roles().grantRole(targetId, 'data-access');
+
+    expect(await targetRoles()).toEqual(['data-access']);
+    const events = await auditRows();
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ actor: 'actor-1', target: targetId, role: 'data-access', action: 'grant' });
+  }, 60000);
+
+  it('a roles-holder can still REVOKE an admin-grant-only role — de-escalation stays open (the break-glass precedent)', async () => {
+    await new Roles().grantRole(targetId, 'data-access');
+    new UserRepo().setUser({ ...actor, roles: ['roles'] });
+    try {
+      await new Roles().revokeRole(targetId, 'data-access');
+      expect(await targetRoles()).toEqual([]);
+      expect((await auditRows()).map((event) => event.action).sort()).toEqual(['grant', 'revoke']);
+    } finally {
+      new UserRepo().setUser(actor);
+    }
   }, 60000);
 });

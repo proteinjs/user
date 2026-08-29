@@ -50,6 +50,23 @@ export function maxAccessLevel(levels: AccessGrant['accessLevel'][]): AccessGran
   return best;
 }
 
+/**
+ * An AccessGrant insert that names no principal or no resource. A grant is a (who, what, level)
+ * triple; a row missing the who or the what is a capability for nobody on nothing, yet every
+ * reader that joins on it (sweeps, deletion manifests, rosters) must then special-case NULL.
+ * Name-tagged rather than `instanceof` (same reason as `RecordAccessError`: the prototype chain is
+ * unreliable across package compile targets).
+ */
+export class MalformedAccessGrantError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MalformedAccessGrantError';
+  }
+}
+
+export const isMalformedAccessGrantError = (error: unknown): error is MalformedAccessGrantError =>
+  !!error && typeof error === 'object' && (error as { name?: string }).name === 'MalformedAccessGrantError';
+
 export class AccessGrantTable extends Table<AccessGrant> {
   name = 'access_grant';
   auth: Table<AccessGrant>['auth'] = {
@@ -72,7 +89,14 @@ export class AccessGrantTable extends Table<AccessGrant> {
     // name: `UserTable.name` is the class's static JS name ('UserTable'), which deserialize
     // stamped onto every read-back principal, breaking `principal.get()` and the admin table's
     // linked-name rendering. Stored cells are bare ids, so this is declaration-only (zero DDL).
-    principal: new ReferenceColumn<User>('principal', 'user', false),
+    // WELL-FORMEDNESS INVARIANT (the malformed-grant class): `ReferenceColumn.serialize` stores
+    // NULL for a Reference with no `_id`, and nothing below the table ever required one — so a
+    // write path that forwarded an absent id (a session-less bootstrap's `getUser().id`, an RPC
+    // arg passed through unchecked) landed a grant for nobody / on nothing. The refusal is the
+    // table's, for SYSTEM writes too: a schema invariant has no privileged bypass.
+    principal: new ReferenceColumn<User>('principal', 'user', false, {
+      onBeforeInsert: async (_table, insertObj: AccessGrant) => this.assertWellFormed(insertObj),
+    }),
     resource: new DynamicReferenceColumn<any>('resource', 'resource_table', false),
     resourceTable: new DynamicReferenceTableNameColumn('resource_table', 'resource', {
       onBeforeInsert: async (_table, insertObj: AccessGrant, runAsSystem) => {
@@ -174,4 +198,16 @@ export class AccessGrantTable extends Table<AccessGrant> {
       },
     }),
   });
+
+  /** Refuse a grant that names no principal id or no resource id (see {@link MalformedAccessGrantError}). */
+  private async assertWellFormed(insertObj: AccessGrant): Promise<void> {
+    const missing = (['principal', 'resource'] as const).filter((field) => !insertObj[field]?._id);
+    if (missing.length > 0) {
+      throw new MalformedAccessGrantError(
+        `access_grant insert refused: ${missing.join(' and ')} reference has no id ` +
+          `(resourceTable=${insertObj.resourceTable ?? insertObj.resource?._table ?? 'unknown'}, ` +
+          `accessLevel=${insertObj.accessLevel})`
+      );
+    }
+  }
 }
