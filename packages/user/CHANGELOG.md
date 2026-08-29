@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.12.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.11.0...@proteinjs/user@1.12.0) (2026-08-29)
+
+
+### Features
+
+* invitedBy is a real user reference on the user and invite tables — retyped IN PLACE via ReferenceColumn width adoption (db 1.37.0's maxLength option at the column's original 255 width; a reference stores the same id bytes, so deployed rows read back unchanged and the schema sync sees zero DDL — verified against the emulator in @proteinjs/db-driver-spanner's ReferenceColumnAdoptWidth suite). Writers stamp references: sendInvite mints Reference(user, inviter id), createUser carries the invite's reference onto the new account (devLogin's null unchanged); the purge contract holds — a purged inviter leaves the reference dangling, which IS the pseudonymization. Admin payoff: the generic Users/Invites record tables render the inviter as their linked NAME via db-ui's ReferenceCellValue — bound over the real table declarations by the new user-ui suite. Floors: @proteinjs/db ^1.37.0 (user), @proteinjs/db-ui ^1.13.0 (ui); user-ui's jest config adopts the estate singleton pin user-server carries (CI-inert) ([1c5f32a](https://github.com/proteinjs/user/commit/1c5f32a2603f27c41e39e4cfc07f1c3ff17af827))
+
+
+
+
+
 # [1.11.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.10.3...@proteinjs/user@1.11.0) (2026-08-28)
 
 
