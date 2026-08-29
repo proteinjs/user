@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.9.0](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.8.1...@proteinjs/user-ui@1.9.0) (2026-08-29)
+
+
+### Features
+
+* export the auth-surface building blocks from user-ui + multiline/helper support on AuthTextField ([657c016](https://github.com/proteinjs/user/commit/657c01682f73418b21959809a8d53b966c35f140))
+* user record form shows roles (grant/revoke through the Roles service) and read-only status ([89c25f5](https://github.com/proteinjs/user/commit/89c25f56eba793a5b2976d1bfa5ebee7d321a8cb))
+
+
+
+
+
 ## [1.8.1](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.8.0...@proteinjs/user-ui@1.8.1) (2026-08-29)
 
 

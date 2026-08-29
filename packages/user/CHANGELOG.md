@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.13.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.12.1...@proteinjs/user@1.13.0) (2026-08-29)
+
+
+### Bug Fixes
+
+* AccessGrant well-formedness invariant — refuse a grant with no principal or resource id; session-less scope roots mint no grant ([a330784](https://github.com/proteinjs/user/commit/a330784543c3bfa989e86de15f50807260a3e42a))
+* avatar photo fidelity — the server pipeline owns the one resize (founder fuzzy-avatar defect) ([27fb3b7](https://github.com/proteinjs/user/commit/27fb3b77361b1c4e3a0e9f1e2286c1ea9284069f))
+* MachineAccounts harness meets db >=1.34.4 — getMachineAccounts maps the new {source, loader} declaration pairs; the test seeds namedObjectCache beside objectCache (objectsWithNames reads only the former — user's next CI red without this); the removal case models IN-PACKAGE removal (a surviving sibling declaration) per the ownership law boot([]) now deliberately protects. HONEST RESIDUE: the re-declare-after-removal leg still reds (sync INSERTs the existing machine-test-ops row instead of adopting — the new sync's adopt query vs the deactivated row's stamps; a user+db semantics call for the mint owners, exact repro in this suite) — 10/11 green, was 1/11 at origin/main against db 1.34.4 ([80f49e6](https://github.com/proteinjs/user/commit/80f49e664e7cbc83e19d092e69d42d7933652efe))
+
+
+### Features
+
+* admin-grant-only roles — a catalog declaration ('adminGrantOnly') the Roles service enforces at grant time: such a role can be granted only by a caller holding 'admin'; the ordinary 'roles' grant is refused, fail-closed, before any write or audit row. Revoke stays open to 'roles' holders (the break-glass de-escalation precedent). Motivated by the consumer compliance data-access grant: a user-admin must not be able to hand out access to encrypted-content decryption. ([5244bac](https://github.com/proteinjs/user/commit/5244bacb08dfc86a07ecc871927daf1efa80c9dc))
+
+
+
+
+
 ## [1.12.1](https://github.com/proteinjs/user/compare/@proteinjs/user@1.12.0...@proteinjs/user@1.12.1) (2026-08-29)
 
 
