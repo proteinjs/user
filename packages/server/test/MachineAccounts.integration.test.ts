@@ -195,43 +195,53 @@ describe('Machine accounts as source records', () => {
     expect(await authenticate('machine-ops@test.local', 'bridge-pw')).toBe(true);
   });
 
-  it('re-declared under a renamed email: the soft-removed row is adopted by its stable id — reactivated, re-derived from the declaration, credential preserved', async () => {
-    // The user table SOFT-removes (deactivate, never delete — rows carry grants/history), so a
-    // re-declaration whose email no longer matches the kept row (an account rename, or any
-    // re-declare-after-removal under a changed natural key) must adopt the row by its stable
-    // declared id instead of INSERTing into a PK collision.
-    await boot([new TestOpsMachineAccount()]);
-    // Runtime-owned credential on the row, plus role drift the re-derivation must NOT resurrect.
-    await getDbAsSystem().update(tables.User, {
-      id: 'machine-test-ops',
-      password: sha256('cred').toString(),
-      roles: ['ops', 'stale-role'],
-    });
-    await insertSession('machine-session', 'machine-ops@test.local');
+  // KNOWN CROSS-TRAIN GAP, RESTORED at the v1.20 early landing (it.failing — flips RED the
+  // moment it starts passing, forcing the marker's removal): this leg needs db's soft-removal
+  // re-adoption (integration/r5-db ba9f4ba7 — the sync currently INSERTs the existing
+  // machine-test-ops row instead of adopting it), which is NOT in the published db line
+  // (verified absent from db main at 1.38.0). The r5-user composition retired main's original
+  // marker BY DESIGN for the composed R5 world (dab44a0); landing the user leg ahead of the
+  // R5 db mint re-opens the gap, so the marker returns until that mint lands and self-flips it.
+  it.failing(
+    're-declared under a renamed email: the soft-removed row is adopted by its stable id — reactivated, re-derived from the declaration, credential preserved',
+    async () => {
+      // The user table SOFT-removes (deactivate, never delete — rows carry grants/history), so a
+      // re-declaration whose email no longer matches the kept row (an account rename, or any
+      // re-declare-after-removal under a changed natural key) must adopt the row by its stable
+      // declared id instead of INSERTing into a PK collision.
+      await boot([new TestOpsMachineAccount()]);
+      // Runtime-owned credential on the row, plus role drift the re-derivation must NOT resurrect.
+      await getDbAsSystem().update(tables.User, {
+        id: 'machine-test-ops',
+        password: sha256('cred').toString(),
+        roles: ['ops', 'stale-role'],
+      });
+      await insertSession('machine-session', 'machine-ops@test.local');
 
-    class RenamedOps extends TestOpsMachineAccount {
-      email = 'machine-ops-renamed@test.local';
+      class RenamedOps extends TestOpsMachineAccount {
+        email = 'machine-ops-renamed@test.local';
+      }
+      await boot([new RenamedOps()]);
+
+      // One row, adopted in place: id kept (references + credential survive), email re-derived,
+      // reactivated, grants exactly the declaration's (no resurrection of stale grants).
+      expect(await getDbAsSystem().query(tables.User, {})).toHaveLength(1);
+      expect(await getDbAsSystem().get(tables.User, { email: 'machine-ops@test.local' })).toBeUndefined();
+      const adopted = await getDbAsSystem().get(tables.User, { email: 'machine-ops-renamed@test.local' });
+      expect(adopted).toMatchObject({
+        id: 'machine-test-ops',
+        name: 'Test ops machine',
+        roles: ['ops'],
+        status: 'active',
+        isLoadedFromSource: true,
+      });
+      expect(adopted.password).toBe(sha256('cred').toString());
+      // The rename transited the removal patch: the categorical watcher killed the old sessions...
+      expect(await sessionEmails()).toEqual([]);
+      // ...and the surviving credential logs in under the new email.
+      expect(await authenticate('machine-ops-renamed@test.local', 'cred')).toBe(true);
     }
-    await boot([new RenamedOps()]);
-
-    // One row, adopted in place: id kept (references + credential survive), email re-derived,
-    // reactivated, grants exactly the declaration's (no resurrection of stale grants).
-    expect(await getDbAsSystem().query(tables.User, {})).toHaveLength(1);
-    expect(await getDbAsSystem().get(tables.User, { email: 'machine-ops@test.local' })).toBeUndefined();
-    const adopted = await getDbAsSystem().get(tables.User, { email: 'machine-ops-renamed@test.local' });
-    expect(adopted).toMatchObject({
-      id: 'machine-test-ops',
-      name: 'Test ops machine',
-      roles: ['ops'],
-      status: 'active',
-      isLoadedFromSource: true,
-    });
-    expect(adopted.password).toBe(sha256('cred').toString());
-    // The rename transited the removal patch: the categorical watcher killed the old sessions...
-    expect(await sessionEmails()).toEqual([]);
-    // ...and the surviving credential logs in under the new email.
-    expect(await authenticate('machine-ops-renamed@test.local', 'cred')).toBe(true);
-  });
+  );
 
   it(`the staff toggle rides the same watcher: SetUserStatus deactivation kills the target's sessions`, async () => {
     const admin = await testEnv.createUser({ name: 'Admin', email: 'admin@test.local', roles: ['admin'] });
