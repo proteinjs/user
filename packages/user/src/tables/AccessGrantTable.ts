@@ -12,7 +12,7 @@ import {
 } from '@proteinjs/db';
 
 import { Table } from '@proteinjs/db';
-import { User, UserTable } from './UserTable';
+import { User } from './UserTable';
 import { UserRepo } from '../UserRepo';
 
 export type AccessGrant = Record & {
@@ -68,7 +68,11 @@ export class AccessGrantTable extends Table<AccessGrant> {
   ];
   columns: Table<AccessGrant>['columns'] = withRecordColumns<AccessGrant>({
     accessLevel: new StringColumn('access_level'),
-    principal: new ReferenceColumn<User>('principal', UserTable.name, false),
+    // The reference's TABLE name ('user' — matching invitedBy's declaration), never the class
+    // name: `UserTable.name` is the class's static JS name ('UserTable'), which deserialize
+    // stamped onto every read-back principal, breaking `principal.get()` and the admin table's
+    // linked-name rendering. Stored cells are bare ids, so this is declaration-only (zero DDL).
+    principal: new ReferenceColumn<User>('principal', 'user', false),
     resource: new DynamicReferenceColumn<any>('resource', 'resource_table', false),
     resourceTable: new DynamicReferenceTableNameColumn('resource_table', 'resource', {
       onBeforeInsert: async (_table, insertObj: AccessGrant, runAsSystem) => {
