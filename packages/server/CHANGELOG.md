@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.14.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.13.0...@proteinjs/user-server@1.14.0) (2026-08-31)
+
+
+### Features
+
+* shared-scope encryption key owners — the encryption-sharing MVP (TRUST_AND_COMPLIANCE §4/§4.4): SharedRecord rows key by the SCOPE-ROOT OWNER, and a share grant extends decrypt + blind-index search to the recipient ([6f5d0db](https://github.com/proteinjs/user/commit/6f5d0dbd1e56d2b0bf0236b138af50164b244b3c))
+
+
+
+
+
 # [1.13.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.12.0...@proteinjs/user-server@1.13.0) (2026-08-31)
 
 
