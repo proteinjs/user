@@ -82,6 +82,13 @@ export class AccessGrantTable extends Table<AccessGrant> {
       name: 'idx_ag_principal_table_level_resource',
       columns: ['principal', 'resourceTable', 'accessLevel', 'resource'] satisfies (keyof AccessGrant)[],
     },
+    // The resource-side axis: scope-root owner resolution (SharedScopeKeyOwners — per
+    // encrypted write into a shared scope) and outbound-grant enumeration (deletion
+    // manifests, rosters) look grants up BY RESOURCE; without this they scan.
+    {
+      name: 'idx_ag_resource_level_principal',
+      columns: ['resource', 'accessLevel', 'principal'] satisfies (keyof AccessGrant)[],
+    },
   ];
   columns: Table<AccessGrant>['columns'] = withRecordColumns<AccessGrant>({
     accessLevel: new StringColumn('access_level'),

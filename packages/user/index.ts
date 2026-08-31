@@ -24,5 +24,6 @@ export * from './src/RolesCatalog';
 export * from './src/UserRepo';
 export * from './src/ScopedRecord';
 export * from './src/SharedRecord';
+export * from './src/SharedScopeKeyOwners';
 
 export * from '@proteinjs/user-auth';
