@@ -11,6 +11,7 @@ export * from './src/tables/AccessInviteTable';
 export * from './src/tables/AccountDeletionTable';
 export * from './src/tables/InviteTable';
 export * from './src/tables/RoleGrantEventTable';
+export * from './src/tables/UserActivityTable';
 export * from './src/tables/UserStatusEventTable';
 export * from './src/tables/UserTable';
 export * from './src/tables/SessionTable';
