@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.14.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.13.0...@proteinjs/user@1.14.0) (2026-08-31)
+
+
+### Features
+
+* last activity = HUMAN PRESENCE, with one owner — the user_activity stamp (founder finding 2026-08-31: a user's routine runs read as their activity on the admin usage surface; 'last activity' must mean a person was HERE, and machinery acting on their behalf must be structurally unable to move it). New scoped table user_activity (one row per user, scope-unique index user_activity_scope_unique; reads ride the 'users' people-management door, writes are system-only so record surfaces cannot fabricate presence; no retain policy — presence purges with the account) + UserActivityStamp in user-server, invoked from userCache.create: the once-per-session-cookie-request session-cache build IS the interactive-transport seam, so background/seeded contexts (runInUserScope seeds session data directly and never passes through) can never stamp, categorically — no per-feature carve-outs. Machine accounts (isLoadedFromSource, e.g. the error bridge's per-poll login) are refused by the stamp even though their requests ride real sessions. Write behavior mirrors DbSessionStore.touch: throttled per user (5 min), fail-open (the promise never rejects; a request never waits on its own stamp), first-stamp races resolved by the unique index. Consumed by thought-server's usage report (lastActiveDay cutover rides that landing). Bite checks ran: the userCache call removed reddens the human-stamp outcome test; the machine refusal dropped reddens the machine test — both restored green. New suite UserActivityStamp.integration.test.ts (5): stamp lands through the real seam, one-row-per-user advance, machine refusal, throttle, missing-account guest no-op. Estate green on a dedicated emulator: user 45, user-server 122 (117 pre-existing + 5 new), auth 20, ui 50. ([bc39960](https://github.com/proteinjs/user/commit/bc39960204df9ae535a3c44646a16da05e622247))
+
+
+
+
+
 # [1.13.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.12.1...@proteinjs/user@1.13.0) (2026-08-29)
 
 
