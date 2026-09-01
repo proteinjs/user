@@ -123,18 +123,18 @@ export class UserTable extends Table<User> {
     onSourceRemoved: { update: { status: 'deactivated' } },
   };
   columns = withSourceRecordColumns<User>({
-    name: new StringColumn('name'),
+    name: new StringColumn('name', { encrypted: false }), // account identity — metadata by ruling (§2.6)
     /**
      * Unique — codifying the invariant authenticate/Signup always assumed (lowercased +
      * existence-checked). Also the machine-account natural key: adoption requires unambiguous
      * matching. The schema sync's duplicate preflight names offending values if a deployed env
      * somehow holds dupes when the index first lands.
      */
-    email: new StringColumn('email', { unique: { unique: true, indexName: 'user_email_unique' } }, 250),
-    password: new PasswordColumn('password'),
+    email: new StringColumn('email', { encrypted: false, unique: { unique: true, indexName: 'user_email_unique' } }, 250), // account identity — metadata by ruling; unique-indexed
+    password: new PasswordColumn('password', { encrypted: false }), // a hash, matched by query today — the R1 password lane (argon2id + fetch-then-verify) owns this column's hygiene
     // Auth-internal reset-token state: server write paths only — no admin surface (table or
     // form) has business rendering it, so it hides from the generic record UI like `password`.
-    passwordResetToken: new StringColumn('password_reset_token', { ui: { hidden: true } }),
+    passwordResetToken: new StringColumn('password_reset_token', { encrypted: false, ui: { hidden: true } }), // encryption wave-B residue: sessionless reset routes look the row up BY token
     passwordResetTokenExpiration: new DateTimeColumn('password_reset_token_expiration', { ui: { hidden: true } }),
     emailVerified: new BooleanColumn('email_verified'),
     /**
@@ -142,7 +142,7 @@ export class UserTable extends Table<User> {
      * stays physically present but undeclared — Spanner cannot retype in place, so the cutover is
      * new column + backfill (`@proteinjs/user-server` BackfillUserRolesArray) + this code cutover.
      */
-    roles: new ArrayColumn<string>('role_list'),
+    roles: new ArrayColumn<string>('role_list', { encrypted: false }), // role slugs
     /**
      * A reference at the column's ORIGINAL string width: `invited_by` predates the reference
      * type as a STRING(255) uuid column, and a reference stores the same id bytes — adopting
@@ -150,10 +150,10 @@ export class UserTable extends Table<User> {
      * Spanner could not narrow to the 36 default in place anyway).
      */
     invitedBy: new ReferenceColumn<User>('invited_by', 'user', false, { maxLength: 255 }),
-    avatarEmoji: new StringColumn('avatar_emoji'),
-    avatarFileId: new StringColumn('avatar_file_id'),
+    avatarEmoji: new StringColumn('avatar_emoji', { encrypted: false }),
+    avatarFileId: new StringColumn('avatar_file_id', { encrypted: false }),
     machine: new BooleanColumn('machine'),
-    status: new StringColumn<UserStatus>('status', { defaultValue: async () => 'active' }, 16),
+    status: new StringColumn<UserStatus>('status', { encrypted: false, defaultValue: async () => 'active' }, 16),
     deleteRequestedAt: new DateTimeColumn('delete_requested_at'),
     purgeAfter: new DateTimeColumn('purge_after'),
   });

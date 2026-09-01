@@ -85,14 +85,14 @@ export class AccountDeletionTable extends Table<AccountDeletion> {
     { name: 'idx_account_deletion_user_id_unique', columns: ['userId'] as (keyof AccountDeletion)[], unique: true },
   ];
   columns = withRecordColumns<AccountDeletion>({
-    userId: new StringColumn('user_id', {}, 36),
-    userEmail: new StringColumn('user_email', {}, 250),
-    phase: new StringColumn<AccountDeletionPhase>('phase', {}, 16),
+    userId: new StringColumn('user_id', { encrypted: false }, 36),
+    userEmail: new StringColumn('user_email', { encrypted: false }, 250),
+    phase: new StringColumn<AccountDeletionPhase>('phase', { encrypted: false }, 16),
     purgeAfter: new DateTimeColumn('purge_after'),
-    manifestGrants: new ObjectColumn<ManifestGrant[]>('manifest_grants'),
-    ownedResourceIds: new ObjectColumn<string[]>('owned_resource_ids'),
+    manifestGrants: new ObjectColumn<ManifestGrant[]>('manifest_grants', { encrypted: false }), // grant topology — ids
+    ownedResourceIds: new ObjectColumn<string[]>('owned_resource_ids', { encrypted: false }),
     leaseSeq: new IntegerColumn('lease_seq'),
-    ownerNodeId: new StringColumn('owner_node_id'),
+    ownerNodeId: new StringColumn('owner_node_id', { encrypted: false }),
     heartbeatAt: new DateTimeColumn('heartbeat_at'),
   });
 }

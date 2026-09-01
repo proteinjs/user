@@ -1,11 +1,18 @@
 import moment from 'moment';
-import { Db, Table, getDbAsSystem } from '@proteinjs/db';
+import {
+  DataEncryptionKeyTable,
+  Db,
+  InMemoryMasterKeyProvider,
+  Table,
+  getDbAsSystem,
+  setDbEncryptionConfig,
+} from '@proteinjs/db';
 import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { SpannerEmulatorProvisioner, getDropTestTable } from '@proteinjs/db-driver-spanner/test';
 import { tables as fileTables } from '@proteinjs/db-file';
 import { Session, type SessionData, type SessionDataStorage } from '@proteinjs/server-api';
 import { SourceRepository } from '@proteinjs/reflection';
-import { tables as userTables, User, UserRepo } from '@proteinjs/user';
+import { SharedScopeKeyOwners, tables as userTables, User, UserRepo } from '@proteinjs/user';
 
 /** In-memory SessionDataStorage seeded into the SourceRepository cache (tests don't load the
  *  generated source graph, so `Session` would otherwise find no implementation). */
@@ -56,6 +63,21 @@ export class UserServerTestEnvironment {
       data: {},
     });
 
+    // Column encryption is on for the estate (session.serialized_session declares
+    // `encrypted`): every suite runs against the real seam. Sessions have no scope column —
+    // they key under one synthetic system owner, exactly like the app's production config.
+    const keyOwners = new SharedScopeKeyOwners();
+    setDbEncryptionConfig({
+      masterKeyProvider: new InMemoryMasterKeyProvider('user-server-test-environment'),
+      resolveKeyOwner: async (args) => {
+        if (args.table.name === userTables.Session.name) {
+          return 'system-session';
+        }
+        return await keyOwners.resolveKeyOwner(args);
+      },
+      getAccessibleKeyOwners: (args) => keyOwners.getAccessibleKeyOwners(args),
+    });
+    await this.loadTables({ dataEncryptionKey: new DataEncryptionKeyTable() as Table<any> });
     await this.loadTables(userTables);
     await this.loadTables(fileTables);
   }

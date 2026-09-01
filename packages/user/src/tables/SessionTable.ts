@@ -36,9 +36,16 @@ export class SessionTable extends Table<Session> {
     },
   };
   columns: Table<Session>['columns'] = withRecordColumns<Session>({
-    sessionId: new StringColumn('session_id'),
-    session: new StringColumn('serialized_session', {}, 4000),
+    sessionId: new StringColumn('session_id', { encrypted: false }),
+    /**
+     * Live serialized login material — encrypted (TRUST_AND_COMPLIANCE §1: a stolen row must
+     * not be a stolen session). The session table has no scope column, so the deployment's
+     * DbEncryptionConfig.resolveKeyOwner must name this table's key owner (n3xa keys all
+     * session rows under one synthetic system owner; sessions are short-lived and are
+     * deleted, not crypto-shredded, at account deletion).
+     */
+    session: new StringColumn('serialized_session', { encrypted: {} }, 4000),
     expires: new DateColumn('expires'),
-    userEmail: new StringColumn('user_email'),
+    userEmail: new StringColumn('user_email', { encrypted: false }), // account identity — metadata by ruling
   });
 }

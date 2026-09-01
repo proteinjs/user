@@ -27,8 +27,8 @@ export class UserStatusEventTable extends Table<UserStatusEvent> {
     },
   };
   columns: Table<UserStatusEvent>['columns'] = withRecordColumns<UserStatusEvent>({
-    actor: new StringColumn('actor', {}, 36),
-    target: new StringColumn('target', {}, 36),
-    status: new StringColumn<UserStatus>('status', {}, 16),
+    actor: new StringColumn('actor', { encrypted: false }, 36),
+    target: new StringColumn('target', { encrypted: false }, 36),
+    status: new StringColumn<UserStatus>('status', { encrypted: false }, 16),
   });
 }

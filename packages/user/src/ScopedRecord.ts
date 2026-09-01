@@ -44,6 +44,7 @@ const requireScopeUserId = (operation: string): string => {
 const getScopedRecordColumns = (accessibleScopes: string[] = []) => {
   return {
     scope: new StringColumn('scope', {
+      encrypted: false, // a user id — identifier, not words (TRUST_AND_COMPLIANCE §2.6 metadata)
       defaultValue: async () => requireScopeUserId('write'),
       forceDefaultValue: (runAsSystem) => !runAsSystem,
       // Scope is write-once for non-system callers: forced on insert (above), and stripped from

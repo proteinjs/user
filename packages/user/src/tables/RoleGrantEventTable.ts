@@ -27,9 +27,9 @@ export class RoleGrantEventTable extends Table<RoleGrantEvent> {
     },
   };
   columns: Table<RoleGrantEvent>['columns'] = withRecordColumns<RoleGrantEvent>({
-    actor: new StringColumn('actor', {}, 36),
-    target: new StringColumn('target', {}, 36),
-    role: new StringColumn('role'),
-    action: new StringColumn<'grant' | 'revoke'>('action', {}, 16),
+    actor: new StringColumn('actor', { encrypted: false }, 36),
+    target: new StringColumn('target', { encrypted: false }, 36),
+    role: new StringColumn('role', { encrypted: false }),
+    action: new StringColumn<'grant' | 'revoke'>('action', { encrypted: false }, 16),
   });
 }

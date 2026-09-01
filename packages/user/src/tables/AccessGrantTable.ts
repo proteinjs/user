@@ -91,7 +91,7 @@ export class AccessGrantTable extends Table<AccessGrant> {
     },
   ];
   columns: Table<AccessGrant>['columns'] = withRecordColumns<AccessGrant>({
-    accessLevel: new StringColumn('access_level'),
+    accessLevel: new StringColumn('access_level', { encrypted: false }),
     // The reference's TABLE name ('user' — matching invitedBy's declaration), never the class
     // name: `UserTable.name` is the class's static JS name ('UserTable'), which deserialize
     // stamped onto every read-back principal, breaking `principal.get()` and the admin table's

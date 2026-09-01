@@ -43,6 +43,9 @@ export class AccessInviteTable extends Table<AccessInvite> {
   };
   columns = withRecordColumns<AccessInvite>({
     token: new StringColumn('token', {
+      // encryption wave-B residue: redemption looks the row up BY token on a sessionless
+      // route — encrypted equality search has no caller identity there. High-entropy random.
+      encrypted: false,
       defaultValue: async () => crypto.randomBytes(32).toString('hex'),
       forceDefaultValue: true,
     }),
@@ -50,7 +53,7 @@ export class AccessInviteTable extends Table<AccessInvite> {
     accepted: new BooleanColumn('accepted', { defaultValue: async () => false }),
     acceptedBy: new ReferenceColumn('accepted_by', new UserTable().name, false),
     acceptedAt: new DateTimeColumn('accepted_at'),
-    accessLevel: new StringColumn('access_level'),
+    accessLevel: new StringColumn('access_level', { encrypted: false }),
     resource: new DynamicReferenceColumn('resource', 'resource_table'),
     resourceTable: new DynamicReferenceTableNameColumn('resource_table', 'resource', {
       onBeforeInsert: async (_table, insertObj: AccessInvite, runAsSystem) => {

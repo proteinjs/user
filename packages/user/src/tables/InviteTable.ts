@@ -50,8 +50,8 @@ export class InviteTable extends Table<Invite> {
     },
   };
   columns = withRecordColumns<Invite>({
-    email: new StringColumn('email', {}, 250),
-    token: new StringColumn('token'),
+    email: new StringColumn('email', { encrypted: false }, 250), // account identity — metadata by ruling
+    token: new StringColumn('token', { encrypted: false }), // encryption wave-B residue: sessionless redemption lookup by token
     tokenExpiresAt: new DateTimeColumn('token_expires_at'),
     /**
      * A reference at the column's ORIGINAL string width: `invited_by` predates the reference
