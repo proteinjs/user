@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.16.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.15.0...@proteinjs/user@1.16.0) (2026-09-01)
+
+
+### Features
+
+* admin row scans declare what a human reads; user.status retires the legacy null ([d748b71](https://github.com/proteinjs/user/commit/d748b714d21ccccb68626fea3895c1112595bd0c))
+
+
+
+
+
 # [1.15.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.14.0...@proteinjs/user@1.15.0) (2026-08-31)
 
 

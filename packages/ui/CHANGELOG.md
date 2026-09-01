@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.9.3](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.9.2...@proteinjs/user-ui@1.9.3) (2026-09-01)
+
+
+### Bug Fixes
+
+* user-ui rides the same db family — floors db ^1.41.0 / db-ui ^1.16.0 / ui ^4.14.0 ([fda38a6](https://github.com/proteinjs/user/commit/fda38a67071833afa1a4a5ef81128d4b68d5afc2))
+
+
+
+
+
 ## [1.9.2](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.9.1...@proteinjs/user-ui@1.9.2) (2026-08-31)
 
 **Note:** Version bump only for package @proteinjs/user-ui
