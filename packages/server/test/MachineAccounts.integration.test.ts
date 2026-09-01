@@ -195,14 +195,11 @@ describe('Machine accounts as source records', () => {
     expect(await authenticate('machine-ops@test.local', 'bridge-pw')).toBe(true);
   });
 
-  // KNOWN CROSS-TRAIN GAP, RESTORED at the v1.20 early landing (it.failing — flips RED the
-  // moment it starts passing, forcing the marker's removal): this leg needs db's soft-removal
-  // re-adoption (integration/r5-db ba9f4ba7 — the sync currently INSERTs the existing
-  // machine-test-ops row instead of adopting it), which is NOT in the published db line
-  // (verified absent from db main at 1.38.0). The r5-user composition retired main's original
-  // marker BY DESIGN for the composed R5 world (dab44a0); landing the user leg ahead of the
-  // R5 db mint re-opens the gap, so the marker returns until that mint lands and self-flips it.
-  it.failing(
+  // Marker retired at the R5 re-merge (2026-08-31, r5asm2): the composed world's db carries the
+  // soft-removal re-adoption (integration/r5-db ba9f4ba7 content), so this leg passes — the
+  // v1.20-era it.failing cross-train marker self-flipped red exactly as designed and comes off
+  // WITH the R5 db mint (TRAIN_MANIFEST_5 §6.1; land this change with the db 1.40-era mint).
+  it(
     're-declared under a renamed email: the soft-removed row is adopted by its stable id — reactivated, re-derived from the declaration, credential preserved',
     async () => {
       // The user table SOFT-removes (deactivate, never delete — rows carry grants/history), so a
