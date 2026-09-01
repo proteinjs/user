@@ -53,7 +53,9 @@ export type User = SourceRecord & {
    * Account standing. Written ONLY by the SetUserStatus service (audited per change). New rows
    * default to 'active'; rows predating the column read null, which every gate treats as active —
    * only an explicit 'deactivated' is refused (authentication and session resolution both gate on
-   * it in @proteinjs/user-server).
+   * it in @proteinjs/user-server). The legacy null state is retired by the
+   * BackfillUserStatusActive migration (@proteinjs/user-server), so deployed rows read a real
+   * value; the gates' null-tolerant reading stays as the contract for any not-yet-migrated env.
    */
   status?: UserStatus | null;
   /** When the user asked for their account to be deleted. Written by the account-deletion flow only. */

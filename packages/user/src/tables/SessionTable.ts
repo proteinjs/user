@@ -24,6 +24,17 @@ export class SessionTable extends Table<Session> {
       query: { permission: USER_PERMISSIONS.sessions },
     },
   };
+  /**
+   * The row scan: whose session, when it dies, which one. The serialized session blob (cookie
+   * material) has no business in a row scan (founder admin review, v1.22) — it stays on the
+   * record form for 'sessions' holders. The query-only doors above already mean the generic
+   * surfaces derive no create/delete affordances here (rows are system-written).
+   */
+  ui: Table<Session>['ui'] = {
+    recordTable: {
+      columns: ['userEmail', 'expires', 'sessionId'],
+    },
+  };
   columns: Table<Session>['columns'] = withRecordColumns<Session>({
     sessionId: new StringColumn('session_id'),
     session: new StringColumn('serialized_session', {}, 4000),
