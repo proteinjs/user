@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.9.5](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.9.4...@proteinjs/user-ui@1.9.5) (2026-09-02)
+
+
+### Bug Fixes
+
+* floor @proteinjs/db at ^1.43.0 (user/server/ui) — the R5 db mint is where soft-removal re-adoption ships; the publish run's red MachineAccounts renamed-email leg was CI resolving the lock's 1.41.0 (in-range for the ^1.41.0 floor), whose loader has no declared-id re-claim — the natural-key read misses the soft-removed row under its old email and bare-INSERTs the declared id into the kept row's PK (deterministic version skew, not an emulator race; the pool-pressure warnings were noise). Pristine CI-replica install at 1.41.0 reproduces the collision byte-for-byte; the bumped floors re-resolve 1.43.0 over the same untouched locks (CI's install + lock-commit step land the pins) and go green: server 25/25 suites 134/134, user 10/10 47/47, ui 10/10 50/50. Aligns with the published db family (db-ui 1.16.2 / db-file 1.7.12 / db-driver-spanner 1.29.0 / db-driver-knex 1.13.3 all floor db ^1.43.0) ([4a08c6f](https://github.com/proteinjs/user/commit/4a08c6f5dab926adf26b41fc7030f637974da746))
+
+
+
+
+
 ## [1.9.4](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.9.3...@proteinjs/user-ui@1.9.4) (2026-09-02)
 
 **Note:** Version bump only for package @proteinjs/user-ui
