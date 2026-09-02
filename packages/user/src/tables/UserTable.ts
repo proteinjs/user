@@ -22,7 +22,9 @@ export type UserStatus = (typeof USER_STATUSES)[number];
  * MACHINE ACCOUNTS (see `MachineAccount`) whose declared fields are reverted to source on every
  * boot; human rows (flag null/false) are structurally untouchable by the boot sync. A machine
  * account removed from source is deactivated — never deleted — so rows it is referenced from
- * stay intact, and re-declaring it reactivates it.
+ * stay intact, and re-declaring it reactivates it. Whether a row IS a machine account is the
+ * explicit `machine` column (founder ruling 2026-09-02) — `isLoadedFromSource` is the sync's
+ * ownership flag and an input to the machine STAMP, never the question consumers ask.
  */
 export type User = SourceRecord & {
   name: string;
@@ -49,6 +51,17 @@ export type User = SourceRecord & {
    * @proteinjs/db-file depends on @proteinjs/user, so a user→file reference would be circular.
    */
   avatarFileId?: string | null;
+  /**
+   * The EXPLICIT machine-account marker (founder ruling 2026-09-02): true = this row is a
+   * MACHINE identity (CI signals, ops bridges — never a person); null/false = human, so
+   * pre-existing human rows need no backfill (the `status`/opt-out null-default convention).
+   * ONE owner for the question "is this a machine": every consumer (audience derivations,
+   * people lists, purge walkers) reads THIS column — never `isLoadedFromSource`, which merely
+   * says who SYNCS the row. Stamped true by the `MachineAccount` declaration on every boot
+   * (insert and adopt alike), by provisioning migrations for hand-made machine rows, and by
+   * the source-loaded backfill (user-server BackfillMachineFlagForSourceLoadedAccounts).
+   */
+  machine?: boolean | null;
   /**
    * Account standing. Written ONLY by the SetUserStatus service (audited per change). New rows
    * default to 'active'; rows predating the column read null, which every gate treats as active —
@@ -139,6 +152,7 @@ export class UserTable extends Table<User> {
     invitedBy: new ReferenceColumn<User>('invited_by', 'user', false, { maxLength: 255 }),
     avatarEmoji: new StringColumn('avatar_emoji'),
     avatarFileId: new StringColumn('avatar_file_id'),
+    machine: new BooleanColumn('machine'),
     status: new StringColumn<UserStatus>('status', { defaultValue: async () => 'active' }, 16),
     deleteRequestedAt: new DateTimeColumn('delete_requested_at'),
     purgeAfter: new DateTimeColumn('purge_after'),
