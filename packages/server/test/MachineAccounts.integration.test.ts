@@ -124,6 +124,10 @@ describe('Machine accounts as source records', () => {
       emailVerified: true,
       status: 'active',
       isLoadedFromSource: true,
+      // The EXPLICIT machine column (founder ruling 2026-09-02): the declaration stamps it —
+      // one owner for "is this a machine"; isLoadedFromSource is an input to the stamp,
+      // never the test consumers make.
+      machine: true,
     });
     // No declarable password: the fresh row carries none, so authenticate's email+hash match
     // can never admit it until a credential is minted.
@@ -131,6 +135,7 @@ describe('Machine accounts as source records', () => {
 
     const humanAfter = await getDbAsSystem().get(tables.User, { id: human.id });
     expect(humanAfter.isLoadedFromSource).toBeFalsy();
+    expect(humanAfter.machine).toBeFalsy(); // humans never pick up the flag
     expect(humanAfter).toMatchObject({ name: 'A human', roles: ['ops'] });
   });
 
@@ -152,6 +157,9 @@ describe('Machine accounts as source records', () => {
       roles: ['ops'],
       status: 'active',
       isLoadedFromSource: true,
+      // Adoption stamps the explicit machine column onto the hand-made row (the deployed-env
+      // provisioning shape — e.g. a hand-provisioned deploy account becomes honest on boot).
+      machine: true,
     });
     // The credential survived adoption: the account still authenticates with its old password
     // (createUser stores sha256('test')... it stores the raw string; assert equality instead).

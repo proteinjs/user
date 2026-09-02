@@ -38,6 +38,17 @@ export class InviteTable extends Table<Invite> {
       delete: { permission: USER_PERMISSIONS.users },
     },
   };
+  /**
+   * The row scan: who's invited, by whom, until when. The redeemable `token` is auth material
+   * with no business in a row scan (founder admin review, v1.22 — also a hygiene win); it stays
+   * on the record form for the odd support case. The doors above (no insert) already mean the
+   * generic surfaces derive no create affordance — invites are minted by SignupService.sendInvite.
+   */
+  ui: Table<Invite>['ui'] = {
+    recordTable: {
+      columns: ['email', 'invitedBy', 'tokenExpiresAt'],
+    },
+  };
   columns = withRecordColumns<Invite>({
     email: new StringColumn('email', {}, 250),
     token: new StringColumn('token'),
