@@ -24,7 +24,7 @@
   "dependencies": {
     "@mui/icons-material": "5.14.11",
     "@mui/material": "5.14.11",
-    "@proteinjs/db": "^1.41.0",
+    "@proteinjs/db": "^1.43.0",
     "@proteinjs/db-ui": "^1.16.0",
     "@proteinjs/reflection": "^1.2.0",
     "@proteinjs/server-api": "^3.0.11",
