@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.9.4](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.9.3...@proteinjs/user-ui@1.9.4) (2026-09-02)
+
+**Note:** Version bump only for package @proteinjs/user-ui
+
+
+
+
+
 ## [1.9.3](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.9.2...@proteinjs/user-ui@1.9.3) (2026-09-01)
 
 

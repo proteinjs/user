@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.17.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.16.0...@proteinjs/user@1.17.0) (2026-09-02)
+
+
+### Features
+
+* explicit machine column on the user table (founder ruling 2026-09-02) — one owner for 'is this a machine' ([8a09b6e](https://github.com/proteinjs/user/commit/8a09b6ec618646ad96b466385a6f56dd19c04a88))
+
+
+
+
+
 # [1.16.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.15.0...@proteinjs/user@1.16.0) (2026-09-01)
 
 
