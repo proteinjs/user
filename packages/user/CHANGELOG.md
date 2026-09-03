@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.18.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.17.1...@proteinjs/user@1.18.0) (2026-09-03)
+
+
+### Features
+
+* **user, user-server:** UpdateUserInfo.clearAvatar(userId?) — a user manager removes another person's avatar (users checked in-body, the target's file deleted as system); UpdateUserInfo.refresh() re-reads the caller's row into the session cache; Roles refuses self-targeted grants and revokes before any audit row (plans/ACCOUNT_SURFACE.md AS-7, rev 2 items 9 and 11) ([1d881ed](https://github.com/proteinjs/user/commit/1d881ed3d6f7334df55dc464d6d091d91867cc9e))
+
+
+
+
+
 ## [1.17.1](https://github.com/proteinjs/user/compare/@proteinjs/user@1.17.0...@proteinjs/user@1.17.1) (2026-09-02)
 
 
