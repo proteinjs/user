@@ -47,6 +47,17 @@ export interface UpdateUserInfoService extends Service {
   updateAvatarPhoto(fileData: string, mimeType: string, crop?: AvatarCrop): Promise<UpdatedUser>;
   /** Set an emoji avatar. Nulls `avatarFileId` and deletes any previous avatar photo file. */
   updateAvatarEmoji(emoji: string): Promise<UpdatedUser>;
-  /** Remove the avatar entirely (both representations; deletes any stored photo file). */
-  clearAvatar(): Promise<UpdatedUser>;
+  /**
+   * Remove the avatar (both representations; deletes any stored photo file). With `userId`,
+   * another person's avatar: the caller must hold the `users` permission (checked in-body — the
+   * service door admits every signed-in user); the target's session cache is not refreshed
+   * (their next sign-in reads the row).
+   */
+  clearAvatar(userId?: string): Promise<UpdatedUser>;
+  /**
+   * Re-read the caller's stored row into the session cache and return it (password-less). A
+   * change made from another device or session — an avatar set on the phone, a rename — becomes
+   * visible here without a re-login.
+   */
+  refresh(): Promise<UpdatedUser>;
 }

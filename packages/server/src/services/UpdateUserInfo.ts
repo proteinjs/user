@@ -1,15 +1,18 @@
 import sharp from 'sharp';
 import heicDecode from 'heic-decode';
 import { getDbAsSystem } from '@proteinjs/db';
-import { FileStorage } from '@proteinjs/db-file';
+import { File, FileStorage, tables as fileTables } from '@proteinjs/db-file';
 import {
   tables,
   User,
+  UserAuth,
   UserRepo,
+  USER_PERMISSIONS,
   UpdatePasswordResponse,
   UpdatedUser,
   UpdateUserInfoService,
   AvatarCrop,
+  getScopedDbAsSystem,
 } from '@proteinjs/user';
 import { EmailSender, getDefaultPasswordUpdatedEmailConfigFactory } from '@proteinjs/email-server';
 import { PasswordHasher } from '../authentication/PasswordHasher';
@@ -131,8 +134,22 @@ export class UpdateUserInfo implements UpdateUserInfoService {
     return await this.setAvatar({ avatarEmoji: trimmed, avatarFileId: null });
   }
 
-  async clearAvatar(): Promise<UpdatedUser> {
-    return await this.setAvatar({ avatarEmoji: null, avatarFileId: null });
+  async clearAvatar(userId?: string): Promise<UpdatedUser> {
+    return await this.setAvatar({ avatarEmoji: null, avatarFileId: null }, userId);
+  }
+
+  /**
+   * The read-only half of `saveUserInfo`: no write, just the stored row pulled back into the
+   * session cache. Every mutation through this service already refreshes the cache, so this is
+   * for changes made ELSEWHERE — another device, another tab, a user manager — which the cached
+   * user would otherwise keep hiding until the next sign-in.
+   */
+  async refresh(): Promise<UpdatedUser> {
+    const userRepo = new UserRepo();
+    const updated = await getDbAsSystem().get(tables.User, { id: userRepo.getUser().id });
+    delete (updated as Partial<User>).password; // the same password-less shape userCache caches
+    userRepo.setUser(updated);
+    return updated;
   }
 
   /**
@@ -140,13 +157,25 @@ export class UpdateUserInfo implements UpdateUserInfoService {
    * the exactly-one-active invariant (photo OR emoji, never both). Also the previous photo's
    * cleanup point: an avatar file the user row no longer points to is unreachable (the /avatar
    * route serves only the id on the user row), so it is deleted here, after the row moves off it.
+   *
+   * `userId` names ANOTHER person (see {@link resolveTarget} for the permission that admits it);
+   * everything below then applies to that person's row and their previous photo.
    */
-  private async setAvatar(avatar: { avatarEmoji: string | null; avatarFileId: string | null }): Promise<UpdatedUser> {
-    const userId = new UserRepo().getUser().id;
-    const previousAvatarFileId = (await getDbAsSystem().get(tables.User, { id: userId })).avatarFileId;
-    const updated = await this.saveUserInfo(avatar);
+  private async setAvatar(
+    avatar: { avatarEmoji: string | null; avatarFileId: string | null },
+    userId?: string
+  ): Promise<UpdatedUser> {
+    const { targetUserId } = this.resolveTarget(userId);
+    const previousAvatarFileId = (await getDbAsSystem().get(tables.User, { id: targetUserId })).avatarFileId;
+    const updated = await this.saveUserInfo(avatar, userId);
     if (previousAvatarFileId && previousAvatarFileId !== avatar.avatarFileId) {
-      await new FileStorage().deleteFile(previousAvatarFileId);
+      // Deleted as SYSTEM, like the user-row write it accompanies: the file lives in the TARGET's
+      // scope, and a caller-scoped delete (`FileStorage.deleteFile`) would silently match nothing
+      // when a user manager clears someone else's photo, orphaning the bytes. This door has
+      // already made its own access decision, the same shape as the /avatar route's system read.
+      // The bytes still die with the row — `FileStorageTableWatcher` fires for every file-row
+      // delete path, system sweeps included.
+      await getScopedDbAsSystem<File>().delete(fileTables.File, { id: previousAvatarFileId });
     }
 
     return updated;
@@ -159,16 +188,42 @@ export class UpdateUserInfo implements UpdateUserInfoService {
    * long-lived contexts that keep their session data (sockets) — serving the STALE user until
    * re-login (the rename wart). Fusing persist + refresh here means no future mutation can
    * reintroduce that class of staleness.
+   *
+   * The refresh is the CALLER's own cache, so it happens only when the caller is the target. A
+   * user manager changing someone else writes the row and stops there: refreshing would hand the
+   * admin the target's row as their own identity, and there is no way to reach the target's
+   * session from here anyway — their next sign-in reads the row.
    */
-  private async saveUserInfo(changes: Partial<User>): Promise<UpdatedUser> {
+  private async saveUserInfo(changes: Partial<User>, userId?: string): Promise<UpdatedUser> {
     const userRepo = new UserRepo();
-    const userId = userRepo.getUser().id;
+    const { targetUserId, targetIsCaller } = this.resolveTarget(userId);
     const db = getDbAsSystem();
-    await db.update(tables.User, changes, { id: userId });
-    const updated = await db.get(tables.User, { id: userId });
+    await db.update(tables.User, changes, { id: targetUserId });
+    const updated = await db.get(tables.User, { id: targetUserId });
     delete (updated as Partial<User>).password; // the same password-less shape userCache caches
-    userRepo.setUser(updated);
+    if (targetIsCaller) {
+      userRepo.setUser(updated);
+    }
+
     return updated;
+  }
+
+  /**
+   * The user a mutation targets, and whether that is the caller.
+   *
+   * The service door is `allUsers` — it has to be, every signed-in user manages their own
+   * profile through it — so naming ANOTHER person's id is authorized here, in-body and
+   * fail-closed: only a `users` permission holder may do it.
+   */
+  private resolveTarget(userId?: string): { targetUserId: string; targetIsCaller: boolean } {
+    const callerId = new UserRepo().getUser().id;
+    const targetUserId = userId ?? callerId;
+    const targetIsCaller = targetUserId === callerId;
+    if (!targetIsCaller && !UserAuth.hasPermission(USER_PERMISSIONS.users)) {
+      throw new Error(`Only a user manager can change another person's avatar.`);
+    }
+
+    return { targetUserId, targetIsCaller };
   }
 
   /**

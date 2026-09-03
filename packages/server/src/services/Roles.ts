@@ -10,6 +10,10 @@ import { Service } from '@proteinjs/service';
  * is the timestamp) commit in one transaction, so the trail cannot diverge from the grants.
  *
  * Break-glass roles are never granted here — see `changeRole`; revoking one stays allowed.
+ *
+ * Nobody edits their OWN roles: separating 'roles' from 'users' means nothing if the holder can
+ * simply grant themselves more, and a self-revoke is the mirror hazard (the last holder locking
+ * themselves out). Both directions are refused — see `changeRole`; ask another user manager.
  */
 export class Roles implements RolesService {
   public serviceMetadata: Service['serviceMetadata'] = {
@@ -72,6 +76,15 @@ export class Roles implements RolesService {
       );
     }
 
+    const actor = new UserRepo().getUser();
+    // Nobody edits their own roles, in either direction. Checked BEFORE the no-change early
+    // return, so a self-target is always an error the caller sees rather than a silent no-op,
+    // and before the transaction, so a refused act leaves no audit row behind.
+    if (userId === actor.id) {
+      logger.warn({ message: 'Refused a self-targeted role change', obj: { actor: actor.id, role, action } });
+      throw new Error(`You can't ${action} your own roles — ask another user manager.`);
+    }
+
     const roles = user.roles ?? [];
     if (action === 'grant' ? roles.includes(role) : !roles.includes(role)) {
       // No change, no audit row: the trail records what happened, not what was re-asked.
@@ -79,7 +92,6 @@ export class Roles implements RolesService {
     }
 
     const newRoles = action === 'grant' ? [...roles, role] : roles.filter((heldRole) => heldRole !== role);
-    const actor = new UserRepo().getUser();
     await db.runTransaction(async () => {
       await db.update(tables.User, { id: userId, roles: newRoles });
       await db.insert(tables.RoleGrantEvent, {

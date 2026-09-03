@@ -214,6 +214,47 @@ describe('Roles service — grant/revoke outcomes and audit trail', () => {
     expect(events[0]).toMatchObject({ actor: 'actor-1', target: targetId, role: 'data-access', action: 'grant' });
   }, 60000);
 
+  /**
+   * Nobody edits their own roles. Self-service escalation is the whole reason the 'roles'
+   * permission is separated from 'users', and a self-REVOKE is the mirror hazard: the last
+   * holder locking themselves out of the door they were meant to keep. Both are refused before
+   * the no-change early return, so a self-target is always an error and never a silent no-op,
+   * and before the transaction, so nothing lands in the audit ledger.
+   */
+  describe('self-targeted role changes', () => {
+    const selfEvents = async () =>
+      (await auditRows()).filter((event) => event.actor === actor.id && event.target === actor.id);
+
+    it('refuses a self GRANT — the actor keeps their roles and nothing is audited', async () => {
+      await expect(new Roles().grantRole(actor.id, 'ops')).rejects.toThrow(
+        `You can't grant your own roles — ask another user manager.`
+      );
+
+      const actorRow = await getDbAsSystem().get(tables.User, { id: actor.id });
+      expect(actorRow.roles).toEqual(['admin']);
+      expect(await selfEvents()).toHaveLength(0);
+    }, 60000);
+
+    it('refuses a self REVOKE of a role the actor holds — the role stays, nothing is audited', async () => {
+      await getDbAsSystem().update(tables.User, { id: actor.id, roles: ['admin', 'ops'] });
+
+      await expect(new Roles().revokeRole(actor.id, 'ops')).rejects.toThrow(
+        `You can't revoke your own roles — ask another user manager.`
+      );
+
+      const actorRow = await getDbAsSystem().get(tables.User, { id: actor.id });
+      expect(actorRow.roles).toEqual(['admin', 'ops']);
+      expect(await selfEvents()).toHaveLength(0);
+    }, 60000);
+
+    it('refuses a self target the catalog would otherwise no-op — a self-target is never silent', async () => {
+      // The actor does NOT hold 'ops', so a revoke would have hit the no-change early return and
+      // returned quietly. The refusal comes first: the caller always learns the act was refused.
+      await expect(new Roles().revokeRole(actor.id, 'ops')).rejects.toThrow(/your own roles/);
+      expect(await selfEvents()).toHaveLength(0);
+    }, 60000);
+  });
+
   it('a roles-holder can still REVOKE an admin-grant-only role — de-escalation stays open (the break-glass precedent)', async () => {
     await new Roles().grantRole(targetId, 'data-access');
     new UserRepo().setUser({ ...actor, roles: ['roles'] });
