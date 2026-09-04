@@ -2,6 +2,7 @@ import { Route } from '@proteinjs/server-api';
 import { Logger } from '@proteinjs/logger';
 import { emailRegex } from '@proteinjs/util';
 import { establishSession } from '../authentication/establishSession';
+import { Roles } from '../services/Roles';
 import { Signup } from '../services/Signup';
 
 const logger = new Logger({ name: 'devLogin' });
@@ -34,6 +35,16 @@ const emailDomain = (address: string) => address.slice(address.lastIndexOf('@') 
  * interactive login works for the same identity. Composes with userCache's missing-account→guest
  * seam: that covers sessions whose account was deleted AFTER minting; this ensures dev-minted
  * sessions reference a real account from the start.
+ *
+ * First-admin door (`DEV_BOOTSTRAP_ADMIN_EMAIL`): a dev server on a FRESH real database has no
+ * privileged account and no sanctioned raw write to make one. Behind the same two gates, when
+ * the resolved address equals the variable exactly (case-normalized like every account email),
+ * the account this request created or loaded is granted the break-glass `admin` role — once,
+ * only while no account carries it, audited like any grant (`Roles.bootstrapAdmin`). Every other
+ * call is unchanged; the variable absent = nothing changes; the gates closed = 404 regardless.
+ * Test and prod never set it — the omission is the safety, the same idiom as the gates. The
+ * outcome is logged as ONE marker line, `Dev bootstrap admin door: <granted|admin-exists>`,
+ * which the n3xa compose-estate boot proof reads from the server log to PROVE the grant landed.
  */
 export const devLogin: Route = {
   path: '/dev/login',
@@ -75,6 +86,12 @@ export const devLogin: Route = {
     });
     if (creation === 'created') {
       logger.info({ message: 'Dev auto-login created missing test account', obj: { email } });
+    }
+
+    const bootstrapEmail = (process.env.DEV_BOOTSTRAP_ADMIN_EMAIL ?? '').trim().toLowerCase();
+    if (bootstrapEmail && email === bootstrapEmail) {
+      const outcome = await new Roles().bootstrapAdmin(email);
+      logger.info({ message: `Dev bootstrap admin door: ${outcome}`, obj: { email } });
     }
 
     // establishSession commits the session row before the redirect — the redirected GET / must

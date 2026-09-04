@@ -1,4 +1,4 @@
-import { getDbAsSystem } from '@proteinjs/db';
+import { getDbAsSystem, QueryBuilderFactory } from '@proteinjs/db';
 import { RolesService, RolesCatalog, UserAuth, UserRepo, tables, USER_PERMISSIONS } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
 import { Service } from '@proteinjs/service';
@@ -9,7 +9,9 @@ import { Service } from '@proteinjs/service';
  * audited: the role update and its `role_grant_event` row (actor, target, role, action; `created`
  * is the timestamp) commit in one transaction, so the trail cannot diverge from the grants.
  *
- * Break-glass roles are never granted here — see `changeRole`; revoking one stays allowed.
+ * Break-glass roles are never granted through the service door — see `changeRole`; revoking one
+ * stays allowed. The ONE break-glass grant in code is `bootstrapAdmin`, the dev first-admin door
+ * (server-internal; reachable only through `/dev/login`'s gates, never over RPC).
  *
  * Nobody edits their OWN roles: separating 'roles' from 'users' means nothing if the holder can
  * simply grant themselves more, and a self-revoke is the mirror hazard (the last holder locking
@@ -30,6 +32,41 @@ export class Roles implements RolesService {
     await this.changeRole(userId, role, 'revoke');
   }
 
+  /**
+   * The dev first-admin door's grant — `/dev/login` honoring `DEV_BOOTSTRAP_ADMIN_EMAIL`
+   * (routes/devLogin.ts). A fresh dev database has no privileged account to grant from, and the
+   * only other path to break-glass is a manual UPDATE in Spanner Studio — right for prod and every
+   * clone-backed instance, wrong for a lane's throwaway estate on a real dev database, where raw
+   * writes are forbidden. So this grants 'admin' to `email`'s account exactly when NO account
+   * carries it yet (the membership test `UserAuth.hasRole` makes, over every row), audited like
+   * any grant — actor = the account itself, because the door acts for nobody else. Once an admin
+   * exists it never grants again: every later grant rides Admin → Users.
+   *
+   * Server-internal, like `Signup.createAccount`: absent from `RolesService`, so never
+   * RPC-reachable. The caller's two gates (DEVELOPMENT + DEV_AUTO_LOGIN_EMAIL) are the only way
+   * in, and test/prod never set the variable.
+   */
+  async bootstrapAdmin(email: string): Promise<'granted' | 'admin-exists' | 'no-account'> {
+    const logger = new Logger({ name: 'Roles.bootstrapAdmin' });
+    const db = getDbAsSystem();
+    if (await this.adminExists()) {
+      return 'admin-exists';
+    }
+
+    const user = await db.get(tables.User, { email: email.toLowerCase() });
+    if (!user) {
+      return 'no-account';
+    }
+
+    const roles = user.roles ?? [];
+    await db.runTransaction(async () => {
+      await db.update(tables.User, { id: user.id, roles: [...roles, 'admin'] });
+      await db.insert(tables.RoleGrantEvent, { actor: user.id, target: user.id, role: 'admin', action: 'grant' });
+    });
+    logger.info({ message: 'Break-glass admin granted by the dev first-admin door', obj: { target: user.id, email } });
+    return 'granted';
+  }
+
   private async changeRole(userId: string, role: string, action: 'grant' | 'revoke'): Promise<void> {
     const logger = new Logger({ name: `Roles.${action}Role` });
     const entry = RolesCatalog.getEntry(role);
@@ -39,8 +76,9 @@ export class Roles implements RolesService {
 
     // Break-glass passes every permission check, so no permission-mapped role — including
     // 'roles' — may mint it: the only path to break-glass is a manual UPDATE on the user row
-    // in Spanner Studio, by a human, on purpose. Revoke stays open: de-escalation toward
-    // "held by nobody day-to-day" should ride the audited path, not require database access.
+    // in Spanner Studio, by a human, on purpose (and, on a DEV server only, the first-admin door
+    // `bootstrapAdmin`). Revoke stays open: de-escalation toward "held by nobody day-to-day"
+    // should ride the audited path, not require database access.
     if (entry.breakGlass && action === 'grant') {
       throw new Error(
         `'${role}' is a break-glass role — this service refuses to grant it. The only path to ` +
@@ -105,5 +143,12 @@ export class Roles implements RolesService {
       message: `Role ${action === 'grant' ? 'granted' : 'revoked'}`,
       obj: { actor: actor.id, target: userId, role },
     });
+  }
+
+  /** Whether any account carries the break-glass role — `UserAuth.hasRole`'s membership test, over every row. */
+  private async adminExists(): Promise<boolean> {
+    const qb = new QueryBuilderFactory().getQueryBuilder(tables.User).select({ fields: ['id', 'roles'] });
+    const users = await getDbAsSystem().query(tables.User, qb);
+    return users.some((user) => (user.roles ?? []).includes('admin'));
   }
 }

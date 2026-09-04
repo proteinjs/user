@@ -1,8 +1,7 @@
 import { getDbAsSystem } from '@proteinjs/db';
 import { tables } from '@proteinjs/user';
 import { PasswordHasher } from '../src/authentication/PasswordHasher';
-import { devLogin } from '../src/routes/devLogin';
-import { createPassportRequest } from './passportSessionHarness';
+import { invokeDevLogin } from './devLoginHarness';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 
 const testEnv = new UserServerTestEnvironment();
@@ -15,43 +14,11 @@ const testEnv = new UserServerTestEnvironment();
  * - Double gate: `DEVELOPMENT` AND `DEV_AUTO_LOGIN_EMAIL` both present, else 404 (unchanged).
  * - Domain rail: a `?email=` param must share `DEV_AUTO_LOGIN_EMAIL`'s domain — even a dev server
  *   must not mint sessions (much less accounts) for arbitrary domains. Others 400.
+ * The first-admin door (`DEV_BOOTSTRAP_ADMIN_EMAIL`) has its own suite, DevLoginBootstrapAdmin.test.ts;
+ * here the variable is unset, so every created account is role-less.
  */
 
 const ENV_EMAIL = 'dev@test.local';
-
-type RouteOutcome = {
-  loggedInAs?: string;
-  sessionRegenerated: boolean;
-  sessionSaved: boolean;
-  status?: number;
-  body?: unknown;
-  redirect?: string;
-};
-
-const invokeDevLogin = async (query?: Record<string, unknown>): Promise<RouteOutcome> => {
-  // REAL passport login machinery (see passportSessionHarness): the full contract
-  // (regenerate → login → save) is pinned by SignupRoute.test.ts — here we assert the dev door
-  // INHERITS it.
-  const { request, events } = await createPassportRequest({ query });
-  const outcome: RouteOutcome = { sessionRegenerated: false, sessionSaved: false };
-  const response = {
-    status(code: number) {
-      outcome.status = code;
-      return this;
-    },
-    send(body?: unknown) {
-      outcome.body = body;
-    },
-    redirect(path: string) {
-      outcome.redirect = path;
-    },
-  };
-  await devLogin.onRequest(request as never, response as never);
-  outcome.loggedInAs = request.session.passport?.user;
-  outcome.sessionRegenerated = events.includes('regenerate');
-  outcome.sessionSaved = events.includes('save');
-  return outcome;
-};
 
 const getUserRow = async (email: string) => await getDbAsSystem().get(tables.User, { email });
 
@@ -59,6 +26,7 @@ describe('devLogin route', () => {
   const originalEnv = {
     DEVELOPMENT: process.env.DEVELOPMENT,
     DEV_AUTO_LOGIN_EMAIL: process.env.DEV_AUTO_LOGIN_EMAIL,
+    DEV_BOOTSTRAP_ADMIN_EMAIL: process.env.DEV_BOOTSTRAP_ADMIN_EMAIL,
   };
 
   beforeAll(async () => {
@@ -72,6 +40,7 @@ describe('devLogin route', () => {
   beforeEach(() => {
     process.env.DEVELOPMENT = 'true';
     process.env.DEV_AUTO_LOGIN_EMAIL = ENV_EMAIL;
+    delete process.env.DEV_BOOTSTRAP_ADMIN_EMAIL;
   });
 
   afterEach(() => {
