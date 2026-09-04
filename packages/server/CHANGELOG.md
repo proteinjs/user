@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.18.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.17.0...@proteinjs/user-server@1.18.0) (2026-09-04)
+
+
+### Features
+
+* **user-server:** the dev first-admin door — DEV_BOOTSTRAP_ADMIN_EMAIL honored inside /dev/login behind its two gates ([5773c7c](https://github.com/proteinjs/user/commit/5773c7c1d5a7b01bfa83e4907734bf0bf4b555a8))
+
+
+
+
+
 # [1.17.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.16.1...@proteinjs/user-server@1.17.0) (2026-09-03)
 
 
