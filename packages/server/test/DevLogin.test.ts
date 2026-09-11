@@ -14,8 +14,9 @@ const testEnv = new UserServerTestEnvironment();
  * - Double gate: `DEVELOPMENT` AND `DEV_AUTO_LOGIN_EMAIL` both present, else 404 (unchanged).
  * - Domain rail: a `?email=` param must share `DEV_AUTO_LOGIN_EMAIL`'s domain — even a dev server
  *   must not mint sessions (much less accounts) for arbitrary domains. Others 400.
- * The first-admin door (`DEV_BOOTSTRAP_ADMIN_EMAIL`) has its own suite, DevLoginBootstrapAdmin.test.ts;
- * here the variable is unset, so every created account is role-less.
+ * The first-admin door (`DEV_BOOTSTRAP_ADMIN_EMAIL`) and the role-bootstrap door (`DEV_BOOTSTRAP_ROLES`)
+ * have their own suites (DevLoginBootstrapAdmin.test.ts, DevLoginBootstrapRoles.test.ts); here both
+ * variables are unset, so every created account is role-less.
  */
 
 const ENV_EMAIL = 'dev@test.local';
@@ -27,6 +28,7 @@ describe('devLogin route', () => {
     DEVELOPMENT: process.env.DEVELOPMENT,
     DEV_AUTO_LOGIN_EMAIL: process.env.DEV_AUTO_LOGIN_EMAIL,
     DEV_BOOTSTRAP_ADMIN_EMAIL: process.env.DEV_BOOTSTRAP_ADMIN_EMAIL,
+    DEV_BOOTSTRAP_ROLES: process.env.DEV_BOOTSTRAP_ROLES,
   };
 
   beforeAll(async () => {
@@ -41,6 +43,7 @@ describe('devLogin route', () => {
     process.env.DEVELOPMENT = 'true';
     process.env.DEV_AUTO_LOGIN_EMAIL = ENV_EMAIL;
     delete process.env.DEV_BOOTSTRAP_ADMIN_EMAIL;
+    delete process.env.DEV_BOOTSTRAP_ROLES;
   });
 
   afterEach(() => {
