@@ -11,12 +11,16 @@ import { Service } from '@proteinjs/service';
  *
  * Break-glass roles are never granted through the service door — see `changeRole`; revoking one
  * stays allowed. The ONE break-glass grant in code is `bootstrapAdmin`, the dev first-admin door
- * (server-internal; reachable only through `/dev/login`'s gates, never over RPC).
+ * (server-internal; reachable only through `/dev/login`'s gates, never over RPC). Its sibling
+ * `bootstrapRoles` is the dev role-bootstrap door's grant — never break-glass, catalog-checked.
  *
  * Nobody edits their OWN roles: separating 'roles' from 'users' means nothing if the holder can
  * simply grant themselves more, and a self-revoke is the mirror hazard (the last holder locking
  * themselves out). Both directions are refused — see `changeRole`; ask another user manager.
  */
+/** What one `bootstrapRoles` call did, per role: written now, already on the row, or refused with the reason. */
+export type BootstrapRolesOutcome = { granted: string[]; held: string[]; refused: { role: string; why: string }[] };
+
 export class Roles implements RolesService {
   public serviceMetadata: Service['serviceMetadata'] = {
     auth: {
@@ -65,6 +69,62 @@ export class Roles implements RolesService {
     });
     logger.info({ message: 'Break-glass admin granted by the dev first-admin door', obj: { target: user.id, email } });
     return 'granted';
+  }
+
+  /**
+   * The dev role-bootstrap door's grant — `/dev/login` honoring `DEV_BOOTSTRAP_ROLES`
+   * (routes/devLogin.ts, the grammar in routes/DevBootstrapRoles.ts). A fresh development
+   * database has one admin at most (the first-admin door) and every other account role-less, and
+   * a consumer's `adminGrantOnly` roles can be handed out by an admin only — a manual act on
+   * every fresh database. So this grants `roles` to `email`'s account, each
+   * once: a role the account holds is `held` (no write, no audit row — idempotent); nothing is
+   * ever revoked; a role the catalog does not know or a break-glass role is `refused` and named
+   * (`bootstrapAdmin` is the ONE break-glass path, with its own rail). Admin-grant-only roles ARE
+   * granted here — that is the door's point. Every grant is audited like any grant, actor = the
+   * account itself (the door acts for nobody else), the role update and its rows in one
+   * transaction.
+   *
+   * Server-internal, like `bootstrapAdmin`: absent from `RolesService`, never RPC-reachable; the
+   * caller's two gates (DEVELOPMENT + DEV_AUTO_LOGIN_EMAIL) are the only way in, and a deployment
+   * outside development never sets the variable.
+   */
+  async bootstrapRoles(email: string, roles: string[]): Promise<BootstrapRolesOutcome> {
+    const logger = new Logger({ name: 'Roles.bootstrapRoles' });
+    const db = getDbAsSystem();
+    const user = await db.get(tables.User, { email: email.toLowerCase() });
+    if (!user) {
+      throw new Error(`bootstrapRoles: no account for ${email} — the door creates the account before it grants`);
+    }
+
+    const held = user.roles ?? [];
+    const outcome: BootstrapRolesOutcome = { granted: [], held: [], refused: [] };
+    for (const role of Array.from(new Set(roles))) {
+      const entry = RolesCatalog.getEntry(role);
+      if (!entry) {
+        outcome.refused.push({ role, why: 'unknown role' });
+      } else if (entry.breakGlass) {
+        outcome.refused.push({ role, why: 'break-glass' });
+      } else if (held.includes(role)) {
+        outcome.held.push(role);
+      } else {
+        outcome.granted.push(role);
+      }
+    }
+    if (outcome.granted.length === 0) {
+      return outcome;
+    }
+
+    await db.runTransaction(async () => {
+      await db.update(tables.User, { id: user.id, roles: [...held, ...outcome.granted] });
+      for (const role of outcome.granted) {
+        await db.insert(tables.RoleGrantEvent, { actor: user.id, target: user.id, role, action: 'grant' });
+      }
+    });
+    logger.info({
+      message: 'Roles granted by the dev role-bootstrap door',
+      obj: { target: user.id, email, granted: outcome.granted },
+    });
+    return outcome;
   }
 
   private async changeRole(userId: string, role: string, action: 'grant' | 'revoke'): Promise<void> {

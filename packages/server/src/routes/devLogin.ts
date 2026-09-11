@@ -4,6 +4,7 @@ import { emailRegex } from '@proteinjs/util';
 import { establishSession } from '../authentication/establishSession';
 import { Roles } from '../services/Roles';
 import { Signup } from '../services/Signup';
+import { DevBootstrapRoles } from './DevBootstrapRoles';
 
 const logger = new Logger({ name: 'devLogin' });
 
@@ -45,6 +46,17 @@ const emailDomain = (address: string) => address.slice(address.lastIndexOf('@') 
  * Test and prod never set it — the omission is the safety, the same idiom as the gates. The
  * outcome is logged as ONE marker line, `Dev bootstrap admin door: <granted|admin-exists>`,
  * which the n3xa compose-estate boot proof reads from the server log to PROVE the grant landed.
+ *
+ * Role-bootstrap door (`DEV_BOOTSTRAP_ROLES='email:role[,role];email:role…'`, the grammar in
+ * DevBootstrapRoles.ts): the first-admin door leaves every OTHER account role-less, and a
+ * consumer's admin-grant-only roles then need an admin's act on every fresh development database.
+ * Behind the same two gates, when the resolved address is listed, the listed roles the account
+ * does not hold are granted through `Roles.bootstrapRoles` — once each, audited, never revoking,
+ * never break-glass (refused and named, like a role the catalog does not know); the grant precedes
+ * the session so the first page load carries the roles. ONE marker line per hit for a listed
+ * address, `[dev-bootstrap] <email>: granted …; held …; refused …`, is what provisioning tooling
+ * reads back as proof. The variable absent = nothing changes; the gates closed = 404 regardless; a
+ * deployment outside development never sets it.
  */
 export const devLogin: Route = {
   path: '/dev/login',
@@ -92,6 +104,12 @@ export const devLogin: Route = {
     if (bootstrapEmail && email === bootstrapEmail) {
       const outcome = await new Roles().bootstrapAdmin(email);
       logger.info({ message: `Dev bootstrap admin door: ${outcome}`, obj: { email } });
+    }
+
+    const bootstrapRoles = DevBootstrapRoles.rolesFor(email);
+    if (bootstrapRoles.length > 0) {
+      const outcome = await new Roles().bootstrapRoles(email, bootstrapRoles);
+      logger.info({ message: DevBootstrapRoles.markerLine(email, outcome) });
     }
 
     // establishSession commits the session row before the redirect — the redirected GET / must

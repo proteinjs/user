@@ -33,6 +33,7 @@ describe('devLogin — the DEV_BOOTSTRAP_ADMIN_EMAIL first-admin door', () => {
     DEVELOPMENT: process.env.DEVELOPMENT,
     DEV_AUTO_LOGIN_EMAIL: process.env.DEV_AUTO_LOGIN_EMAIL,
     DEV_BOOTSTRAP_ADMIN_EMAIL: process.env.DEV_BOOTSTRAP_ADMIN_EMAIL,
+    DEV_BOOTSTRAP_ROLES: process.env.DEV_BOOTSTRAP_ROLES,
   };
 
   beforeAll(async () => {
@@ -47,6 +48,7 @@ describe('devLogin — the DEV_BOOTSTRAP_ADMIN_EMAIL first-admin door', () => {
     process.env.DEVELOPMENT = 'true';
     process.env.DEV_AUTO_LOGIN_EMAIL = ENV_EMAIL;
     process.env.DEV_BOOTSTRAP_ADMIN_EMAIL = BOOTSTRAP_EMAIL;
+    delete process.env.DEV_BOOTSTRAP_ROLES; // the role-bootstrap door has its own suite; here it is closed
     // Every case starts from a fresh database: no accounts, no audit trail.
     const db = getDbAsSystem();
     await db.delete(tables.RoleGrantEvent, {});
