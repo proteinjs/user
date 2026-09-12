@@ -7,9 +7,9 @@ import { UserAuth, getUserPresenceService } from '@proteinjs/user';
  *
  * Input, never transport: a tab left open polls, re-joins its socket rooms on every reconnect
  * and reloads when a deploy lands — all of it over a live session with nobody there, and all
- * of it read as presence when the stamp rode the request path (founder finding 2026-09-12:
- * every user "active today"). Timers, focus and visibility are not input either (a tab can be
- * visible with nobody in front of it), so nothing here fires without a hand on the device.
+ * of it read as presence when the stamp rode the request path (every user "active today").
+ * Timers, focus and visibility are not input either (a tab can be visible with nobody in front
+ * of it), so nothing here fires without a hand on the device.
  *
  * Fail-open: a report that fails is dropped; the next input after {@link RETRY_AFTER_MS}
  * tries again (never one request per keystroke against a down server). The listeners are
