@@ -4,26 +4,29 @@ import { ScopedRecord, createScopedIndex, withScopedRecordColumns } from '../Sco
 import { USER_PERMISSIONS } from '../permissions';
 
 /**
- * LAST ACTIVITY (human presence): the most recent request a signed-in human made through a live
- * interactive session — one row per user (`scope` = their id, unique). This is the ONE owner of
- * "when was this person last here"; admin surfaces that speak "last active" read it.
+ * LAST ACTIVITY (human presence): the most recent HUMAN INPUT a signed-in person gave a page —
+ * one row per user (`scope` = their id, unique). This is the ONE owner of "when was this person
+ * last here"; admin surfaces that speak "last active" read it.
  *
- * The stamp is keyed on TRANSPORT, not on what the work was: only requests that arrive through
- * the session-cookie request path write it (user-server's UserActivityStamp, invoked from the
- * per-request session-cache build). Machinery acting on a user's behalf — routine ticks,
- * watchers, background flow runs, delegated machine-account work — executes under seeded
- * session contexts (`runInUserScope`) that never traverse that path, so no background actor can
- * ever read as presence; machine accounts are refused by the stamp even though their requests do
- * arrive over real sessions. Deliberately NOT derived from the usage ledger: spend measures
- * model work (which routines rack up all day), not the human being present.
+ * The stamp is keyed on INPUT, not on transport: the page reports a person's pointer / key /
+ * touch / wheel event through `UserPresenceService.recordPresence` (user-ui's
+ * UserPresenceReporter, throttled per page), and user-server's UserActivityStamp writes the row
+ * from that door only. Transport was the previous key (the per-request session-cache build) and
+ * it over-counted (founder finding 2026-09-12: every user on the admin usage page "last active
+ * today"): an open tab polls, a socket re-joins its rooms on every reconnect, a deploy reloads
+ * every idle tab — all of it arrives over a live session with nobody there. Machinery acting on
+ * a user's behalf (routine ticks, watchers, background runs under seeded contexts) has no page
+ * to report from, so it structurally cannot stamp; machine accounts are refused by the stamp.
+ * Deliberately NOT derived from the usage ledger: spend measures model work (which routines
+ * rack up all day), not the human being present.
  *
  * Reads are people-management trust ('users', the Users-page permission); writes are
- * system-written only (no service/db write door — the stamp rides the system path), so the
- * record surfaces cannot fabricate presence. Scoped with no retain policy: presence rows purge
- * with the account (the privacy-safe default for a behavioral fact).
+ * system-written only (no service/db write door onto the row — the stamp rides the system
+ * path), so the record surfaces cannot fabricate presence. Scoped with no retain policy:
+ * presence rows purge with the account (the privacy-safe default for a behavioral fact).
  */
 export type UserActivity = ScopedRecord & {
-  /** When the user's most recent interactive request arrived (stamp cadence is throttled — see UserActivityStamp). */
+  /** When the user's most recent human input was reported (stamp cadence is throttled — see UserActivityStamp). */
   lastActiveAt: Moment;
 };
 
