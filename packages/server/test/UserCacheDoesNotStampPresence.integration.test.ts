@@ -9,8 +9,8 @@ const activityRows = async (scope: string): Promise<UserActivity[]> =>
   await getDbAsSystem().query(tables.UserActivity, { scope });
 
 /**
- * TRANSPORT IS NOT PRESENCE (UserActivityTable's contract; founder finding 2026-09-12 — every
- * user on the admin usage page "last active today"). The per-request session-cache build
+ * TRANSPORT IS NOT PRESENCE (UserActivityTable's contract; the defect it names: every user read
+ * as "last active today"). The per-request session-cache build
  * (`userCache.create`) runs for EVERY request that rides a session cookie: an open tab's polls,
  * a socket's room re-joins on every reconnect, the reload a deploy pushes onto every idle tab.
  * None of that is a person. The build must therefore never write the presence stamp — the

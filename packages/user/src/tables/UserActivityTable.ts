@@ -12,13 +12,13 @@ import { USER_PERMISSIONS } from '../permissions';
  * touch / wheel event through `UserPresenceService.recordPresence` (user-ui's
  * UserPresenceReporter, throttled per page), and user-server's UserActivityStamp writes the row
  * from that door only. Transport was the previous key (the per-request session-cache build) and
- * it over-counted (founder finding 2026-09-12: every user on the admin usage page "last active
- * today"): an open tab polls, a socket re-joins its rooms on every reconnect, a deploy reloads
- * every idle tab — all of it arrives over a live session with nobody there. Machinery acting on
- * a user's behalf (routine ticks, watchers, background runs under seeded contexts) has no page
- * to report from, so it structurally cannot stamp; machine accounts are refused by the stamp.
- * Deliberately NOT derived from the usage ledger: spend measures model work (which routines
- * rack up all day), not the human being present.
+ * it over-counted (every user read as "last active today"): an open tab polls, a socket re-joins
+ * its rooms on every reconnect, a deploy reloads every idle tab — all of it arrives over a live
+ * session with nobody there. Machinery acting on a user's behalf (scheduled jobs, watchers,
+ * background runs under seeded contexts) has no page to report from, so it structurally cannot
+ * stamp; machine accounts are refused by the stamp. Deliberately NOT derived from any usage or
+ * spend ledger: spend measures machine work (which background jobs rack up all day), not the
+ * human being present.
  *
  * Reads are people-management trust ('users', the Users-page permission); writes are
  * system-written only (no service/db write door onto the row — the stamp rides the system

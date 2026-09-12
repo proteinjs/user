@@ -12,9 +12,9 @@ import { guestUser, tables, type User, type UserActivity } from '@proteinjs/user
  * per-request session build (userCache.create) does NOT call this: it runs for every request
  * over a session cookie, and that transport is what an idle tab produces all day (polls, socket
  * re-joins on reconnect, the reload a deploy pushes) — presence keyed on it read every user as
- * "active today" (founder finding 2026-09-12). What this class owns is the ACCOUNT predicate:
- * the guest identity and machine accounts (`machine` — the one owner of "is this a machine",
- * founder ruling 2026-09-02) are refused, whatever door they arrive through.
+ * "active today". What this class owns is the ACCOUNT predicate: the guest identity and machine
+ * accounts (`machine` — the one owner of "is this a machine") are refused, whatever door they
+ * arrive through.
  *
  * Write behavior mirrors DbSessionStore's touch: throttled per user (a presence fact consumed at
  * day grain needs no finer cadence, and the page already throttles its reports — this is the
