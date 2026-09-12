@@ -109,9 +109,7 @@ describe('devLogin — the DEV_BOOTSTRAP_ROLES role-bootstrap door', () => {
       ])
     );
     expect(events).toHaveLength(2);
-    expect(markerLines()).toEqual([
-      `[dev-bootstrap] ${TEAM_EMAIL}: granted staff, dev; held (none); refused (none)`,
-    ]);
+    expect(markerLines()).toEqual([`[dev-bootstrap] ${TEAM_EMAIL}: granted staff, dev; held (none); refused (none)`]);
   });
 
   it('a second hit for the same address writes nothing: the roles stand, the audit trail is unchanged, the marker line reports them held', async () => {
@@ -123,9 +121,7 @@ describe('devLogin — the DEV_BOOTSTRAP_ROLES role-bootstrap door', () => {
     expect(outcome.loggedInAs).toBe(TEAM_EMAIL);
     expect((await userRow(TEAM_EMAIL))!.roles).toEqual(['staff', 'dev']);
     expect(await auditRows()).toHaveLength(2);
-    expect(markerLines()).toEqual([
-      `[dev-bootstrap] ${TEAM_EMAIL}: granted (none); held staff, dev; refused (none)`,
-    ]);
+    expect(markerLines()).toEqual([`[dev-bootstrap] ${TEAM_EMAIL}: granted (none); held staff, dev; refused (none)`]);
   });
 
   it('an existing account holding one listed role and one unlisted role: only the missing role is granted, the unlisted one stays — the door never revokes', async () => {
