@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.20.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.19.0...@proteinjs/user-server@1.20.0) (2026-09-12)
+
+
+### Features
+
+* **user-server:** dev role-bootstrap door — DEV_BOOTSTRAP_ROLES honored inside GET /dev/login behind its two gates ([fca5acd](https://github.com/proteinjs/user/commit/fca5acd6f24180f6d59a831cc905f8db023177dc))
+
+
+
+
+
 # [1.19.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.18.0...@proteinjs/user-server@1.19.0) (2026-09-12)
 
 
