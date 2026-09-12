@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.19.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.18.0...@proteinjs/user@1.19.0) (2026-09-12)
+
+
+### Features
+
+* **presence:** last active = HUMAN INPUT — the page reports a person's pointer/key/touch/wheel through the new UserPresenceService, the ONE door onto user_activity; the per-request session build no longer stamps ([3dc355f](https://github.com/proteinjs/user/commit/3dc355fad62f2a964ebc1361c881f3c76490b55b))
+
+
+
+
+
 # [1.18.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.17.1...@proteinjs/user@1.18.0) (2026-09-03)
 
 
