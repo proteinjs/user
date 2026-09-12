@@ -1,6 +1,0 @@
-{
-  "branch": "chore/generic-wording",
-  "packages": ["server", "ui", "user"],
-  "suites": ["packages/server/test/UserCacheDoesNotStampPresence.integration.test.ts"],
-  "removes": []
-}
