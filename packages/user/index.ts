@@ -5,6 +5,7 @@ export * from './src/services/RolesService';
 export * from './src/services/SetUserStatusService';
 export * from './src/services/SignupService';
 export * from './src/services/UpdateUserInfoService';
+export * from './src/services/UserPresenceService';
 
 export * from './src/tables/AccessGrantTable';
 export * from './src/tables/AccessInviteTable';

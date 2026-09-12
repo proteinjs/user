@@ -4,11 +4,18 @@ import { getDbAsSystem } from '@proteinjs/db';
 import { Logger } from '@proteinjs/logger';
 import { User, tables, guestUser, USER_SESSION_CACHE_KEY } from '@proteinjs/user';
 import { DefaultAdminCredentials } from '../authentication/DefaultAdminCredentials';
-import { UserActivityStamp } from './UserActivityStamp';
 
 const logger = new Logger({ name: 'userCache' });
-const userActivityStamp = new UserActivityStamp();
 
+/**
+ * The per-request session-cache build: resolves the session's email to the account row every
+ * request that rides a session cookie (wrapRoute), and every socket event (util-server's
+ * SocketSessionContext). It resolves IDENTITY only — it does not write the presence stamp
+ * (`user_activity`, UserActivityTable's contract): this build runs for an idle tab's polls, a
+ * socket's room re-joins on every reconnect, the reload a deploy pushes onto every open tab —
+ * transport, not a person. Presence is written from the page's human-input report alone
+ * (UserPresence.recordPresence).
+ */
 export const userCache: SessionDataCache<User> = {
   key: USER_SESSION_CACHE_KEY,
   create: async (sessionId: string, userEmail: string): Promise<User> => {
@@ -40,13 +47,6 @@ export const userCache: SessionDataCache<User> = {
         } else if (accountUser) {
           delete (accountUser as any)['password'];
           user = accountUser;
-          // LAST ACTIVITY (human presence — UserActivityTable's contract): stamped HERE because
-          // this cache build runs exactly once per session-cookie request (wrapRoute), i.e. only
-          // for interactive transport. Background/seeded contexts (runInUserScope) set session
-          // data directly and never pass through, so machinery acting as the user structurally
-          // cannot stamp; the stamp itself refuses machine accounts. Fire-and-forget: the
-          // returned promise never rejects, and a request never waits on its own stamp.
-          void userActivityStamp.recordInteractiveRequest(user);
         } else {
           // A session can outlive its account (row deleted, or a dev auto-login for a never-created
           // email). Resolve it to the unauthenticated guest session — the client sees no

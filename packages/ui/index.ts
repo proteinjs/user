@@ -1,5 +1,7 @@
 export * from './src/AuthenticatedPageContainer';
 export * from './src/pageAuth';
+export * from './src/presence/UserPresenceReporter';
+export * from './src/presence/installUserPresenceReporter';
 
 // The logged-out surface's building blocks, exported so a consumer app's own public pages
 // (e.g. n3xa's /request-invite) render with the same auth look instead of forking the styling.
