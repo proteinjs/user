@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.19.2](https://github.com/proteinjs/user/compare/@proteinjs/user@1.19.1...@proteinjs/user@1.19.2) (2026-09-13)
+
+
+### Bug Fixes
+
+* **user:** the invite table declares its create act as a list action — 'users' holders reach the Send invite form from the record table again (Table.ui.recordTable.actions: kind create, door users, label 'Send invite'); the insert doors stay closed, invites are minted by SignupService only ([5480404](https://github.com/proteinjs/user/commit/54804041f4889bd38371f37430c3ad2499f15b04))
+
+
+
+
+
 ## [1.19.1](https://github.com/proteinjs/user/compare/@proteinjs/user@1.19.0...@proteinjs/user@1.19.1) (2026-09-12)
 
 **Note:** Version bump only for package @proteinjs/user
