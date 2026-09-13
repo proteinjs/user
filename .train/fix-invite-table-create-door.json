@@ -1,0 +1,9 @@
+{
+  "branch": "fix/invite-table-create-door",
+  "packages": ["user"],
+  "suites": [
+    "packages/user/test/tablesAuth.test.ts",
+    "packages/user/test/recordTableDeclarations.test.ts"
+  ],
+  "removes": []
+}

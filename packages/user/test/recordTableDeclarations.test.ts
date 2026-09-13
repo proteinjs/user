@@ -22,6 +22,12 @@ describe('admin row-scan declarations', () => {
     }
   });
 
+  it('invite list actions: one declared act — the create act, named for what it is (Send invite)', () => {
+    const table = new InviteTable();
+    const actions = table.ui?.recordTable?.actions ?? [];
+    expect(actions.map((action) => [action.kind, action.label])).toEqual([['create', 'Send invite']]);
+  });
+
   it('session rows: whose, when it dies, which one — never the serialized session', () => {
     const table = new SessionTable();
     const declared = table.ui?.recordTable?.columns;

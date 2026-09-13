@@ -83,4 +83,19 @@ describe('invite table auth shape', () => {
       delete: { permission: USER_PERMISSIONS.users },
     });
   });
+
+  /**
+   * The create act is a DECLARED list action, not an insert door (the Invites table lost its `+`
+   * when the record surfaces started deriving affordances from the doors — creation rides
+   * SignupService, so no insert door exists, and the form's own Send act became unreachable from
+   * the table). The action's door names the identity the send act serves; the generic insert stays
+   * closed on both apis, and no create-specific door exists anywhere else.
+   */
+  it('declares the create act for users holders while the generic insert stays closed', () => {
+    const create = tables.Invite.ui?.recordTable?.actions?.find((action) => action.kind === 'create');
+    expect(create?.door).toEqual({ permission: USER_PERMISSIONS.users });
+    expect(tables.Invite.auth?.service?.insert).toBeUndefined();
+    expect(tables.Invite.auth?.db?.insert).toBeUndefined();
+    expect(tables.Invite.auth?.ui).toBeUndefined();
+  });
 });
