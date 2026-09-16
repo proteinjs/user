@@ -27,7 +27,7 @@ const emailDomain = (address: string) => address.slice(address.lastIndexOf('@') 
  * mint sessions (much less accounts) for arbitrary domains; anything else answers 400.
  *
  * Shape rail: `?email` must be a well-formed address (the house `emailRegex`). The domain rail
- * alone let `?email=brent+lane-a@…` through when the `+` was left unencoded — a query-string `+`
+ * alone let `?email=someone+lane-a@…` through when the `+` was left unencoded — a query-string `+`
  * decodes to a SPACE, so the route minted a stray `brent lane-a@…` account. The 400 names the
  * remedy (`%2B`) because plus-addressing is the fan-out convention this door exists for.
  *
@@ -45,7 +45,7 @@ const emailDomain = (address: string) => address.slice(address.lastIndexOf('@') 
  * call is unchanged; the variable absent = nothing changes; the gates closed = 404 regardless.
  * Test and prod never set it — the omission is the safety, the same idiom as the gates. The
  * outcome is logged as ONE marker line, `Dev bootstrap admin door: <granted|admin-exists>`,
- * which the n3xa compose-estate boot proof reads from the server log to PROVE the grant landed.
+ * which a launcher's boot proof can read from the server log to PROVE the grant landed.
  *
  * Role-bootstrap door (`DEV_BOOTSTRAP_ROLES='email:role[,role];email:role…'`, the grammar in
  * DevBootstrapRoles.ts): the first-admin door leaves every OTHER account role-less, and a

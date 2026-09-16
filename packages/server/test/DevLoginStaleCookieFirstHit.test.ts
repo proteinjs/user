@@ -8,7 +8,7 @@ import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 const testEnv = new UserServerTestEnvironment();
 
 /**
- * DEV_SMOKE_OVERNIGHT (2026-08-26) finding 7: a browser holding a STALE session cookie (a sid
+ * A dev-smoke finding: a browser holding a STALE session cookie (a sid
  * absent from the store — prior server generation, swept row, or reseeded dev db) hits
  * `GET /dev/login`, gets the 302, and lands on the LOGIN FORM; the second hit lands home.
  *
@@ -28,7 +28,7 @@ const testEnv = new UserServerTestEnvironment();
  * cookies the response set, and the follow-up MUST read as authenticated on the FIRST pass.
  */
 
-const SESSION_COOKIE_NAME = 'n3xa.sid.9876'; // dev cookie-name shape: n3xa.sid.${SERVER_PORT}
+const SESSION_COOKIE_NAME = 'app.sid.9876'; // dev cookie-name shape: <app>.sid.${SERVER_PORT}
 const SESSION_SECRET = 'dev-first-hit-test-secret';
 const ENV_EMAIL = 'dev@test.local';
 /** Store commit latency. Generous so a pre-0.6 runtime (write racing the redirect) loses the

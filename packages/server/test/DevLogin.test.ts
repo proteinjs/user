@@ -109,7 +109,7 @@ describe('devLogin route', () => {
 
   it('rejects a malformed same-domain ?email with 400 — no session, no stray account', async () => {
     // The observed shape: an unencoded `+` in the query decodes to a space, so
-    // `?email=brent+shareproof-a@...` arrived as `brent shareproof-a@...` and minted a stray
+    // `?email=someone+lane-a@...` arrived as `someone lane-a@...` and minted a stray
     // account. The domain rail alone let it through (the domain half was fine).
     const malformed = 'brent shareproof-a@test.local';
 

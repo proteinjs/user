@@ -41,8 +41,7 @@ class RecordingAccessGrantWatcher implements TableWatcher<AccessGrant> {
 /**
  * SweepMalformedAccessGrants (one-time migration): the AccessGrant well-formedness invariant now
  * refuses a grant with no principal or resource id, but the rows its two pre-fix producers left
- * behind (the test environment's NULL-principal `thought` grant that crashed Deploy to Test
- * 32614670162) are still there. The sweep deletes EXACTLY the invariant's complement
+ * behind (a NULL-principal grant that crashed a deployment) are still there. The sweep deletes EXACTLY the invariant's complement
  * (`principal IS NULL OR resource IS NULL`) by id through the Db layer — watchers fire — and
  * nothing else: well-formed grants survive, and DANGLING grants (non-null ids pointing at purged
  * rows) are reported, never deleted. Idempotent.

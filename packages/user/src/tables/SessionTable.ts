@@ -26,7 +26,7 @@ export class SessionTable extends Table<Session> {
   };
   /**
    * The row scan: whose session, when it dies, which one. The serialized session blob (cookie
-   * material) has no business in a row scan (founder admin review, v1.22) — it stays on the
+   * material) has no business in a row scan — it stays on the
    * record form for 'sessions' holders. The query-only doors above already mean the generic
    * surfaces derive no create/delete affordances here (rows are system-written).
    */

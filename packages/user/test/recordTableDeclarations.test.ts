@@ -2,7 +2,7 @@ import { InviteTable } from '../src/tables/InviteTable';
 import { SessionTable } from '../src/tables/SessionTable';
 
 /**
- * The admin row-scan declarations (founder admin review, v1.22): what the generic record table
+ * The admin row-scan declarations: what the generic record table
  * renders for invites and sessions is DECLARED here (Table.ui.recordTable.columns — db-ui
  * renders what tables declare). Two pins with teeth:
  *  - the invite row scan never carries the redeemable `token` (auth material; hygiene) — it

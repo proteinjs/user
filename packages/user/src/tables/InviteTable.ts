@@ -46,7 +46,7 @@ export class InviteTable extends Table<Invite> {
   };
   /**
    * The row scan: who's invited, by whom, until when. The redeemable `token` is auth material
-   * with no business in a row scan (founder admin review, v1.22 — also a hygiene win); it stays
+   * with no business in a row scan (also a hygiene win); it stays
    * on the record form for the odd support case. The list actions: the create act, for 'users'
    * holders, named for what it is — an invite is sent, never "created" (the form's button says
    * the same); the delete act stays derived from the delete doors.

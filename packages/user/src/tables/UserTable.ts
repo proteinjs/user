@@ -23,7 +23,7 @@ export type UserStatus = (typeof USER_STATUSES)[number];
  * boot; human rows (flag null/false) are structurally untouchable by the boot sync. A machine
  * account removed from source is deactivated — never deleted — so rows it is referenced from
  * stay intact, and re-declaring it reactivates it. Whether a row IS a machine account is the
- * explicit `machine` column (founder ruling 2026-09-02) — `isLoadedFromSource` is the sync's
+ * explicit `machine` column — `isLoadedFromSource` is the sync's
  * ownership flag and an input to the machine STAMP, never the question consumers ask.
  */
 export type User = SourceRecord & {
@@ -52,7 +52,7 @@ export type User = SourceRecord & {
    */
   avatarFileId?: string | null;
   /**
-   * The EXPLICIT machine-account marker (founder ruling 2026-09-02): true = this row is a
+   * The EXPLICIT machine-account marker: true = this row is a
    * MACHINE identity (CI signals, ops bridges — never a person); null/false = human, so
    * pre-existing human rows need no backfill (the `status`/opt-out null-default convention).
    * ONE owner for the question "is this a machine": every consumer (audience derivations,

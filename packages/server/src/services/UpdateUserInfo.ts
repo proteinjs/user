@@ -22,7 +22,7 @@ export class UpdateUserInfo implements UpdateUserInfoService {
    * Stored avatar photos are square JPEGs capped at this edge — and never ENLARGED to it: a
    * source (or crop) smaller than the cap keeps its honest pixel count. Upscaling a small photo
    * to a fixed 512 invents pixels that read as permanent blur on every chip that renders it
-   * (the founder's fuzzy-avatar defect); the display layer downscales crisply from whatever
+   * (the fuzzy-avatar defect); the display layer downscales crisply from whatever
    * honest size is stored.
    */
   private static readonly AVATAR_MAX_SIZE = 512;

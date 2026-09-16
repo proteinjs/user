@@ -1,0 +1,17 @@
+{
+  "branch": "chore/generic-wording-sweep",
+  "packages": ["auth", "server", "ui", "user"],
+  "suites": [
+    "packages/auth/test/UserAuth.test.ts",
+    "packages/server/test/AvatarPhotoFidelity.test.ts",
+    "packages/server/test/BackfillUserStatusActive.integration.test.ts",
+    "packages/server/test/DevLoginBootstrapAdmin.test.ts",
+    "packages/server/test/DevLoginStaleCookieFirstHit.test.ts",
+    "packages/server/test/MachineAccounts.integration.test.ts",
+    "packages/server/test/SweepMalformedAccessGrants.integration.test.ts",
+    "packages/ui/test/InviteRecordFormCustomization.test.ts",
+    "packages/ui/test/UserRecordFormCustomization.test.tsx",
+    "packages/user/test/recordTableDeclarations.test.ts"
+  ],
+  "removes": []
+}

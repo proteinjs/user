@@ -8,7 +8,7 @@ import { createPassportRequest } from './passportSessionHarness';
  * a pre-0.6 passport runtime (@proteinjs/server < 3.5.1) resolves the login WITHOUT
  * regenerating or saving — silently reopening the session-fixation hole (CVE-2022-25896) AND
  * the first-hit race (the post-login navigation beating the deferred session write — the
- * /dev/login lands-on-login-form smoke finding, DEV_SMOKE_OVERNIGHT 2026-08-26 #7).
+ * /dev/login lands-on-login-form smoke finding).
  *
  * The guard turns that silent degradation into a loud, seam-naming failure at the one owner of
  * session establishment. DevLoginStaleCookieFirstHit.test.ts proves the honored contract

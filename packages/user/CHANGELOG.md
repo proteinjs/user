@@ -38,7 +38,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ### Features
 
-* **user, user-server:** UpdateUserInfo.clearAvatar(userId?) — a user manager removes another person's avatar (users checked in-body, the target's file deleted as system); UpdateUserInfo.refresh() re-reads the caller's row into the session cache; Roles refuses self-targeted grants and revokes before any audit row (plans/ACCOUNT_SURFACE.md AS-7, rev 2 items 9 and 11) ([1d881ed](https://github.com/proteinjs/user/commit/1d881ed3d6f7334df55dc464d6d091d91867cc9e))
+* **user, user-server:** UpdateUserInfo.clearAvatar(userId?) — a user manager removes another person's avatar (users checked in-body, the target's file deleted as system); UpdateUserInfo.refresh() re-reads the caller's row into the session cache; Roles refuses self-targeted grants and revokes before any audit row ([1d881ed](https://github.com/proteinjs/user/commit/1d881ed3d6f7334df55dc464d6d091d91867cc9e))
 
 
 
@@ -60,7 +60,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ### Features
 
-* explicit machine column on the user table (founder ruling 2026-09-02) — one owner for 'is this a machine' ([8a09b6e](https://github.com/proteinjs/user/commit/8a09b6ec618646ad96b466385a6f56dd19c04a88))
+* explicit machine column on the user table — one owner for 'is this a machine' ([8a09b6e](https://github.com/proteinjs/user/commit/8a09b6ec618646ad96b466385a6f56dd19c04a88))
 
 
 
@@ -93,7 +93,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ### Features
 
-* last activity = HUMAN PRESENCE, with one owner — the user_activity stamp (founder finding 2026-08-31: a user's routine runs read as their activity on the admin usage surface; 'last activity' must mean a person was HERE, and machinery acting on their behalf must be structurally unable to move it). New scoped table user_activity (one row per user, scope-unique index user_activity_scope_unique; reads ride the 'users' people-management door, writes are system-only so record surfaces cannot fabricate presence; no retain policy — presence purges with the account) + UserActivityStamp in user-server, invoked from userCache.create: the once-per-session-cookie-request session-cache build IS the interactive-transport seam, so background/seeded contexts (runInUserScope seeds session data directly and never passes through) can never stamp, categorically — no per-feature carve-outs. Machine accounts (isLoadedFromSource, e.g. the error bridge's per-poll login) are refused by the stamp even though their requests ride real sessions. Write behavior mirrors DbSessionStore.touch: throttled per user (5 min), fail-open (the promise never rejects; a request never waits on its own stamp), first-stamp races resolved by the unique index. Consumed by thought-server's usage report (lastActiveDay cutover rides that landing). Bite checks ran: the userCache call removed reddens the human-stamp outcome test; the machine refusal dropped reddens the machine test — both restored green. New suite UserActivityStamp.integration.test.ts (5): stamp lands through the real seam, one-row-per-user advance, machine refusal, throttle, missing-account guest no-op. Estate green on a dedicated emulator: user 45, user-server 122 (117 pre-existing + 5 new), auth 20, ui 50. ([bc39960](https://github.com/proteinjs/user/commit/bc39960204df9ae535a3c44646a16da05e622247))
+* last activity = HUMAN PRESENCE, with one owner — the user_activity stamp (a user's automated runs read as their activity on the admin usage surface; 'last activity' must mean a person was HERE, and machinery acting on their behalf must be structurally unable to move it). New scoped table user_activity (one row per user, scope-unique index user_activity_scope_unique; reads ride the 'users' people-management door, writes are system-only so record surfaces cannot fabricate presence; no retain policy — presence purges with the account) + UserActivityStamp in user-server, invoked from userCache.create: the once-per-session-cookie-request session-cache build IS the interactive-transport seam, so background/seeded contexts (runInUserScope seeds session data directly and never passes through) can never stamp, categorically — no per-feature carve-outs. Machine accounts (isLoadedFromSource, e.g. the error bridge's per-poll login) are refused by the stamp even though their requests ride real sessions. Write behavior mirrors DbSessionStore.touch: throttled per user (5 min), fail-open (the promise never rejects; a request never waits on its own stamp), first-stamp races resolved by the unique index. Consumed by thought-server's usage report (lastActiveDay cutover rides that landing). Bite checks ran: the userCache call removed reddens the human-stamp outcome test; the machine refusal dropped reddens the machine test — both restored green. New suite UserActivityStamp.integration.test.ts (5): stamp lands through the real seam, one-row-per-user advance, machine refusal, throttle, missing-account guest no-op. Estate green on a dedicated emulator: user 45, user-server 122 (117 pre-existing + 5 new), auth 20, ui 50. ([bc39960](https://github.com/proteinjs/user/commit/bc39960204df9ae535a3c44646a16da05e622247))
 
 
 
@@ -105,7 +105,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 ### Bug Fixes
 
 * AccessGrant well-formedness invariant — refuse a grant with no principal or resource id; session-less scope roots mint no grant ([a330784](https://github.com/proteinjs/user/commit/a330784543c3bfa989e86de15f50807260a3e42a))
-* avatar photo fidelity — the server pipeline owns the one resize (founder fuzzy-avatar defect) ([27fb3b7](https://github.com/proteinjs/user/commit/27fb3b77361b1c4e3a0e9f1e2286c1ea9284069f))
+* avatar photo fidelity — the server pipeline owns the one resize (the fuzzy-avatar defect) ([27fb3b7](https://github.com/proteinjs/user/commit/27fb3b77361b1c4e3a0e9f1e2286c1ea9284069f))
 * MachineAccounts harness meets db >=1.34.4 — getMachineAccounts maps the new {source, loader} declaration pairs; the test seeds namedObjectCache beside objectCache (objectsWithNames reads only the former — user's next CI red without this); the removal case models IN-PACKAGE removal (a surviving sibling declaration) per the ownership law boot([]) now deliberately protects. HONEST RESIDUE: the re-declare-after-removal leg still reds (sync INSERTs the existing machine-test-ops row instead of adopting — the new sync's adopt query vs the deactivated row's stamps; a user+db semantics call for the mint owners, exact repro in this suite) — 10/11 green, was 1/11 at origin/main against db 1.34.4 ([80f49e6](https://github.com/proteinjs/user/commit/80f49e664e7cbc83e19d092e69d42d7933652efe))
 
 
@@ -166,7 +166,7 @@ See [Conventional Commits](https://conventionalcommits.org) for commit guideline
 
 ### Bug Fixes
 
-* avatar photo fidelity — the server pipeline owns the one resize (founder fuzzy-avatar defect) ([629f411](https://github.com/proteinjs/user/commit/629f411ac614bfe0a1e5c326a647a6de9f212500))
+* avatar photo fidelity — the server pipeline owns the one resize (the fuzzy-avatar defect) ([629f411](https://github.com/proteinjs/user/commit/629f411ac614bfe0a1e5c326a647a6de9f212500))
 
 
 

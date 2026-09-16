@@ -124,7 +124,7 @@ describe('Machine accounts as source records', () => {
       emailVerified: true,
       status: 'active',
       isLoadedFromSource: true,
-      // The EXPLICIT machine column (founder ruling 2026-09-02): the declaration stamps it —
+      // The EXPLICIT machine column: the declaration stamps it —
       // one owner for "is this a machine"; isLoadedFromSource is an input to the stamp,
       // never the test consumers make.
       machine: true,
@@ -203,10 +203,8 @@ describe('Machine accounts as source records', () => {
     expect(await authenticate('machine-ops@test.local', 'bridge-pw')).toBe(true);
   });
 
-  // Marker retired at the R5 re-merge (2026-08-31, r5asm2): the composed world's db carries the
-  // soft-removal re-adoption (integration/r5-db ba9f4ba7 content), so this leg passes — the
-  // v1.20-era it.failing cross-train marker self-flipped red exactly as designed and comes off
-  // WITH the R5 db mint (TRAIN_MANIFEST_5 §6.1; land this change with the db 1.40-era mint).
+  // The db layer carries soft-removal re-adoption, so this leg passes (an earlier `it.failing`
+  // marker self-flipped red exactly as designed once the db layer landed it).
   it('re-declared under a renamed email: the soft-removed row is adopted by its stable id — reactivated, re-derived from the declaration, credential preserved', async () => {
     // The user table SOFT-removes (deactivate, never delete — rows carry grants/history), so a
     // re-declaration whose email no longer matches the kept row (an account rename, or any

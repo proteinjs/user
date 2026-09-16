@@ -31,8 +31,8 @@ export const login: Route = {
       outcome = await new AccountDeletion().cancelPendingDeletion(credentials.email);
     } catch (error) {
       // Security boundary: the login response never carries internal error detail — an
-      // attacker probing emails must learn nothing from failure shapes (founder ruling
-      // 2026-08-18 after a watcher error surfaced verbatim in the login form). The real
+      // attacker probing emails must learn nothing from failure shapes (a watcher
+      // error once surfaced verbatim in the login form). The real
       // error stays loud in the server log.
       console.error('cancelPendingDeletion failed during login', error);
       response.send({ error: 'Unable to log in right now. Please try again.' });

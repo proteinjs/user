@@ -8,7 +8,7 @@ import { BackfillUserStatusActive } from '../src/migrations/BackfillUserStatusAc
 /**
  * The user.status legacy-null retirement against a real Spanner emulator, simulating a deployed
  * database: rows written before the status column existed read NULL — the standing every gate
- * treats as active, but the stored state said nothing (the founder's v1.22 admin-review finding:
+ * treats as active, but the stored state said nothing (the admin-review finding:
  * active accounts showing no status on the user table).
  *
  * Pinned outcomes:

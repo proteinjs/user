@@ -3,7 +3,7 @@
  * @jest-environment-options {"customExportConditions": ["node", "node-addons"]}
  *
  * The user record form presents the two service-owned columns instead of hiding or faking them:
- *  - `roles` (an ArrayColumn, hidden by the default form — the founder opened the user form to
+ *  - `roles` (an ArrayColumn, hidden by the default form — an admin opened the user form to
  *    change roles and found no roles at all) renders as chips of the held roles; a holder of the
  *    'roles' permission also gets a grant control fed by the roles catalog and a revoke on each
  *    chip. Both write through `RolesService` — the one audited write path — and then reload the
@@ -52,7 +52,7 @@ type UserAuthInternals = {
 
 const setCallerRoles = (roles: string[]) => {
   (UserAuth as unknown as UserAuthInternals).userRepo = {
-    getUser: () => ({ email: 'caller@n3xa.io', roles }),
+    getUser: () => ({ email: 'caller@example.com', roles }),
   };
 };
 
@@ -72,7 +72,7 @@ const userRecord = (overrides: Partial<User> = {}): User =>
   ({
     id: 'user-1',
     name: 'Ada',
-    email: 'ada@n3xa.io',
+    email: 'ada@example.com',
     roles: ['ops'],
     status: 'active',
     ...overrides,

@@ -24,7 +24,7 @@
  * express-session's regenerate always REPLACES `request.session` with a fresh Session — and
  * REFUSES (rejects) when the session object survived the login. A pre-0.6 runtime (a stale
  * @proteinjs/server < 3.5.1 checkout symlinked into a dev workspace, live-observed as
- * DEV_SMOKE_OVERNIGHT 2026-08-26 finding 7: /dev/login's redirected navigation raced the
+ * A dev-smoke finding: /dev/login's redirected navigation raced the
  * deferred session write and landed on the login form) then fails loudly at the seam instead of
  * degrading into fixation-vulnerable, race-prone logins. The guard is a post-condition, not a
  * fallback — establishSession never does passport's regenerate/save itself.

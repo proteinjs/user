@@ -45,8 +45,8 @@ export interface DanglingAccessGrantsReport {
  * ONE-TIME SWEEP of malformed access_grant residue — rows whose `principal` or `resource`
  * reference is NULL. The AccessGrant well-formedness invariant (`AccessGrantTable.assertWellFormed`)
  * now refuses that shape at insert, and the session-less scope-root bootstrap no longer mints it;
- * this migration clears what the two producers left behind before the fix (the test environment
- * held one; app Deploy to Test 32614670162 crashed on it).
+ * this migration clears what the two producers left behind before the fix (a deployment
+ * crashed on one).
  *
  * The sweep's predicate is the invariant's exact complement (`principal IS NULL OR resource IS
  * NULL`), and it rides BOTH the find and the delete — a well-formed row cannot be selected by the

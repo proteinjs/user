@@ -7,7 +7,7 @@ import { UpdateUserInfo } from '../src/services/UpdateUserInfo';
  * Pixel-fidelity contract of THE avatar image pipeline (`toAvatarJpeg` — the only place avatar
  * pixels are ever resampled), tested straight through the pipeline with no DB: a stored master
  * never contains invented (enlarged) pixels, honors the client's crop frame exactly, and still
- * caps large sources at 512. This is the categorical guard for the founder's fuzzy-avatar
+ * caps large sources at 512. This is the categorical guard for the fuzzy-avatar
  * defect: a small source blown up to a fixed 512 master reads as permanent blur on every chip
  * that renders it.
  *

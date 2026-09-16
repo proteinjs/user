@@ -8,9 +8,9 @@
  * keyed by the emulator host string, held for the whole jest run via globalSetup/globalTeardown.
  *
  * The lockfile PATH FORMULA must stay byte-identical to the fleet's canonical implementation
- * (`EmulatorLock.lockFilePathFor` in @n3xah/thought-common/test) so suites from every repo
+ * (`EmulatorLock.lockFilePathFor` in the downstream test helpers) so suites from every repo
  * pointed at the same emulator actually contend on the same file. The logic is duplicated here
- * because this repo sits BELOW @n3xah in the dependency layering (thought-common itself depends
+ * because this repo sits BELOW those packages in the dependency layering (they depend
  * on @proteinjs/user) — future extraction target: @proteinjs/db-driver-spanner/test, beside
  * SpannerEmulatorProvisioner.
  */

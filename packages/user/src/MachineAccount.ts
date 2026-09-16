@@ -68,7 +68,7 @@ export abstract class MachineAccount implements SourceRecordLoader<User> {
       roles: [...this.roles],
       // No mailbox ceremony for machines; forced so runtime flips get reverted.
       emailVerified: true,
-      // The explicit machine marker (founder ruling 2026-09-02): the declaration IS the
+      // The explicit machine marker: the declaration IS the
       // stamp — inserts are born with it, adopted hand-made rows converge on the next boot
       // (ordinary drift reversion), and existing source-loaded accounts pick it up the same
       // way with no backfill migration.

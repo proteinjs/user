@@ -6,7 +6,7 @@ import { UserStatus, tables } from '@proteinjs/user';
  * Retires the legacy null-status state on `user.status`: rows predating the column read NULL,
  * which every gate treats as active (only an explicit 'deactivated' is refused) — but the
  * stored state was dishonest: the admin user table showed no standing for exactly the accounts
- * that ARE active (founder admin review, v1.22), and a query by `status = 'active'` could not
+ * that ARE active, and a query by `status = 'active'` could not
  * find them. New rows default 'active' at insert, so once this runs the dual representation is
  * gone: storage says what the gates always read.
  *
