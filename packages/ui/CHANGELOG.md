@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.11.0](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.10.2...@proteinjs/user-ui@1.11.0) (2026-09-17)
+
+
+### Bug Fixes
+
+* **invites:** the invite record form drops the generic Save — the table's db doors close generic writes, so it could only ever fail; the row's acts are Resend and Revoke ([2eca245](https://github.com/proteinjs/user/commit/2eca2451d63b764d558bc42214166ab18b27e304))
+
+
+### Features
+
+* **invites:** a re-send door on SignupService — the standing token retired, a fresh one minted on the same row and emailed again; a Resend act on the invite record form ([b3b54e3](https://github.com/proteinjs/user/commit/b3b54e3f8728d856e8632d7a8e2688b549cb82d9))
+
+
+
+
+
 ## [1.10.2](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.10.1...@proteinjs/user-ui@1.10.2) (2026-09-13)
 
 **Note:** Version bump only for package @proteinjs/user-ui

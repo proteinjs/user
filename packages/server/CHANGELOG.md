@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.21.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.20.2...@proteinjs/user-server@1.21.0) (2026-09-17)
+
+
+### Features
+
+* **invites:** a re-send door on SignupService — the standing token retired, a fresh one minted on the same row and emailed again; a Resend act on the invite record form ([b3b54e3](https://github.com/proteinjs/user/commit/b3b54e3f8728d856e8632d7a8e2688b549cb82d9))
+
+
+
+
+
 ## [1.20.2](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.20.1...@proteinjs/user-server@1.20.2) (2026-09-13)
 
 **Note:** Version bump only for package @proteinjs/user-server
