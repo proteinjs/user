@@ -25,6 +25,10 @@ export class InviteRecordFormCustomization extends RecordFormCustomization {
     const formButtons = { ...defaultFormButtons };
     delete formButtons['create'];
     delete formButtons['delete'];
+    // No generic Save either: the invite table's db doors close generic writes (query/delete only —
+    // a raw update would be refused at the door), so Save could only ever fail; the row's acts are
+    // Resend and Revoke.
+    delete formButtons['save'];
     formButtons['send'] = this.sendButton(invite);
     formButtons['resend'] = this.resendButton(invite);
     formButtons['revoke'] = this.revokeButton(invite);

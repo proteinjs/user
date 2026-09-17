@@ -49,11 +49,13 @@ describe('Invite record form customization', () => {
     (UserAuth as unknown as UserAuthInternals).permissionRolesMapping = undefined;
   });
 
-  it('replaces raw record create/delete with send/revoke', () => {
+  it('replaces raw record create/save/delete with send/resend/revoke (the db doors refuse generic writes)', () => {
     setRoles(['admin']);
     const buttons = new InviteRecordFormCustomization().getFormButtons(existingInvite, defaultFormButtons());
     expect(Object.keys(buttons)).not.toContain('create');
+    expect(Object.keys(buttons)).not.toContain('save');
     expect(Object.keys(buttons)).not.toContain('delete');
+    expect(Object.keys(buttons)).toEqual(expect.arrayContaining(['send', 'resend', 'revoke']));
   });
 
   it('offers an admin Send invite on the new-record form and Revoke on an existing invite', () => {
