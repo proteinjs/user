@@ -1,0 +1,3 @@
+{ "branch": "feat/invite-flow-with-apps", "packages": ["user", "server", "ui"],
+  "suites": ["packages/server/test/SignupResendInvite.integration.test.ts", "packages/server/test/SignupInvite.test.ts", "packages/server/test/Signup.test.ts",
+             "packages/server/test/SignupRoute.test.ts", "packages/ui/test/InviteResend.test.ts", "packages/ui/test/InviteRecordFormCustomization.test.ts"], "removes": [] }
