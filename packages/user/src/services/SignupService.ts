@@ -33,6 +33,12 @@ export interface SignupService extends Service {
    * If invite already exists for the email, it will update the existing record with a new token and send a new email.
    */
   sendInvite(email: string): Promise<SendInviteResponse>;
+  /**
+   * Re-sends a standing invite: the earlier token stops working, a fresh token and expiry are
+   * stamped on the same record, and the invite email is sent again. Refused (`sent: false`, with
+   * the reason) when no invite exists for the email or the email already has an account.
+   */
+  resendInvite(email: string): Promise<SendInviteResponse>;
   /** Deletes invite record associated with the email. */
   revokeInvite(email: string): Promise<void>;
   /**

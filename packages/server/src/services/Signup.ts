@@ -19,6 +19,7 @@ import {
   EmailSender,
   getDefaultInviteEmailConfigFactory,
   getDefaultSignupConfirmationEmailConfigFactory,
+  InviteEmailConfig,
 } from '@proteinjs/email-server';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import { PasswordHasher } from '../authentication/PasswordHasher';
@@ -75,7 +76,7 @@ export class Signup implements SignupService {
         // previously evaluated the check WITHOUT returning it, which made sendInvite/revokeInvite
         // effectively public — any caller (even logged out) could mint themselves a valid signup
         // token and bypass invite-only signup.
-        if (methodName === 'sendInvite' || methodName === 'revokeInvite') {
+        if (methodName === 'sendInvite' || methodName === 'resendInvite' || methodName === 'revokeInvite') {
           return UserAuth.hasPermission(USER_PERMISSIONS.users);
         }
 
@@ -159,17 +160,8 @@ export class Signup implements SignupService {
         return { sent: false, error: 'User already exists with that email.' };
       }
 
-      const emailSender = new EmailSender();
-      const defaultConfigFactory = getDefaultInviteEmailConfigFactory();
-      if (!defaultConfigFactory) {
-        throw new Error(
-          `Unable to find a @proteinjs/email-server/DefaultInviteEmailConfigFactory implementation when sending invite.`
-        );
-      }
-      const config = defaultConfigFactory.getConfig();
-
-      const token = lib.WordArray.random(32).toString();
-      const tokenExpiresAt = moment().add(INVITE_TOKEN_TTL_DAYS, 'days');
+      const config = this.inviteEmailConfig();
+      const { token, tokenExpiresAt } = this.mintInviteToken();
       let invite = await db.get(tables.Invite, { email: caseInsensitiveEmail });
       if (invite) {
         invite = {
@@ -188,18 +180,45 @@ export class Signup implements SignupService {
         });
       }
 
-      const { text, html } = config.getEmailContent(`${uiRoutes.auth.signup}?token=${token}`);
-      await emailSender.sendEmail({
-        to: caseInsensitiveEmail,
-        subject: config.options?.subject || `You're Invited`,
-        text,
-        html,
-        ...config.options,
-      });
-
+      await this.emailInvite(caseInsensitiveEmail, token, config);
       return { sent: true };
     } catch (error: any) {
       logger.error({ message: 'Error sending invite', obj: { email: caseInsensitiveEmail }, error });
+      return {
+        sent: false,
+        error: 'Error occurred.',
+      };
+    }
+  }
+
+  /**
+   * Re-sends a standing invite: the token in the earlier email stops working, a fresh token with
+   * a fresh expiry takes its place on the same row (never a second row), and the invite email goes
+   * out again through the same config. Refused when no invite stands for the address — there is
+   * nothing to re-send — and when the address already has an account (the invite was used).
+   * The inviter stays whoever sent it first.
+   */
+  async resendInvite(email: string): Promise<SendInviteResponse> {
+    const logger = new Logger({ name: 'Signup.resendInvite' });
+    const caseInsensitiveEmail = email.toLowerCase();
+    try {
+      const db = getDbAsSystem();
+      const userRecord = await db.get(tables.User, { email: caseInsensitiveEmail });
+      if (userRecord) {
+        return { sent: false, error: 'User already exists with that email.' };
+      }
+      const invite = await db.get(tables.Invite, { email: caseInsensitiveEmail });
+      if (!invite) {
+        return { sent: false, error: 'No invite exists for that email.' };
+      }
+
+      const config = this.inviteEmailConfig();
+      const { token, tokenExpiresAt } = this.mintInviteToken();
+      await db.update(tables.Invite, { ...invite, token, tokenExpiresAt });
+      await this.emailInvite(caseInsensitiveEmail, token, config);
+      return { sent: true };
+    } catch (error: any) {
+      logger.error({ message: 'Error re-sending invite', obj: { email: caseInsensitiveEmail }, error });
       return {
         sent: false,
         error: 'Error occurred.',
@@ -321,5 +340,36 @@ export class Signup implements SignupService {
     }
 
     return { status: 'valid', invite };
+  }
+
+  /** The invite email content factory the consumer registers; its absence is a misconfiguration, said aloud. */
+  private inviteEmailConfig(): InviteEmailConfig {
+    const defaultConfigFactory = getDefaultInviteEmailConfigFactory();
+    if (!defaultConfigFactory) {
+      throw new Error(
+        `Unable to find a @proteinjs/email-server/DefaultInviteEmailConfigFactory implementation when sending invite.`
+      );
+    }
+    return defaultConfigFactory.getConfig();
+  }
+
+  /** A fresh redeemable token with its expiry from the TTL knob — the one minting path for send and re-send. */
+  private mintInviteToken(): { token: string; tokenExpiresAt: moment.Moment } {
+    return {
+      token: lib.WordArray.random(32).toString(),
+      tokenExpiresAt: moment().add(INVITE_TOKEN_TTL_DAYS, 'days'),
+    };
+  }
+
+  /** The invite email itself — the signup link carrying `token`, rendered by the consumer's config. */
+  private async emailInvite(email: string, token: string, config: InviteEmailConfig): Promise<void> {
+    const { text, html } = config.getEmailContent(`${uiRoutes.auth.signup}?token=${token}`);
+    await new EmailSender().sendEmail({
+      to: email,
+      subject: config.options?.subject || `You're Invited`,
+      text,
+      html,
+      ...config.options,
+    });
   }
 }

@@ -1,16 +1,17 @@
 import { Fields, FormButton, FormButtons } from '@proteinjs/ui';
-import { RecordFormCustomization, recordTableLink } from '@proteinjs/db-ui';
+import { RecordFormCustomization, recordFormLink, recordTableLink } from '@proteinjs/db-ui';
 import { getSignupService, Invite, tables, UserAuth, USER_PERMISSIONS } from '@proteinjs/user';
 import { emailRegex } from '@proteinjs/util';
 
 /**
  * Makes the invite record surface the ONE place invites are managed: the new-record form sends an
- * invite, and an existing invite row can be revoked.
+ * invite, and an existing invite row can be re-sent or revoked.
  *
- * Both actions go through `SignupService` rather than raw record writes, because an invite is more
- * than its row — sending mints a token, sets its expiry, stamps the inviter, and emails the signup
- * link; revoking is the invite domain's own delete. Inserting or deleting the row directly would
- * produce invites that can never be redeemed.
+ * All three actions go through `SignupService` rather than raw record writes, because an invite is
+ * more than its row — sending mints a token, sets its expiry, stamps the inviter, and emails the
+ * signup link; re-sending retires the earlier token, mints a fresh one and emails it again; revoking
+ * is the invite domain's own delete. Inserting or deleting the row directly would produce invites
+ * that can never be redeemed.
  */
 export class InviteRecordFormCustomization extends RecordFormCustomization {
   public table = tables.Invite;
@@ -25,6 +26,7 @@ export class InviteRecordFormCustomization extends RecordFormCustomization {
     delete formButtons['create'];
     delete formButtons['delete'];
     formButtons['send'] = this.sendButton(invite);
+    formButtons['resend'] = this.resendButton(invite);
     formButtons['revoke'] = this.revokeButton(invite);
     return formButtons;
   }
@@ -57,6 +59,39 @@ export class InviteRecordFormCustomization extends RecordFormCustomization {
         return `Sent invite to ${email}`;
       },
       progressMessage: () => `Sending invite`,
+    };
+  }
+
+  /**
+   * Re-sends a standing invite through `SignupService.resendInvite`: the earlier link stops working
+   * and a fresh one is emailed. The row stays, so the form re-lands on itself — after a beat, because
+   * the generic form paints its message and navigates in the same tick, and the navigation remounts
+   * the page (a re-land without the beat would eat the confirmation); the reload then shows the
+   * row's fresh token and expiry.
+   */
+  private resendButton(invite: Invite | undefined): FormButton<any> {
+    return {
+      name: 'Resend',
+      accessibility: {
+        hidden: !invite || !this.canManageUsers(),
+      },
+      style: {
+        color: 'primary',
+        variant: 'contained',
+      },
+      redirect: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1400));
+        return { path: recordFormLink(tables.Invite.name, (invite as Invite).id) };
+      },
+      onClick: async () => {
+        const response = await getSignupService().resendInvite((invite as Invite).email);
+        if (response.sent === false) {
+          return response.error || 'Failed to resend invite.';
+        }
+
+        return `Resent invite to ${(invite as Invite).email}`;
+      },
+      progressMessage: () => `Resending invite`,
     };
   }
 
