@@ -1,0 +1,2 @@
+{ "branch": "feat/dev-mail-door", "packages": ["server"],
+  "suites": ["packages/server/test/DevMail.test.ts", "packages/server/test/DevLogin.test.ts"], "removes": [] }
