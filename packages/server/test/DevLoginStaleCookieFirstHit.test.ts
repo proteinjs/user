@@ -28,7 +28,7 @@ const testEnv = new UserServerTestEnvironment();
  * cookies the response set, and the follow-up MUST read as authenticated on the FIRST pass.
  */
 
-const SESSION_COOKIE_NAME = 'n3xa.sid.9876'; // dev cookie-name shape: n3xa.sid.${SERVER_PORT}
+const SESSION_COOKIE_NAME = 'app.sid.9876'; // a consumer's dev cookie-name shape: <app>.sid.${SERVER_PORT}
 const SESSION_SECRET = 'dev-first-hit-test-secret';
 const ENV_EMAIL = 'dev@test.local';
 /** Store commit latency. Generous so a pre-0.6 runtime (write racing the redirect) loses the

@@ -149,10 +149,10 @@ describe('UserAuth.hasPermission — permission indirection through the consumer
   });
 });
 
-describe('UserAuth — NULL/absent roles tolerance (the n3xa5 AccountMenu white-screen class)', () => {
+describe('UserAuth — NULL/absent roles tolerance (the account-menu white-screen class)', () => {
   // Pre-roles-backfill user rows read roles as NULL; a repo implementation fed by raw session
   // data can hand that through despite the interface's `string[]` (the runtime shape that
-  // white-screened brent-dev-5's menus — every client-side gate funnels through UserAuth, so
+  // white-screened a consumer's menus — every client-side gate funnels through UserAuth, so
   // one `.includes` on null blanked the page). Contract: a null-roles user is simply
   // role-less — every check DENIES, nothing throws. Tolerance only, no invented roles.
   const setUserWithRawRoles = (roles: unknown) => {
