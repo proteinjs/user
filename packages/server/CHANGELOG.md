@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.21.1](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.21.0...@proteinjs/user-server@1.21.1) (2026-09-19)
+
+
+### Bug Fixes
+
+* **server:** refuse a malformed password-reset token before any lookup; redeem a token once ([e3f6266](https://github.com/proteinjs/user/commit/e3f6266fed8d0c61b09941abfd6b36e85bc94dfa))
+
+
+
+
+
 # [1.21.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.20.2...@proteinjs/user-server@1.21.0) (2026-09-17)
 
 
