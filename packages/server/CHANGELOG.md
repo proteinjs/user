@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.22.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.21.1...@proteinjs/user-server@1.22.0) (2026-09-19)
+
+
+### Features
+
+* **user-server:** GET /dev/mail — the dev-only door onto the mail sink ([b6e7767](https://github.com/proteinjs/user/commit/b6e7767249729441cec7f8298cda270d00defbe0))
+
+
+
+
+
 ## [1.21.1](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.21.0...@proteinjs/user-server@1.21.1) (2026-09-19)
 
 
