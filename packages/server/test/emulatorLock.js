@@ -7,11 +7,10 @@
  * FAILED_PRECONDITION). This lock closes that gap for this package: a lockfile in os.tmpdir()
  * keyed by the emulator host string, held for the whole jest run via globalSetup/globalTeardown.
  *
- * The lockfile PATH FORMULA must stay byte-identical to the fleet's canonical implementation
- * (`EmulatorLock.lockFilePathFor` in @n3xah/thought-common/test) so suites from every repo
- * pointed at the same emulator actually contend on the same file. The logic is duplicated here
- * because this repo sits BELOW @n3xah in the dependency layering (thought-common itself depends
- * on @proteinjs/user) — future extraction target: @proteinjs/db-driver-spanner/test, beside
+ * The lockfile PATH FORMULA must stay byte-identical in every copy of this lock (other
+ * repositories' suites, a consumer application's suites) so runs pointed at the same emulator
+ * actually contend on the same file. The logic is duplicated here because no shared package
+ * carries it yet — future extraction target: @proteinjs/db-driver-spanner/test, beside
  * SpannerEmulatorProvisioner.
  */
 const crypto = require('crypto');
@@ -30,7 +29,7 @@ function lockFilePathFor(host) {
     .replace(/^-+|-+$/g, '')
     .slice(0, 64);
   const hash = crypto.createHash('sha1').update(host).digest('hex').slice(0, 8);
-  return path.join(os.tmpdir(), `n3xa-spanner-emulator-${slug}-${hash}.lock`);
+  return path.join(os.tmpdir(), `spanner-emulator-${slug}-${hash}.lock`);
 }
 
 function isPidAlive(pid) {
