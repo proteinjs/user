@@ -12,8 +12,9 @@ import { PasswordResetToken } from '../authentication/PasswordResetToken';
 /**
  * Route for initiating a password reset process.
  *
- * This route handles the process of generating a password reset token,
- * sending a reset email to the user, and storing the token and expiration of the token in the database.
+ * Mints a reset token through `PasswordResetToken` — which stores only the token's digest and
+ * its expiry on the user row — and mails the token to the account as a reset link. The token is
+ * withdrawn again when the mail fails to send.
  *
  * Requires an implementation of `DefaultPasswordResetEmailConfigFactory` to build the password reset email with.
  *
@@ -27,7 +28,13 @@ export const initiatePasswordReset: Route = {
   method: routes.initiatePasswordReset.method,
   onRequest: async (request, response): Promise<void> => {
     const logger = new Logger({ name: 'initiatePasswordReset' });
-    const email = request.body.email?.toLowerCase();
+    const { email: requestedEmail } = request.body ?? {};
+    if (typeof requestedEmail !== 'string' || requestedEmail.length === 0) {
+      response.status(400).send({ error: 'Email cannot be blank' });
+      return;
+    }
+
+    const email = requestedEmail.toLowerCase();
     const db = getDbAsSystem();
 
     const genericResponse = { message: 'If an account with that email exists, we have sent a password reset link.' };
@@ -41,15 +48,12 @@ export const initiatePasswordReset: Route = {
     }
 
     // Check if there's an existing token and it's less than 5 minutes old
-    if (user.passwordResetToken && user.passwordResetTokenExpiration) {
-      const currentTime = moment();
-      const tokenCreationTime = moment(user.passwordResetTokenExpiration).subtract(1, 'hour');
-      const timeDifference = currentTime.diff(tokenCreationTime, 'minutes');
-      if (timeDifference < 5) {
-        logger.info({ message: `Password reset requested too soon for user`, obj: { email } });
-        response.send(genericResponse);
-        return;
-      }
+    const resetToken = new PasswordResetToken();
+    const mintedAt = resetToken.mintedAt(user);
+    if (mintedAt && moment().diff(mintedAt, 'minutes') < 5) {
+      logger.info({ message: `Password reset requested too soon for user`, obj: { email } });
+      response.send(genericResponse);
+      return;
     }
 
     const emailSender = new EmailSender();
@@ -61,9 +65,8 @@ export const initiatePasswordReset: Route = {
       );
     }
 
-    // Generate reset token
-    const passwordResetToken = new PasswordResetToken().mint();
-    const passwordResetTokenExpiration = moment().add(1, 'hour');
+    // The row now holds the token's digest; the token itself goes only into the mailed link
+    const passwordResetToken = await resetToken.mint(user);
 
     try {
       const config = defaultConfigFactory.getConfig();
@@ -78,11 +81,11 @@ export const initiatePasswordReset: Route = {
         ...config.options,
       });
 
-      // If email is sent successfully, save reset token to user record
-      await db.update(tables.User, { id: user.id, passwordResetToken, passwordResetTokenExpiration });
       response.send(genericResponse);
     } catch (error: any) {
       logger.error({ message: `Failed to send password reset email`, obj: { email }, error });
+      // The link never reached the account: withdraw the token so asking again is not throttled
+      await resetToken.revoke(user, passwordResetToken);
       response.status(500).send({ error: 'Failed to send password reset email. Please try again later.' });
     }
   },

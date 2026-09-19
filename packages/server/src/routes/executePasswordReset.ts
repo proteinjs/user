@@ -10,7 +10,8 @@ import { PasswordResetToken } from '../authentication/PasswordResetToken';
  * Resolves the presented token through `PasswordResetToken` — which refuses anything but a
  * well-formed token before any lookup — checks its expiry, and redeems it: the new password is
  * written and the token cleared in one conditional update, so a token resets a password once.
- * The token itself never reaches the log.
+ * The token itself never reaches the log. A request that carries no body at all is refused like
+ * one that carries a blank password.
  *
  * @bodyParam {string} token - The password reset token.
  * @bodyParam {string} newPassword - The new password for the user.
@@ -20,7 +21,7 @@ export const executePasswordReset: Route = {
   method: routes.executePasswordReset.method,
   onRequest: async (request, response): Promise<void> => {
     const logger = new Logger({ name: 'executePasswordReset' });
-    const { token, newPassword } = request.body;
+    const { token, newPassword } = request.body ?? {};
     if (typeof newPassword !== 'string' || newPassword.length === 0) {
       response.status(400).send({ error: 'New password cannot be blank' });
       return;
