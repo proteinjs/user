@@ -1,0 +1,2 @@
+{ "branch": "chore/open-source-wording", "packages": ["server", "auth", "ui"],
+  "suites": ["packages/server/test/emulatorLock.test.ts", "packages/server/test/DevLoginBootstrapAdmin.test.ts", "packages/server/test/DevLoginStaleCookieFirstHit.test.ts", "packages/auth/test/UserAuth.test.ts", "packages/ui/test/InviteRecordFormCustomization.test.ts", "packages/ui/test/UserRecordFormCustomization.test.tsx"], "removes": [] }
