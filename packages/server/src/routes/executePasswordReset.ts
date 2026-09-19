@@ -1,20 +1,19 @@
 import { Route } from '@proteinjs/server-api';
-import { getDbAsSystem } from '@proteinjs/db';
-import { routes, tables } from '@proteinjs/user';
+import { routes } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
-import moment from 'moment';
 import { PasswordHasher } from '../authentication/PasswordHasher';
+import { PasswordResetToken } from '../authentication/PasswordResetToken';
 
 /**
  * Route handler for executing a password reset.
  *
- * This function handles the process of resetting a user's password using a provided reset token.
- * It verifies the token, checks its expiration, and updates the user's password if everything is valid.
+ * Resolves the presented token through `PasswordResetToken` — which refuses anything but a
+ * well-formed token before any lookup — checks its expiry, and redeems it: the new password is
+ * written and the token cleared in one conditional update, so a token resets a password once.
+ * The token itself never reaches the log.
  *
  * @bodyParam {string} token - The password reset token.
  * @bodyParam {string} newPassword - The new password for the user.
- *
- * @throws {Error} If there's an issue with the database operations or if the token is invalid or expired.
  */
 export const executePasswordReset: Route = {
   path: routes.executePasswordReset.path,
@@ -22,33 +21,35 @@ export const executePasswordReset: Route = {
   onRequest: async (request, response): Promise<void> => {
     const logger = new Logger({ name: 'executePasswordReset' });
     const { token, newPassword } = request.body;
-    const db = getDbAsSystem();
+    if (typeof newPassword !== 'string' || newPassword.length === 0) {
+      response.status(400).send({ error: 'New password cannot be blank' });
+      return;
+    }
 
-    // Find user with the given reset token
-    const user = await db.get(tables.User, { passwordResetToken: token });
-    if (!user) {
-      logger.info({ message: `Invalid reset token used`, obj: { token } });
+    const resetToken = new PasswordResetToken();
+    const resolution = await resetToken.resolve(token);
+    if (resolution.status === 'malformed' || resolution.status === 'unknown') {
+      logger.info({
+        message: `Invalid reset token used`,
+        obj: { reason: resolution.status, token: resetToken.fingerprint(token) },
+      });
       response.status(400).send({ error: 'Invalid or expired reset token' });
       return;
     }
 
-    // Check if token is expired
-    const currentTime = moment();
-    const tokenExpiration = moment(user.passwordResetTokenExpiration);
-    if (currentTime.isAfter(tokenExpiration)) {
-      logger.info({ message: `Expired reset token used`, obj: { email: user.email } });
+    if (resolution.status === 'expired') {
+      logger.info({ message: `Expired reset token used`, obj: { email: resolution.user.email } });
       response.status(400).send({ error: 'Reset token has expired' });
       return;
     }
 
-    // Update user's password
+    const { user } = resolution;
     const hashedPassword = await new PasswordHasher().hash(newPassword);
-    await db.update(tables.User, {
-      id: user.id,
-      password: hashedPassword,
-      passwordResetToken: null,
-      passwordResetTokenExpiration: null,
-    });
+    if (!(await resetToken.redeem(user, resolution.token, hashedPassword))) {
+      logger.info({ message: `Reset token already redeemed`, obj: { email: user.email } });
+      response.status(400).send({ error: 'Invalid or expired reset token' });
+      return;
+    }
 
     logger.info({ message: `Password successfully reset`, obj: { email: user.email } });
     response.send({ message: 'Password has been successfully reset' });

@@ -7,7 +7,7 @@ import {
   EmailSender,
   getDefaultPasswordResetEmailConfigFactory as getDefaultConfigFactory,
 } from '@proteinjs/email-server';
-import { lib } from 'crypto-js';
+import { PasswordResetToken } from '../authentication/PasswordResetToken';
 
 /**
  * Route for initiating a password reset process.
@@ -62,7 +62,7 @@ export const initiatePasswordReset: Route = {
     }
 
     // Generate reset token
-    const passwordResetToken = lib.WordArray.random(32).toString();
+    const passwordResetToken = new PasswordResetToken().mint();
     const passwordResetTokenExpiration = moment().add(1, 'hour');
 
     try {

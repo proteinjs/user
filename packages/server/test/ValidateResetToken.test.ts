@@ -2,6 +2,7 @@ import moment from 'moment';
 import { getDbAsSystem } from '@proteinjs/db';
 import { tables } from '@proteinjs/user';
 import { validateResetPasswordToken } from '../src/routes/validateResetPasswordToken';
+import { PasswordResetToken } from '../src/authentication/PasswordResetToken';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 
 const testEnv = new UserServerTestEnvironment();
@@ -12,7 +13,9 @@ const testEnv = new UserServerTestEnvironment();
  * `autocomplete="username"` field so password managers can associate the updated password
  * with the stored credential. The email only ever rides a VALID token's response — the
  * token was delivered to that very inbox, so it reveals nothing the holder doesn't know —
- * while invalid/expired verdicts stay email-free (no account-probing oracle).
+ * while invalid/expired verdicts stay email-free (no account-probing oracle). A query value
+ * that is not a well-formed token (a parsed object or array, a string of another shape) is
+ * invalid without a lookup.
  */
 
 type RouteOutcome = { status?: number; body?: any };
@@ -31,6 +34,8 @@ const invokeValidate = async (query: Record<string, unknown>): Promise<RouteOutc
   await validateResetPasswordToken.onRequest({ query } as never, response as never);
   return outcome;
 };
+
+const mintToken = () => new PasswordResetToken().mint();
 
 const armResetToken = async (email: string, token: string, expiration: moment.Moment) => {
   const user = await testEnv.createUser({ name: 'Reset User', email });
@@ -51,18 +56,20 @@ describe('validateResetPasswordToken route', () => {
   });
 
   it('a valid token resolves isValid WITH the account email (the reset form identifier)', async () => {
-    await armResetToken('reset-valid@test.local', 'tok-valid-1', moment().add(1, 'hour'));
+    const token = mintToken();
+    await armResetToken('reset-valid@test.local', token, moment().add(1, 'hour'));
 
-    const outcome = await invokeValidate({ token: 'tok-valid-1' });
+    const outcome = await invokeValidate({ token });
 
     expect(outcome.status).toBe(200);
     expect(outcome.body).toEqual({ isValid: true, email: 'reset-valid@test.local' });
   });
 
   it('an expired token resolves invalid and leaks no email', async () => {
-    await armResetToken('reset-expired@test.local', 'tok-expired-1', moment().subtract(1, 'minute'));
+    const token = mintToken();
+    await armResetToken('reset-expired@test.local', token, moment().subtract(1, 'minute'));
 
-    const outcome = await invokeValidate({ token: 'tok-expired-1' });
+    const outcome = await invokeValidate({ token });
 
     expect(outcome.status).toBe(200);
     expect(outcome.body.isValid).toBe(false);
@@ -70,11 +77,22 @@ describe('validateResetPasswordToken route', () => {
   });
 
   it('an unknown token resolves invalid and leaks no email', async () => {
-    const outcome = await invokeValidate({ token: 'tok-never-issued' });
+    const outcome = await invokeValidate({ token: mintToken() });
 
     expect(outcome.status).toBe(200);
     expect(outcome.body.isValid).toBe(false);
     expect(outcome.body.email).toBeUndefined();
+  });
+
+  it.each([
+    ['a string of another shape', 'tok-never-issued'],
+    ['a parsed array', ['a', 'b']],
+    ['a parsed object', { passwordResetToken: null }],
+  ])('%s resolves invalid without a lookup and leaks no email', async (_label, token) => {
+    const outcome = await invokeValidate({ token });
+
+    expect(outcome.status).toBe(200);
+    expect(outcome.body).toEqual({ isValid: false, message: 'Invalid token' });
   });
 
   it('a missing token is a 400', async () => {
