@@ -45,7 +45,7 @@ const emailDomain = (address: string) => address.slice(address.lastIndexOf('@') 
  * call is unchanged; the variable absent = nothing changes; the gates closed = 404 regardless.
  * Test and prod never set it — the omission is the safety, the same idiom as the gates. The
  * outcome is logged as ONE marker line, `Dev bootstrap admin door: <granted|admin-exists>`,
- * which the n3xa compose-estate boot proof reads from the server log to PROVE the grant landed.
+ * which a consumer's boot proof can read from the server log to PROVE the grant landed.
  *
  * Role-bootstrap door (`DEV_BOOTSTRAP_ROLES='email:role[,role];email:role…'`, the grammar in
  * DevBootstrapRoles.ts): the first-admin door leaves every OTHER account role-less, and a

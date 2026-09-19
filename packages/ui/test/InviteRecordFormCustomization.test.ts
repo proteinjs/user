@@ -19,7 +19,7 @@ type UserAuthInternals = {
 
 const setRoles = (roles: string[]) => {
   (UserAuth as unknown as UserAuthInternals).userRepo = {
-    getUser: () => ({ email: 'someone@n3xa.io', roles }),
+    getUser: () => ({ email: 'someone@example.com', roles }),
   };
 };
 
@@ -36,7 +36,7 @@ const defaultFormButtons = (): FormButtons<any> => ({
 });
 
 const defaultFieldLayout = ['email', 'token', 'tokenExpiresAt', 'invitedBy'];
-const existingInvite = { id: 'invite-1', email: 'invitee@n3xa.io' } as Invite;
+const existingInvite = { id: 'invite-1', email: 'invitee@example.com' } as Invite;
 
 const visibleButtons = (record: Invite | undefined) => {
   const buttons = new InviteRecordFormCustomization().getFormButtons(record, defaultFormButtons());

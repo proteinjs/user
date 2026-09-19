@@ -52,7 +52,7 @@ type UserAuthInternals = {
 
 const setCallerRoles = (roles: string[]) => {
   (UserAuth as unknown as UserAuthInternals).userRepo = {
-    getUser: () => ({ email: 'caller@n3xa.io', roles }),
+    getUser: () => ({ email: 'caller@example.com', roles }),
   };
 };
 
@@ -72,7 +72,7 @@ const userRecord = (overrides: Partial<User> = {}): User =>
   ({
     id: 'user-1',
     name: 'Ada',
-    email: 'ada@n3xa.io',
+    email: 'ada@example.com',
     roles: ['ops'],
     status: 'active',
     ...overrides,

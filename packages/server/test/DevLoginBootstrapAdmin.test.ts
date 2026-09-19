@@ -6,10 +6,9 @@ import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 const testEnv = new UserServerTestEnvironment();
 
 /**
- * `DEV_BOOTSTRAP_ADMIN_EMAIL` — the first-admin door INSIDE `/dev/login` (n3xa plans/DEV_ESTATES.md
- * D3, founder-ruled 2026-09-04). A dev estate on a fresh real database has no privileged account
- * to grant from, and the no-raw-DB rule forbids the emulator-era seed scripts there — so the ONE
- * sanctioned account door mints break-glass, once:
+ * `DEV_BOOTSTRAP_ADMIN_EMAIL` — the first-admin door INSIDE `/dev/login`. A development server on
+ * a fresh real database has no privileged account to grant from, and a no-raw-database-write rule
+ * forbids seed scripts there — so the ONE sanctioned account door mints break-glass, once:
  *  - behind the door's existing two gates (DEVELOPMENT AND DEV_AUTO_LOGIN_EMAIL): closed = 404 as
  *    before, and the variable changes nothing;
  *  - only while NO account carries 'admin' (the same membership test the app's admin checks make);
