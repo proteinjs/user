@@ -5,6 +5,9 @@ import { tables } from '@proteinjs/user';
 import { validateResetPasswordToken } from '../src/routes/validateResetPasswordToken';
 import { PasswordResetToken } from '../src/authentication/PasswordResetToken';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
+import { DbTraffic } from './DbTraffic';
+import { LogCapture } from './LogCapture';
+import { MalformedResetTokens } from './MalformedResetTokens';
 
 const testEnv = new UserServerTestEnvironment();
 
@@ -15,10 +18,14 @@ const testEnv = new UserServerTestEnvironment();
  * with the stored credential. The email only ever rides a VALID token's response — the
  * token was delivered to that very inbox, so it reveals nothing the holder doesn't know —
  * while invalid/expired verdicts stay email-free (no account-probing oracle). A query value
- * that is not a well-formed token (a parsed object or array, a string of another shape) is
- * invalid without a lookup. The row stores the token's SHA-256 digest, never the token: the
- * stored digest presented as a token is invalid, and so is a token an earlier release stored in
- * clear. Live tokens are seeded through `PasswordResetToken.mint`, so the suite moves with what
+ * that is not a well-formed token — every type a parsed query string can deliver, and every
+ * near-miss cut from a live token — is invalid without a lookup: nothing reaches the database
+ * (no lookup built, no statement run), which the verdict alone could not prove, since a wrongly
+ * admitted value still matches no row. The row stores the token's SHA-256 digest, never the
+ * token: the stored digest presented as a token is invalid — it has a token's shape, so the one
+ * lookup it builds is by the digest OF the presented value — and so is a token an earlier
+ * release stored in clear. No token, no leading characters of one and no full digest reach the
+ * log. Live tokens are seeded through `PasswordResetToken.mint`, so the suite moves with what
  * the owner stores.
  */
 
@@ -95,10 +102,16 @@ describe('validateResetPasswordToken route', () => {
     const row = await getDbAsSystem().get(tables.User, { email: 'reset-digest@test.local' });
     expect(row.passwordResetToken).toBe(sha256Hex(token));
 
-    const outcome = await invokeValidate({ token: row.passwordResetToken });
+    const { result: outcome, traffic } = await DbTraffic.during(
+      testEnv.spannerDriver,
+      async () => await invokeValidate({ token: row.passwordResetToken })
+    );
 
     expect(outcome.status).toBe(200);
     expect(outcome.body).toEqual({ isValid: false, message: 'Invalid token' });
+    expect(traffic.lookups).toEqual([{ passwordResetToken: sha256Hex(sha256Hex(token)) }]);
+    expect(traffic.statements).toBe(1);
+    expect(traffic.writes).toBe(0);
   });
 
   it('a token an earlier release stored in clear resolves invalid — no migration, the person asks again', async () => {
@@ -116,21 +129,60 @@ describe('validateResetPasswordToken route', () => {
     expect(outcome.body).toEqual({ isValid: false, message: 'Invalid token' });
   });
 
-  it.each([
-    ['a string of another shape', 'tok-never-issued'],
-    ['a parsed array', ['a', 'b']],
-    ['a parsed object', { passwordResetToken: null }],
-  ])('%s resolves invalid without a lookup and leaks no email', async (_label, token) => {
-    const outcome = await invokeValidate({ token });
+  describe('a query without a well-formed token is invalid without a lookup', () => {
+    let liveToken: string;
 
-    expect(outcome.status).toBe(200);
-    expect(outcome.body).toEqual({ isValid: false, message: 'Invalid token' });
+    beforeAll(async () => {
+      liveToken = await armResetToken('reset-shapes@test.local');
+    });
+
+    it.each(MalformedResetTokens.CASES)(
+      '%s: invalid, no email, and nothing reaches the database',
+      async (_label, tokenField) => {
+        const query = tokenField(liveToken);
+
+        const { result: outcome, traffic } = await DbTraffic.during(
+          testEnv.spannerDriver,
+          async () => await invokeValidate(query)
+        );
+
+        // Nothing usable in the query is a 400; anything else that is not a token is an invalid token.
+        expect(outcome).toEqual(
+          query.token
+            ? { status: 200, body: { isValid: false, message: 'Invalid token' } }
+            : { status: 400, body: { isValid: false, message: 'No token provided' } }
+        );
+        expect(traffic).toEqual(DbTraffic.NONE);
+      }
+    );
+
+    it('after every refusal the live token is still valid', async () => {
+      const outcome = await invokeValidate({ token: liveToken });
+
+      expect(outcome.body).toEqual({ isValid: true, email: 'reset-shapes@test.local' });
+    });
   });
 
-  it('a missing token is a 400', async () => {
-    const outcome = await invokeValidate({});
+  it('no token, no leading characters of one and no full digest reach the log — every verdict', async () => {
+    const live = await armResetToken('reset-log-live@test.local');
+    const expired = await armResetToken('reset-log-expired@test.local', moment().subtract(1, 'minute'));
+    const unissued = unissuedToken();
 
-    expect(outcome.status).toBe(400);
-    expect(outcome.body.isValid).toBe(false);
+    const log = await LogCapture.during(async () => {
+      await invokeValidate({ token: unissued });
+      await invokeValidate({ token: live.toUpperCase() });
+      await invokeValidate({ token: sha256Hex(live) });
+      await invokeValidate({ token: expired });
+      await invokeValidate({ token: live });
+    });
+
+    // The capture saw the route's lines: the refusals above logged.
+    expect(log.text).toContain('Invalid reset token used');
+    expect(log.text).toContain('Expired reset token used');
+    expect(log.lines.length).toBeGreaterThanOrEqual(4);
+    // The digest presented as a token is covered by `live`: its full digest is what was presented.
+    for (const token of [unissued, live, expired]) {
+      log.expectFreeOf(token);
+    }
   });
 });

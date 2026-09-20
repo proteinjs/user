@@ -8,6 +8,7 @@ import { initiatePasswordReset } from '../src/routes/initiatePasswordReset';
 import { executePasswordReset } from '../src/routes/executePasswordReset';
 import { PasswordHasher } from '../src/authentication/PasswordHasher';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
+import { LogCapture } from './LogCapture';
 
 const testEnv = new UserServerTestEnvironment();
 
@@ -19,7 +20,9 @@ const testEnv = new UserServerTestEnvironment();
  * - a send that fails withdraws the token, so asking again straight away mails a link;
  * - a second request inside five minutes is throttled: no new mail, the row unchanged;
  * - an unknown address gets the same response and no mail;
- * - a request with no body, or no usable email: 400, no mail, nothing changes.
+ * - a request with no body, or no usable email: 400, no mail, nothing changes;
+ * - no minted token, no leading characters of one and no full digest reach the log — on the
+ *   mailed path, the throttled repeat, the unknown address, or the failed send's error line.
  */
 
 type RouteOutcome = { status: number; body?: any };
@@ -54,15 +57,17 @@ const tokensByEmail = async (): Promise<Record<string, string | null | undefined
   return byEmail;
 };
 
-/** The token in the newest mailed reset link. */
-const mailedToken = (): string => {
-  const [newest] = MailSink.get().list(1);
-  const token = /[?&]token=([0-9a-f]{64})\b/.exec(newest.text ?? '')?.[1];
+/** The token in a reset mail's link. */
+const tokenInLink = (mailText: string | undefined): string => {
+  const token = /[?&]token=([0-9a-f]{64})\b/.exec(mailText ?? '')?.[1];
   if (!token) {
-    throw new Error('The newest mail in the sink carries no reset link');
+    throw new Error('The mail carries no reset link');
   }
   return token;
 };
+
+/** The token in the newest mailed reset link. */
+const mailedToken = (): string => tokenInLink(MailSink.get().list(1)[0]?.text);
 
 type SourceRepositoryInternals = { objectCache: Record<string, unknown[]> };
 
@@ -184,6 +189,40 @@ describe('initiatePasswordReset route', () => {
     expect((await userRow('initiate-replaced@test.local')).passwordResetToken).toBe(sha256Hex(second));
     const stale = await invoke(executePasswordReset, { body: { token: first, newPassword: 'hijacked' } });
     expect(stale.status).toBe(400);
+  });
+
+  it('no minted token, no leading characters of one and no full digest reach the log — mailed, throttled, unknown, failed send', async () => {
+    await testEnv.createUser({ name: 'Reset User', email: 'initiate-log@test.local' });
+    await testEnv.createUser({ name: 'Reset User', email: 'initiate-log-send-fails@test.local' });
+    let mailed = '';
+    let withdrawn = '';
+
+    const log = await LogCapture.during(async () => {
+      await invoke(initiatePasswordReset, { body: { email: 'initiate-log@test.local' } });
+      mailed = mailedToken();
+      await invoke(initiatePasswordReset, { body: { email: 'initiate-log@test.local' } });
+      await invoke(initiatePasswordReset, { body: { email: 'initiate-log-nobody@test.local' } });
+      // The send fails after the mail was built: the token it carried is the one withdrawn.
+      const send = jest.spyOn(EmailSender.prototype, 'sendEmail').mockImplementationOnce(async (mail) => {
+        withdrawn = tokenInLink(mail.text as string);
+        throw new Error('Failed to send email');
+      });
+      try {
+        const failed = await invoke(initiatePasswordReset, { body: { email: 'initiate-log-send-fails@test.local' } });
+        expect(failed.status).toBe(500);
+      } finally {
+        send.mockRestore();
+      }
+    });
+
+    // The capture saw the route's lines: the throttle, the unknown address and the failed send logged.
+    expect(log.text).toContain('Password reset requested too soon for user');
+    expect(log.text).toContain('Password reset requested for non-existent user');
+    expect(log.text).toContain('Failed to send password reset email');
+    expect(withdrawn).not.toBe(mailed);
+    for (const token of [mailed, withdrawn]) {
+      log.expectFreeOf(token);
+    }
   });
 
   it('an unknown address gets the same response and no mail', async () => {

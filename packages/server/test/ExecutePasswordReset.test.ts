@@ -1,12 +1,14 @@
 import { createHash } from 'crypto';
 import moment, { Moment } from 'moment';
 import { getDbAsSystem } from '@proteinjs/db';
-import { Logger } from '@proteinjs/logger';
 import { tables, User } from '@proteinjs/user';
 import { executePasswordReset } from '../src/routes/executePasswordReset';
 import { PasswordHasher } from '../src/authentication/PasswordHasher';
 import { PasswordResetToken } from '../src/authentication/PasswordResetToken';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
+import { DbTraffic } from './DbTraffic';
+import { LogCapture } from './LogCapture';
+import { MalformedResetTokens } from './MalformedResetTokens';
 
 const testEnv = new UserServerTestEnvironment();
 
@@ -15,19 +17,27 @@ const testEnv = new UserServerTestEnvironment();
  * the lookup must never be built from anything but a well-formed token: a `null` in the body
  * renders as `IS NULL` and matches every account with no pending reset, an empty string matches
  * an emptied column, and other types reach the driver. Covered here, outcomes only (rows
- * written), against the Spanner emulator:
- * - an absent, null, empty or malformed token: 400, and no password in the table changes — an
- *   account with no pending reset is never matched, whatever the request carries;
+ * written, statements run, lines logged), against the Spanner emulator:
+ * - an absent, null, empty or malformed token — every type a body can carry and every near-miss
+ *   cut from a live token: 400, nothing in the table changes, and nothing reaches the database
+ *   (no lookup built, no statement run); the live token still works afterwards. With a digest
+ *   lookup a wrongly admitted value still matches no row and still answers 400, so the response
+ *   alone proves nothing about the shape check — the absence of database traffic does;
  * - a request with no body at all: 400, and nothing changes;
  * - the row stores the token's SHA-256 digest, never the token: the stored digest presented as
- *   a token is refused, and so is a token an earlier release stored in clear;
+ *   a token is refused — it has a token's shape, so one lookup is built, by the digest OF the
+ *   presented value, and nothing is written — and so is a token an earlier release stored in clear;
  * - a live token resets the password once: the row verifies the new password, the token and its
  *   expiry are cleared, and the same token presented again is refused;
+ * - two simultaneous presentations of one token: exactly one 200, and the row verifies only the
+ *   winner's password;
  * - an expired token, or a token whose row carries no expiry, is refused;
  * - a blank new password is refused without consuming the token;
- * - the presented token never reaches the log;
- * - the token owner's own contract: mint shape and what it stores, the stored-vs-presented
- *   digest match, liveness, the conditional redemption, the withdrawal, and the mint time.
+ * - no token, no leading characters of a token and no full digest reach the log, on any path
+ *   through the route;
+ * - the token owner's own contract: mint shape and what it stores, the shape refusal, the
+ *   stored-vs-presented digest match, liveness, the conditional redemption (one at a time and
+ *   concurrent), the withdrawal, the mint time, and the log reference.
  *
  * Every live token is seeded through `PasswordResetToken.mint`, so the suite moves with what the
  * owner stores. Only the two named column states the owner never writes are seeded raw: an
@@ -82,13 +92,28 @@ const armRawTokenColumn = async (email: string, stored: string): Promise<User> =
 
 const userRow = async (id: string) => await getDbAsSystem().get(tables.User, { id });
 
-/** Every password in the table, by email — the whole-table outcome a refused request must leave untouched. */
-const passwordsByEmail = async (): Promise<Record<string, string>> => {
-  const byEmail: Record<string, string> = {};
+/** Every password, stored token and expiry in the table, by email — the whole-table outcome a refused request must leave untouched. */
+const resetStateByEmail = async (): Promise<Record<string, unknown[]>> => {
+  const byEmail: Record<string, unknown[]> = {};
   for (const user of await getDbAsSystem().query(tables.User, {})) {
-    byEmail[user.email] = user.password;
+    byEmail[user.email] = [
+      user.password,
+      user.passwordResetToken ?? null,
+      user.passwordResetTokenExpiration ? moment(user.passwordResetTokenExpiration).toISOString() : null,
+    ];
   }
   return byEmail;
+};
+
+/** Which of `candidates` the stored password hash verifies. */
+const verifiedPasswords = async (storedHash: string, candidates: string[]): Promise<string[]> => {
+  const verified: string[] = [];
+  for (const candidate of candidates) {
+    if (await new PasswordHasher().verify(storedHash, candidate)) {
+      verified.push(candidate);
+    }
+  }
+  return verified;
 };
 
 type TokenInternals = {
@@ -111,22 +136,36 @@ describe('executePasswordReset route', () => {
   });
 
   describe('a request without a well-formed token is refused before any lookup', () => {
-    it.each([
-      ['absent', {}],
-      ['null', { token: null }],
-      ['empty', { token: '' }],
-      ['not a token string', { token: 'tok-valid-1' }],
-      ['a number', { token: 123 }],
-      ['an array', { token: ['a', 'b'] }],
-      ['an object', { token: { passwordResetToken: null } }],
-    ])('%s: 400, and no password in the table changes', async (_label, tokenField) => {
-      const before = await passwordsByEmail();
+    let liveUser: User;
+    let liveToken: string;
 
-      const outcome = await invokeExecute({ ...tokenField, newPassword: 'hijacked' });
+    beforeAll(async () => {
+      ({ user: liveUser, token: liveToken } = await armResetToken('reset-shapes@test.local'));
+    });
 
-      expect(outcome.status).toBe(400);
-      expect(outcome.body).toEqual({ error: 'Invalid or expired reset token' });
-      expect(await passwordsByEmail()).toEqual(before);
+    it.each(MalformedResetTokens.CASES)(
+      '%s: 400, nothing in the table changes, and nothing reaches the database',
+      async (_label, tokenField) => {
+        const before = await resetStateByEmail();
+
+        const { result: outcome, traffic } = await DbTraffic.during(
+          testEnv.spannerDriver,
+          async () => await invokeExecute({ ...tokenField(liveToken), newPassword: 'hijacked' })
+        );
+
+        expect(outcome.status).toBe(400);
+        expect(outcome.body).toEqual({ error: 'Invalid or expired reset token' });
+        expect(traffic).toEqual(DbTraffic.NONE);
+        expect(await resetStateByEmail()).toEqual(before);
+      }
+    );
+
+    it('after every refusal the live token still resets the password', async () => {
+      const outcome = await invokeExecute({ token: liveToken, newPassword: 'still live' });
+
+      expect(outcome.status).toBe(200);
+      const row = await userRow(liveUser.id);
+      await expect(new PasswordHasher().verify(row.password, 'still live')).resolves.toBe(true);
     });
   });
 
@@ -135,12 +174,12 @@ describe('executePasswordReset route', () => {
     ['a null body', 'reset-null-body@test.local', { body: null }],
   ])('a request with %s: 400, and nothing changes', async (_label, email, request) => {
     const { user, token } = await armResetToken(email);
-    const before = await passwordsByEmail();
+    const before = await resetStateByEmail();
 
     const outcome = await invokeExecuteRequest(request);
 
     expect(outcome.status).toBe(400);
-    expect(await passwordsByEmail()).toEqual(before);
+    expect(await resetStateByEmail()).toEqual(before);
     expect((await userRow(user.id)).passwordResetToken).toBe(sha256Hex(token));
   });
 
@@ -162,6 +201,41 @@ describe('executePasswordReset route', () => {
     expect((await userRow(user.id)).password).toBe(afterFirst.password);
   });
 
+  it("two simultaneous presentations of one token: exactly one 200, and the row verifies only the winner's password", async () => {
+    const { user, token } = await armResetToken('reset-race@test.local');
+    const candidates = ['racer one password', 'racer two password'];
+    // Both requests resolve the token as live and hash their password; the barrier then releases
+    // them into the redemption together, so neither has written when the other arrives.
+    const hashPassword = PasswordHasher.prototype.hash;
+    let release: () => void = () => undefined;
+    const bothHashed = new Promise<void>((resolve) => (release = resolve));
+    let hashed = 0;
+    const hash = jest.spyOn(PasswordHasher.prototype, 'hash').mockImplementation(async function (
+      this: PasswordHasher,
+      password: string
+    ) {
+      const hashedPassword = await hashPassword.call(this, password);
+      if (++hashed === candidates.length) {
+        release();
+      }
+      await bothHashed;
+      return hashedPassword;
+    });
+    let outcomes: RouteOutcome[];
+    try {
+      outcomes = await Promise.all(candidates.map((newPassword) => invokeExecute({ token, newPassword })));
+    } finally {
+      hash.mockRestore();
+    }
+
+    expect(outcomes.map((outcome) => outcome.status).sort()).toEqual([200, 400]);
+    const winner = candidates[outcomes.findIndex((outcome) => outcome.status === 200)];
+    const row = await userRow(user.id);
+    expect(await verifiedPasswords(row.password, candidates)).toEqual([winner]);
+    expect(row.passwordResetToken).toBeNull();
+    expect(row.passwordResetTokenExpiration).toBeNull();
+  });
+
   it('the row stores the SHA-256 digest of the token, never the token — and the digest presented as a token is refused', async () => {
     const { user, token } = await armResetToken('reset-digest@test.local');
     const armed = await userRow(user.id);
@@ -169,10 +243,18 @@ describe('executePasswordReset route', () => {
     expect(armed.passwordResetToken).toBe(sha256Hex(token));
     expect(JSON.stringify(armed)).not.toContain(token);
 
-    const outcome = await invokeExecute({ token: armed.passwordResetToken, newPassword: 'hijacked' });
+    // A digest has a token's shape, so this presentation does reach the lookup — which is built
+    // from the digest OF the presented value, so what the row stores never equals it.
+    const { result: outcome, traffic } = await DbTraffic.during(
+      testEnv.spannerDriver,
+      async () => await invokeExecute({ token: armed.passwordResetToken, newPassword: 'hijacked' })
+    );
 
     expect(outcome.status).toBe(400);
     expect(outcome.body).toEqual({ error: 'Invalid or expired reset token' });
+    expect(traffic.lookups).toEqual([{ passwordResetToken: sha256Hex(sha256Hex(token)) }]);
+    expect(traffic.statements).toBe(1);
+    expect(traffic.writes).toBe(0);
     const row = await userRow(user.id);
     expect(row.password).toBe(armed.password);
     expect(row.passwordResetToken).toBe(sha256Hex(token));
@@ -227,18 +309,28 @@ describe('executePasswordReset route', () => {
     expect(row.passwordResetToken).toBe(sha256Hex(token));
   });
 
-  it('the presented token never reaches the log', async () => {
-    const token = unissuedToken();
-    const info = jest.spyOn(Logger.prototype, 'info');
-    try {
-      await invokeExecute({ token, newPassword: 'hijacked' });
+  it('no token, no leading characters of one and no full digest reach the log — every path through the route', async () => {
+    const { token: live } = await armResetToken('reset-log-live@test.local');
+    const { token: expired } = await armResetToken('reset-log-expired@test.local', moment().subtract(1, 'minute'));
+    const unissued = unissuedToken();
 
-      expect(info).toHaveBeenCalled();
-      for (const [entry] of info.mock.calls) {
-        expect(JSON.stringify(entry)).not.toContain(token);
-      }
-    } finally {
-      info.mockRestore();
+    const log = await LogCapture.during(async () => {
+      await invokeExecute({ token: unissued, newPassword: 'hijacked' });
+      await invokeExecute({ token: live.toUpperCase(), newPassword: 'hijacked' });
+      await invokeExecute({ token: sha256Hex(live), newPassword: 'hijacked' });
+      await invokeExecute({ token: expired, newPassword: 'hijacked' });
+      await invokeExecute({ token: live, newPassword: 'a logged password' });
+      await invokeExecute({ token: live, newPassword: 'a second logged password' });
+    });
+
+    // The capture saw the route's lines: each path above logged.
+    expect(log.text).toContain('Invalid reset token used');
+    expect(log.text).toContain('Expired reset token used');
+    expect(log.text).toContain('Password successfully reset');
+    expect(log.lines.length).toBeGreaterThanOrEqual(6);
+    // The digest presented as a token is covered by `live`: its full digest is what was presented.
+    for (const token of [unissued, live, expired]) {
+      log.expectFreeOf(token);
     }
   });
 
@@ -261,6 +353,34 @@ describe('executePasswordReset route', () => {
       const minutesOut = moment(afterSecond.passwordResetTokenExpiration).diff(moment(), 'minutes', true);
       expect(minutesOut).toBeGreaterThan(59);
       expect(minutesOut).toBeLessThanOrEqual(60);
+    });
+
+    it.each(MalformedResetTokens.CASES)(
+      'resolve refuses %s as malformed without touching the database, and gives it no log reference',
+      async (_label, tokenField) => {
+        const presented = tokenField(unissuedToken()).token;
+
+        const { result: resolution, traffic } = await DbTraffic.during(
+          testEnv.spannerDriver,
+          async () => await new PasswordResetToken().resolve(presented)
+        );
+
+        expect(resolution).toEqual({ status: 'malformed' });
+        expect(traffic).toEqual(DbTraffic.NONE);
+        expect(new PasswordResetToken().fingerprint(presented)).toBeUndefined();
+      }
+    );
+
+    it('the log reference to a token is cut from its digest, never from the token: the same token reads the same, another reads differently', () => {
+      const token = unissuedToken();
+      const another = unissuedToken();
+
+      const reference = new PasswordResetToken().fingerprint(token);
+
+      expect(reference).toBe(sha256Hex(token).slice(0, 12));
+      expect(reference).not.toBe(token.slice(0, 12));
+      expect(new PasswordResetToken().fingerprint(token)).toBe(reference);
+      expect(new PasswordResetToken().fingerprint(another)).not.toBe(reference);
     });
 
     it('the digest is the SHA-256 of the token, hex-encoded', () => {
@@ -301,6 +421,18 @@ describe('executePasswordReset route', () => {
       expect(row.password).toBe('new-hash');
       expect(row.passwordResetToken).toBeNull();
       expect(row.passwordResetTokenExpiration).toBeNull();
+    });
+
+    it('concurrent redeems of one token: exactly one resolves true, and the row holds the winner', async () => {
+      const { user, token } = await armResetToken('reset-redeem-race@test.local');
+      const hashes = ['hash-1', 'hash-2', 'hash-3', 'hash-4', 'hash-5', 'hash-6', 'hash-7', 'hash-8'];
+
+      const results = await Promise.all(hashes.map((hash) => new PasswordResetToken().redeem(user, token, hash)));
+
+      expect(results.filter((redeemed) => redeemed)).toHaveLength(1);
+      const row = await userRow(user.id);
+      expect(row.password).toBe(hashes[results.indexOf(true)]);
+      expect(row.passwordResetToken).toBeNull();
     });
 
     it('revoke clears the row only while it still carries the token — a newer token is left alone', async () => {

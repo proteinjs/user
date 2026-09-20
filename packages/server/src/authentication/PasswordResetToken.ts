@@ -105,7 +105,14 @@ export class PasswordResetToken {
     return moment(user.passwordResetTokenExpiration).subtract(PasswordResetToken.LIFETIME_MINUTES, 'minutes');
   }
 
-  /** A log-safe reference to a presented token: a short prefix of a well-formed one's digest, never the value itself. */
+  /**
+   * A log-safe reference to a presented token: a short prefix of a well-formed one's digest,
+   * never the value itself and never a part of it. The routes log it only for a token that
+   * resolved `unknown` — one no row carries — so it never lines up with a digest a row holds.
+   * What it is for is telling refusals apart in the log: one stale link presented again reads
+   * the same each time, a run of different values reads differently. 48 bits of the SHA-256 of
+   * 256 random bits identify nothing and can be presented nowhere.
+   */
   fingerprint(presented: unknown): string | undefined {
     const token = this.parse(presented);
     if (token === undefined) {
