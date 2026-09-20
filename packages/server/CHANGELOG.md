@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.22.1](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.22.0...@proteinjs/user-server@1.22.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* **server:** store the password-reset token as a SHA-256 digest; refuse a reset request that carries no body ([6ecd93e](https://github.com/proteinjs/user/commit/6ecd93e2cdca23376364836e26e706fe7bf00016))
+
+
+
+
+
 # [1.22.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.21.1...@proteinjs/user-server@1.22.0) (2026-09-19)
 
 
