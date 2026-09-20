@@ -1,2 +1,0 @@
-{ "branch": "fix/reset-token-stored-as-digest", "packages": ["server"],
-  "suites": ["packages/server/test/ExecutePasswordReset.test.ts", "packages/server/test/ValidateResetToken.test.ts", "packages/server/test/InitiatePasswordReset.test.ts"], "removes": [] }
