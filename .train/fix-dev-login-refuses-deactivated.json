@@ -1,0 +1,2 @@
+{ "branch": "fix/dev-login-refuses-deactivated", "packages": ["server"],
+  "suites": ["packages/server/test/SessionAdmissionDoors.integration.test.ts", "packages/server/test/AccountDeletion.integration.test.ts", "packages/server/test/UserStatusGate.integration.test.ts", "packages/server/test/DevLogin.test.ts"], "removes": [] }
