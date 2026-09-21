@@ -1,7 +1,10 @@
+import { getDbAsSystem } from '@proteinjs/db';
 import { Route } from '@proteinjs/server-api';
+import { tables } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
 import { emailRegex } from '@proteinjs/util';
 import { establishSession } from '../authentication/establishSession';
+import { SessionAdmission } from '../authentication/SessionAdmission';
 import { Roles } from '../services/Roles';
 import { Signup } from '../services/Signup';
 import { DevBootstrapRoles } from './DevBootstrapRoles';
@@ -30,6 +33,12 @@ const emailDomain = (address: string) => address.slice(address.lastIndexOf('@') 
  * alone let `?email=brent+lane-a@…` through when the `+` was left unencoded — a query-string `+`
  * decodes to a SPACE, so the route minted a stray `brent lane-a@…` account. The 400 names the
  * remedy (`%2B`) because plus-addressing is the fan-out convention this door exists for.
+ *
+ * Account rail: the gates settle WHO is asking, never whether that ACCOUNT may have a session —
+ * that is `SessionAdmission`'s rule, the one the password login asks too: a deactivated account
+ * answers 403 with the rule's sentence (before it, this door signed it in and every request on
+ * the session resolved as the guest); an account deactivated by its own pending deletion is
+ * restored first, exactly as logging in restores it; one already being purged answers 403.
  *
  * A missing account is created through the normal signup creation path (`Signup.createAccount`)
  * as a normal test user — password `test`, matching the seeded test-account convention, so
@@ -98,6 +107,16 @@ export const devLogin: Route = {
     });
     if (creation === 'created') {
       logger.info({ message: 'Dev auto-login created missing test account', obj: { email } });
+    }
+
+    // The gates settle WHO; whether that ACCOUNT may have a new session is the one rule every
+    // door asks (SessionAdmission) — before a role is granted or a session minted.
+    const admission = new SessionAdmission();
+    const account = await getDbAsSystem().get(tables.User, { email });
+    const refusal = admission.refusalFor(account) ?? (await admission.restorePendingDeletion(email));
+    if (refusal) {
+      response.status(403).send(refusal);
+      return;
     }
 
     const bootstrapEmail = (process.env.DEV_BOOTSTRAP_ADMIN_EMAIL ?? '').trim().toLowerCase();

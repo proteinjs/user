@@ -2,7 +2,7 @@ import { Route } from '@proteinjs/server-api';
 import { routes } from '@proteinjs/user';
 import { authenticate } from '../authentication/authenticate';
 import { establishSession } from '../authentication/establishSession';
-import { AccountDeletion } from '../services/AccountDeletion';
+import { SessionAdmission } from '../authentication/SessionAdmission';
 
 export const login: Route = {
   path: routes.login.path,
@@ -26,9 +26,9 @@ export const login: Route = {
     // Cancel-by-login: a pending-deletion account's successful authentication IS the cancel
     // signal. The restore runs synchronously here, BEFORE request.login, so the first
     // authenticated paint sees the fully restored account (no transient).
-    let outcome: Awaited<ReturnType<AccountDeletion['cancelPendingDeletion']>>;
+    let refusal: string | undefined;
     try {
-      outcome = await new AccountDeletion().cancelPendingDeletion(credentials.email);
+      refusal = await new SessionAdmission().restorePendingDeletion(credentials.email);
     } catch (error) {
       // Security boundary: the login response never carries internal error detail — an
       // attacker probing emails must learn nothing from failure shapes (founder ruling
@@ -38,10 +38,9 @@ export const login: Route = {
       response.send({ error: 'Unable to log in right now. Please try again.' });
       return;
     }
-    if (outcome === 'purging') {
-      const error = 'This account is being deleted and can no longer be restored.';
-      console.error(error);
-      response.send({ error });
+    if (refusal) {
+      console.error(refusal);
+      response.send({ error: refusal });
       return;
     }
 
