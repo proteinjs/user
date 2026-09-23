@@ -8,8 +8,10 @@ export type ThrottleWindow = 'client' | 'account';
  * never by an address:
  * - per CLIENT: every try counts — blank ones too, the client made them — so one device cannot
  *   sweep many accounts;
- * - per ACCOUNT: only refused passwords count (a blank submission judges no password), so
- *   guesses spread over many devices still stop; a success clears the account's count.
+ * - per ACCOUNT: every try that carries a password counts (a blank submission judges no
+ *   password, so it never counts), so guesses spread over many devices still stop; a success
+ *   clears the account's count. A try is counted as it ARRIVES, before it is judged: tries in
+ *   flight at the same moment cannot all pass the window together.
  *
  * A throttled try is told `ANSWER` whichever window refused it and whether or not the address
  * has an account, in the same time a refused password takes (the door runs the same password
@@ -33,12 +35,13 @@ export class SignInThrottle {
   private static readonly CLIENT_WINDOW_MS = 10 * 60 * 1000;
 
   /**
-   * Per account: 10 refused passwords in 15 minutes. Someone who has forgotten a password tries
-   * a handful and asks for a reset link; ten wrong in a quarter of an hour is guessing, and
-   * counting per account holds however many devices the guesses come from. "A few minutes" in
-   * the answer is honest: the oldest refusal leaves the window within 15.
+   * Per account: 10 tries in 15 minutes (a success clears them, so only wrong ones ever add up).
+   * Someone who has forgotten a password tries a handful and asks for a reset link; ten wrong in
+   * a quarter of an hour is guessing, and counting per account holds however many devices the
+   * guesses come from. "A few minutes" in the answer is honest: the oldest try leaves the window
+   * within 15.
    */
-  private static readonly ACCOUNT_REFUSAL_LIMIT = 10;
+  private static readonly ACCOUNT_LIMIT = 10;
   private static readonly ACCOUNT_WINDOW_MS = 15 * 60 * 1000;
 
   private readonly clients: SlidingWindow;
@@ -52,30 +55,29 @@ export class SignInThrottle {
     });
     this.accounts = new SlidingWindow({
       windowMs: SignInThrottle.ACCOUNT_WINDOW_MS,
-      limit: SignInThrottle.ACCOUNT_REFUSAL_LIMIT,
+      limit: SignInThrottle.ACCOUNT_LIMIT,
       now: options?.now,
     });
   }
 
   /**
-   * Count this try against the client and answer which window refuses it, if any. `account` is
-   * the digest of the address tried (absent for a submission with no address); it is only read
-   * here — a refusal counts it (`recordRefusal`), a success clears it (`recordSuccess`).
+   * Count this try against the client and against the account, and answer which window refuses
+   * it, if any. `account` is the digest of the address tried, given only when a password came
+   * with it (a blank submission judges no password, so it never counts toward an account). The
+   * count is taken here, before the try is judged, so tries in flight at once cannot all pass
+   * the window; a success clears it (`recordSuccess`).
    */
   admit(client: string, account?: string): ThrottleWindow | undefined {
     if (this.clients.hit(client)) {
       return 'client';
     }
-    if (account !== undefined && this.accounts.isOver(account)) {
+    if (account !== undefined && this.accounts.hit(account)) {
       return 'account';
     }
     return undefined;
   }
 
-  recordRefusal(account: string): void {
-    this.accounts.record(account);
-  }
-
+  /** The account proved itself (a password, or a reset link redeemed): its window opens again. */
   recordSuccess(account: string): void {
     this.accounts.clear(account);
   }

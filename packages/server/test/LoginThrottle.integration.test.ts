@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { getDbAsSystem } from '@proteinjs/db';
 import { tables } from '@proteinjs/user';
 import { login } from '../src/routes/login';
@@ -20,7 +21,10 @@ const testEnv = new UserServerTestEnvironment();
  *   no account takes as long as one for an account (no timing tell either way);
  * - every refusal is a "Sign-in refused" line and every throttled answer its own "Sign-in
  *   throttled" line, each carrying the account digest and the coarse IP hash — one digest for
- *   one address however it was typed — and never the address.
+ *   one address however it was typed — and never the address;
+ * - tries in flight at the same moment cannot all pass the account's window together;
+ * - a refusal for an account still in the legacy password format takes as long as any other;
+ * - a field that is not text is a blank one: the door answers, it never throws.
  */
 
 const WRONG = 'User name or password incorrect';
@@ -254,5 +258,67 @@ describe('login route throttle', () => {
     for (const fragment of ['throttle.privacy.person', 'throttle.privacy.other', 'throttle.privacy', '198.51.103.']) {
       expect(text).not.toContain(fragment);
     }
+  });
+
+  it('thirty wrong passwords for one account fired at once from thirty addresses: at most ten are judged, the rest are throttled', async () => {
+    await createAccount('throttle-burst@test.local');
+
+    const answers = await Promise.all(
+      Array.from({ length: 30 }, (_, i) => attempt(`198.51.104.${i + 1}`, 'throttle-burst@test.local', 'wrong guess'))
+    );
+
+    const judged = answers.filter((answer) => answer.sent?.error === WRONG).length;
+    const throttled = answers.filter((answer) => answer.sent?.error === THROTTLED).length;
+    expect(judged).toBeLessThanOrEqual(10);
+    expect(judged + throttled).toBe(30);
+    expect((await attempt('198.51.104.50', 'throttle-burst@test.local', RIGHT_PASSWORD)).sent).toEqual({
+      error: THROTTLED,
+    });
+  });
+
+  it('a refusal for an account still in the legacy sha256 format takes as long as one in the current format', async () => {
+    await createAccount('throttle-timing-current@test.local');
+    const legacy = await testEnv.createUser({ name: 'Throttle User', email: 'throttle-timing-legacy@test.local' });
+    await getDbAsSystem().update(tables.User, {
+      id: legacy.id,
+      password: createHash('sha256').update(RIGHT_PASSWORD).digest('hex'),
+    });
+
+    const current: number[] = [];
+    const legacyRow: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      current.push(
+        await elapsedMs(() => attempt(`100.64.4.${i + 1}`, 'throttle-timing-current@test.local', 'wrong guess'))
+      );
+      legacyRow.push(
+        await elapsedMs(() => attempt(`100.64.5.${i + 1}`, 'throttle-timing-legacy@test.local', 'wrong guess'))
+      );
+    }
+
+    // A legacy row verifies in microseconds; without the stand-in its refusal lands far under 0.6.
+    const ratio = median(legacyRow) / median(current);
+    expect(ratio).toBeGreaterThan(0.6);
+    expect(ratio).toBeLessThan(1.6);
+  });
+
+  it('a field that is not text is a blank one: the door answers and never throws', async () => {
+    let sent: any;
+    const response: any = {
+      send: (body: any) => {
+        sent = body;
+      },
+      status: () => response,
+    };
+    const { request } = await createPassportRequest({
+      body: { email: 123, password: { not: 'text' } },
+      headers: {},
+      socket: { remoteAddress: '198.51.105.1' },
+      app: { get: () => false },
+    });
+
+    await login.onRequest(request, response);
+
+    expect(sent).toEqual({ error: BLANK });
+    expect(request.session.passport?.user).toBeUndefined();
   });
 });

@@ -1,5 +1,4 @@
-import { createHmac, randomBytes } from 'crypto';
-import { Logger } from '@proteinjs/logger';
+import { createHmac } from 'crypto';
 
 /**
  * The two keyed digests the throttled doors key their windows on and write on their log lines,
@@ -19,14 +18,14 @@ import { Logger } from '@proteinjs/logger';
  * addresses could reverse.
  *
  * The key is the deployment's `SESSION_SECRET` unless the constructor is given one (the tests).
- * A deployment that sets no `SESSION_SECRET` gets one random key per process, said once in the
- * log: the digests stay keyed (never reversible), they just stop matching across replicas.
+ * Without either the digests refuse to run: a server with no `SESSION_SECRET` has no sessions
+ * either (the session middleware refuses to start), so nothing ever runs unkeyed — never a plain
+ * hash a list of addresses could reverse, never a per-process key that quietly stops matching
+ * across replicas.
  */
 export class RequestDigests {
   /** Hex characters kept from the HMAC: 64 bits. */
   private static readonly DIGEST_HEX_LENGTH = 16;
-  /** The per-process key for a deployment with no SESSION_SECRET (see the class comment). */
-  private static processKey: string | undefined;
 
   constructor(private readonly options?: { secret?: string }) {}
 
@@ -49,17 +48,12 @@ export class RequestDigests {
 
   private secret(): string {
     const configured = this.options?.secret ?? process.env.SESSION_SECRET;
-    if (configured) {
-      return configured;
+    if (!configured) {
+      throw new Error(
+        'SESSION_SECRET is not set: the account digest and the coarse IP hash need the key every replica shares'
+      );
     }
-    if (!RequestDigests.processKey) {
-      RequestDigests.processKey = randomBytes(32).toString('hex');
-      new Logger({ name: 'RequestDigests' }).warn({
-        message:
-          'SESSION_SECRET is not set: account digests and IP hashes are keyed per process and will not match across replicas or restarts',
-      });
-    }
-    return RequestDigests.processKey;
+    return configured;
   }
 
   /** An IPv4 address as itself (an IPv4-mapped IPv6 address as its IPv4); an IPv6 address as its /64. */

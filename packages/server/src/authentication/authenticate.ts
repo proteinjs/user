@@ -65,8 +65,11 @@ export async function authenticate(email: string, password: string): Promise<tru
  * Looks the account up and verifies the password — the cost every refusal pays, whether or not
  * the address has an account: with none, the password is verified against a stand-in of the
  * same cost (`PasswordHasher.verifyAgainstNothing`), so a refusal's timing says nothing about
- * the address. The login door also runs it on a throttled try and discards the verdict, so a
- * throttled answer takes as long as a refused password. No side effects (no rehash, no log).
+ * the address; a human row still in the legacy sha256 format (verified in microseconds) pays the
+ * stand-in too, so a refusal's timing says nothing about whether the account has signed in since
+ * the format changed either. The login door also runs it on a throttled try and discards the
+ * verdict, so a throttled answer takes as long as a refused password. No side effects (no
+ * rehash, no log).
  */
 export async function checkPassword(email: string, password: string): Promise<{ user?: User; matches: boolean }> {
   // Fetch by EMAIL ONLY and compare in code — never query by password hash. Query-by-hash
@@ -77,5 +80,9 @@ export async function checkPassword(email: string, password: string): Promise<{ 
   if (!user) {
     return { matches: await hasher.verifyAgainstNothing(password) };
   }
-  return { user, matches: await hasher.verify(user.password, password) };
+  const matches = await hasher.verify(user.password, password);
+  if (hasher.needsRehash(user.password, user.isLoadedFromSource === true ? 'machine' : 'human')) {
+    await hasher.verifyAgainstNothing(password);
+  }
+  return { user, matches };
 }

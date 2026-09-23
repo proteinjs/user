@@ -3,6 +3,8 @@ import { routes } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
 import { PasswordHasher } from '../authentication/PasswordHasher';
 import { PasswordResetToken } from '../authentication/PasswordResetToken';
+import { RequestDigests } from '../throttle/RequestDigests';
+import { signInThrottle } from '../throttle/SignInThrottle';
 
 /**
  * Route handler for executing a password reset.
@@ -12,6 +14,10 @@ import { PasswordResetToken } from '../authentication/PasswordResetToken';
  * written and the token cleared in one conditional update, so a token resets a password once.
  * The token itself never reaches the log. A request that carries no body at all is refused like
  * one that carries a blank password.
+ *
+ * A redeemed link also opens the account's sign-in window again (`SignInThrottle`): the person
+ * just proved the mailbox, so a reset made while wrong guesses held the door shut lets the new
+ * password in at once instead of waiting the window out.
  *
  * @bodyParam {string} token - The password reset token.
  * @bodyParam {string} newPassword - The new password for the user.
@@ -52,6 +58,7 @@ export const executePasswordReset: Route = {
       return;
     }
 
+    signInThrottle.recordSuccess(new RequestDigests().account(user.email));
     logger.info({ message: `Password successfully reset`, obj: { email: user.email } });
     response.send({ message: 'Password has been successfully reset' });
   },

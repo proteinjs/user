@@ -21,30 +21,33 @@ export const login: Route = {
   method: routes.login.method,
   onRequest: async (request: any, response): Promise<void> => {
     const logger = new Logger({ name: 'login' });
-    const credentials: { email?: string; password?: string } = request.body ?? {};
+    const credentials = request.body ?? {};
+    // A field that is not text is a blank one — never something to call methods on.
+    const email: string = typeof credentials.email === 'string' ? credentials.email : '';
+    const password: string = typeof credentials.password === 'string' ? credentials.password : '';
     const digests = new RequestDigests();
     const ip = digests.coarseIp(new ClientAddress().of(request));
-    const account = credentials.email ? digests.account(credentials.email) : undefined;
+    const account = email ? digests.account(email) : undefined;
     const fields = account ? { account, ip } : { ip };
 
-    const window = signInThrottle.admit(ip, account);
+    // The account is counted only when a password came with the try: a blank one judges nothing.
+    const window = signInThrottle.admit(ip, password ? account : undefined);
     if (window) {
-      await checkPassword(credentials.email ?? '', credentials.password ?? '');
+      await checkPassword(email, password);
       logger.warn({ message: 'Sign-in throttled', obj: { ...fields, window } });
       response.send({ error: SignInThrottle.ANSWER });
       return;
     }
 
-    if (!credentials.email || !credentials.password || !account) {
+    if (!email || !password || !account) {
       const error = `Email and password cannot be blank`;
       logger.info({ message: 'Sign-in refused', obj: { ...fields, reason: error } });
       response.send({ error });
       return;
     }
 
-    const result = await authenticate(credentials.email, credentials.password);
+    const result = await authenticate(email, password);
     if (result !== true) {
-      signInThrottle.recordRefusal(account);
       logger.info({ message: 'Sign-in refused', obj: { ...fields, reason: result } });
       response.send({ error: result });
       return;
@@ -56,7 +59,7 @@ export const login: Route = {
     // authenticated paint sees the fully restored account (no transient).
     let outcome: Awaited<ReturnType<AccountDeletion['cancelPendingDeletion']>>;
     try {
-      outcome = await new AccountDeletion().cancelPendingDeletion(credentials.email);
+      outcome = await new AccountDeletion().cancelPendingDeletion(email);
     } catch (error) {
       // Security boundary: the login response never carries internal error detail — an
       // attacker probing emails must learn nothing from failure shapes (founder ruling
@@ -73,7 +76,7 @@ export const login: Route = {
       return;
     }
 
-    await establishSession(request, credentials.email);
+    await establishSession(request, email);
     response.send({});
   },
 };

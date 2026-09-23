@@ -8,6 +8,8 @@ import { initiatePasswordReset } from '../src/routes/initiatePasswordReset';
 import { executePasswordReset } from '../src/routes/executePasswordReset';
 import { PasswordHasher } from '../src/authentication/PasswordHasher';
 import { PasswordResetToken } from '../src/authentication/PasswordResetToken';
+import { login } from '../src/routes/login';
+import { createPassportRequest } from './passportSessionHarness';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 import { LogCapture } from './LogCapture';
 
@@ -417,5 +419,38 @@ describe('initiatePasswordReset route', () => {
     for (const fragment of ['reset.privacy.person', 'reset.privacy.nobody', 'reset.privacy', '198.18.2.']) {
       expect(text).not.toContain(fragment);
     }
+  });
+
+  it("a reset link redeemed while wrong guesses hold the account's sign-in window shut lets the new password in at once", async () => {
+    await testEnv.createUser({ name: 'Reset User', email: 'reset-while-shut@test.local' });
+    const signIn = async (password: string) => {
+      let sent: any;
+      const response: any = {
+        send: (body: any) => {
+          sent = body;
+        },
+        status: () => response,
+      };
+      const { request } = await createPassportRequest({
+        body: { email: 'reset-while-shut@test.local', password },
+        ...fromAddress(),
+      });
+      await login.onRequest(request, response);
+      return { sent, signedInAs: request.session.passport?.user as string | undefined };
+    };
+    for (let i = 0; i < 10; i++) {
+      await signIn('wrong guess');
+    }
+    expect((await signIn('wrong guess')).sent).toEqual({ error: 'Too many attempts. Try again in a few minutes.' });
+
+    await invoke(initiatePasswordReset, { body: { email: 'reset-while-shut@test.local' } });
+    const redeemed = await invoke(executePasswordReset, {
+      body: { token: mailedToken(), newPassword: 'a brand new password' },
+    });
+
+    expect(redeemed.status).toBe(200);
+    const after = await signIn('a brand new password');
+    expect(after.sent).toEqual({});
+    expect(after.signedInAs).toBe('reset-while-shut@test.local');
   });
 });

@@ -50,16 +50,12 @@ describe('RequestDigests', () => {
     expect(digests.coarseIp('2001:db8:1:3::1')).not.toBe(hash);
   });
 
-  it('with no key configured the digests are keyed by one per-process secret — stable here, never a plain hash', () => {
+  it('with no key configured the digests refuse to run — never a plain hash, never a key of their own', () => {
     const original = process.env.SESSION_SECRET;
     delete process.env.SESSION_SECRET;
     try {
-      const unkeyed = new RequestDigests();
-      const digest = unkeyed.account('ada.lovelace@example.com');
-
-      expect(new RequestDigests().account('ada.lovelace@example.com')).toBe(digest);
-      expect(new RequestDigests({ secret: '' }).account('ada.lovelace@example.com')).toBe(digest);
-      expect(createHash('sha256').update('ada.lovelace@example.com').digest('hex')).not.toContain(digest);
+      expect(() => new RequestDigests().account('ada.lovelace@example.com')).toThrow(/SESSION_SECRET/);
+      expect(() => new RequestDigests({ secret: '' }).coarseIp('203.0.113.7')).toThrow(/SESSION_SECRET/);
     } finally {
       if (original !== undefined) {
         process.env.SESSION_SECRET = original;
