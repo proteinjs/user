@@ -10,3 +10,7 @@ export * from './src/auth/AuthTextField';
 export * from './src/auth/AuthButton';
 export * from './src/auth/AuthFormError';
 export * from './src/auth/AuthMessagePanel';
+// The form reader the pages above use at submit (uncontrolled fields; the values read from the
+// form itself) — exported so a consumer page fixes the same class the same way, not by hand.
+export * from './src/auth/AuthFormFields';
+export type { AuthFieldErrors } from './src/auth/AuthValidation';

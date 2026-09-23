@@ -321,3 +321,49 @@ describe('signup form', () => {
     expect(fieldError(field('Password'))).toBe('Enter a password');
   });
 });
+
+describe('the fields own their values (what the fix rests on)', () => {
+  it('a silently filled password survives the show-password toggle and reaches the server', async () => {
+    mockServer();
+    await renderPage(loginPage.component, '/login');
+
+    fillSilently(field('Email'), EMAIL);
+    fillSilently(field('Password'), PASSWORD);
+    // The reveal toggle re-renders the field with type='text': the same input, its value kept.
+    await act(async () => {
+      (container.querySelector('button[aria-label="Show password"]') as HTMLButtonElement).click();
+    });
+    expect(field('Password').type).toBe('text');
+    expect(field('Password').value).toBe(PASSWORD);
+
+    await submit();
+    expect(posts).toEqual([{ path: routes.login.path, body: { email: EMAIL, password: PASSWORD } }]);
+  });
+
+  it('no field switches between controlled and uncontrolled across a refusal, typing and a submit (React warns on that)', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      mockServer();
+      await renderPage(loginPage.component, '/login');
+
+      await submit(); // refused: both fields marked
+      type(field('Email'), EMAIL); // the mark clears
+      fillSilently(field('Password'), PASSWORD);
+      await submit(); // sent; `busy` flips the fields disabled and back
+
+      expect(posts).toHaveLength(1);
+      const warnings = consoleError.mock.calls.map((call) => call.map(String).join(' '));
+      expect(warnings.filter((warning) => /controlled/i.test(warning))).toEqual([]);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+});
+
+describe('the package surface', () => {
+  it('exports the form reader, so a consumer page reads its own form the same way', async () => {
+    const surface = await import('../index');
+    expect(typeof surface.AuthFormFields.read).toBe('function');
+    expect(typeof surface.AuthFormFields.focusFirstInvalid).toBe('function');
+  });
+});
