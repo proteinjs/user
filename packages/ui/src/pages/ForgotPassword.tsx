@@ -9,19 +9,31 @@ import { AuthButton } from '../auth/AuthButton';
 import { AuthFormError } from '../auth/AuthFormError';
 import { AuthMessagePanel } from '../auth/AuthMessagePanel';
 import { AuthApi } from '../auth/AuthApi';
+import { AuthFormFields } from '../auth/AuthFormFields';
+import { AuthFieldErrors, AuthValidation } from '../auth/AuthValidation';
 
 const ForgotPasswordComponent: React.FC = () => {
-  const [email, setEmail] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors<'email'>>({});
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
 
-  const onSubmit = async (event: React.FormEvent) => {
+  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    // Read from the form at submit, like login: an autofilled email may be in the DOM only.
+    const form = event.currentTarget;
+    const { email } = AuthFormFields.read(form, ['email'] as const);
+    const invalid = AuthValidation.forgotPassword({ email });
+    setFieldErrors(invalid ?? {});
+    if (invalid) {
+      AuthFormFields.focusFirstInvalid(form, invalid);
+      return;
+    }
+
     setError(undefined);
     setBusy(true);
     try {
-      await new AuthApi().initiatePasswordReset(email);
+      await new AuthApi().initiatePasswordReset(email.trim());
       setSent(true);
     } catch (error: any) {
       setError(error.message);
@@ -54,8 +66,9 @@ const ForgotPasswordComponent: React.FC = () => {
               stored username here too. */}
           <AuthTextField
             label='Email'
-            value={email}
-            onChange={setEmail}
+            name='email'
+            onChange={() => setFieldErrors((errors) => (errors.email ? {} : errors))}
+            error={fieldErrors.email}
             type='email'
             autoComplete='username'
             disabled={busy}

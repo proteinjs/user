@@ -9,7 +9,10 @@ import { AuthButton } from '../auth/AuthButton';
 import { AuthFormError } from '../auth/AuthFormError';
 import { AuthMessagePanel } from '../auth/AuthMessagePanel';
 import { AuthApi } from '../auth/AuthApi';
-import { AuthValidation } from '../auth/AuthValidation';
+import { AuthFormFields } from '../auth/AuthFormFields';
+import { AuthFieldErrors, AuthValidation } from '../auth/AuthValidation';
+
+type PasswordResetField = 'newPassword' | 'confirmPassword';
 
 function resetTokenFromUrl(): string {
   if (typeof window === 'undefined') {
@@ -26,8 +29,7 @@ const PasswordResetComponent: React.FC = () => {
   const [validating, setValidating] = useState(!!token);
   const [invalid, setInvalid] = useState(!token);
   const [email, setEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors<PasswordResetField>>({});
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [resetComplete, setResetComplete] = useState(false);
@@ -65,11 +67,18 @@ const PasswordResetComponent: React.FC = () => {
     };
   }, [token]);
 
-  const onSubmit = async (event: React.FormEvent) => {
+  const clearFieldError = (name: PasswordResetField) =>
+    setFieldErrors((errors) => (errors[name] ? { ...errors, [name]: undefined } : errors));
+
+  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const validationError = AuthValidation.passwordReset({ newPassword, confirmPassword });
-    if (validationError) {
-      setError(validationError);
+    // Read from the form at submit: a suggested or saved password may be in the DOM only.
+    const form = event.currentTarget;
+    const { newPassword, confirmPassword } = AuthFormFields.read(form, ['newPassword', 'confirmPassword'] as const);
+    const invalid = AuthValidation.passwordReset({ newPassword, confirmPassword });
+    setFieldErrors(invalid ?? {});
+    if (invalid) {
+      AuthFormFields.focusFirstInvalid(form, invalid);
       return;
     }
 
@@ -130,16 +139,18 @@ const PasswordResetComponent: React.FC = () => {
           <AuthTextField label='Email' value={email} type='email' autoComplete='username' readOnly />
           <AuthTextField
             label='New password'
-            value={newPassword}
-            onChange={setNewPassword}
+            name='newPassword'
+            onChange={() => clearFieldError('newPassword')}
+            error={fieldErrors.newPassword}
             password
             autoComplete='new-password'
             disabled={busy}
           />
           <AuthTextField
             label='Confirm new password'
-            value={confirmPassword}
-            onChange={setConfirmPassword}
+            name='confirmPassword'
+            onChange={() => clearFieldError('confirmPassword')}
+            error={fieldErrors.confirmPassword}
             password
             autoComplete='new-password'
             disabled={busy}

@@ -5,9 +5,21 @@ import VisibilityOff from '@mui/icons-material/VisibilityOff';
 
 export interface AuthTextFieldProps {
   label: string;
-  value: string;
-  /** Omitted for read-only fields. */
+  /**
+   * The form-field name the page reads the value by when the form submits
+   * (`AuthFormFields.read`). A field the person fills is uncontrolled — it carries `name` (and an
+   * optional `defaultValue`) and no `value` — so whatever writes into it (typing, a password
+   * manager, the platform's autofill) is exactly what the submit reads.
+   */
+  name?: string;
+  /** Controlled value — for a field the page itself fills (e.g. a read-only identity). */
+  value?: string;
+  /** Initial value of an uncontrolled field. */
+  defaultValue?: string;
+  /** Called on every edit the browser announces; an uncontrolled field's value stays in the DOM. */
   onChange?: (value: string) => void;
+  /** Marks the field invalid and shows this message under it (in place of `helperText`). */
+  error?: string;
   /** Renders a reveal toggle and masks input until toggled. */
   password?: boolean;
   /**
@@ -36,8 +48,11 @@ export interface AuthTextFieldProps {
 export function AuthTextField(props: AuthTextFieldProps) {
   const {
     label,
+    name,
     value,
+    defaultValue,
     onChange,
+    error,
     password,
     readOnly,
     autoComplete,
@@ -61,7 +76,9 @@ export function AuthTextField(props: AuthTextFieldProps) {
       <TextField
         id={`auth-field-${label}`}
         fullWidth
+        name={name}
         value={value}
+        defaultValue={defaultValue}
         onChange={(event) => onChange?.(event.target.value)}
         type={password && !revealed ? 'password' : password ? 'text' : type || 'text'}
         autoComplete={autoComplete}
@@ -69,7 +86,8 @@ export function AuthTextField(props: AuthTextFieldProps) {
         disabled={disabled}
         multiline={!!multilineRows}
         rows={multilineRows}
-        helperText={helperText}
+        error={!!error}
+        helperText={error ?? helperText}
         InputProps={{
           readOnly,
           endAdornment: password ? (
@@ -98,6 +116,8 @@ export function AuthTextField(props: AuthTextFieldProps) {
             '& fieldset': { borderColor: 'divider' },
             '&:hover fieldset': { borderColor: readOnly ? 'divider' : 'text.disabled' },
             '&.Mui-focused fieldset': { borderColor: 'primary.main', borderWidth: '1.5px' },
+            // A marked field keeps its error border while focused (the person is fixing it).
+            '&.Mui-error fieldset': { borderColor: 'error.main' },
           },
         }}
       />

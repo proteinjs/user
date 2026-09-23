@@ -8,8 +8,11 @@ import { AuthTextField } from '../auth/AuthTextField';
 import { AuthButton } from '../auth/AuthButton';
 import { AuthFormError } from '../auth/AuthFormError';
 import { AuthMessagePanel } from '../auth/AuthMessagePanel';
-import { AuthValidation } from '../auth/AuthValidation';
+import { AuthFieldErrors, AuthValidation } from '../auth/AuthValidation';
 import { AuthApi } from '../auth/AuthApi';
+import { AuthFormFields } from '../auth/AuthFormFields';
+
+type SignupField = 'name' | 'email' | 'password' | 'confirmPassword';
 
 function inviteTokenFromUrl(): string {
   if (typeof window === 'undefined') {
@@ -23,11 +26,8 @@ const SignupComponent: React.FC = () => {
   const [token] = useState(inviteTokenFromUrl);
   const [initializing, setInitializing] = useState(true);
   const [initializationError, setInitializationError] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors<SignupField>>({});
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
 
@@ -60,11 +60,24 @@ const SignupComponent: React.FC = () => {
     };
   }, [token]);
 
-  const onSubmit = async (event: React.FormEvent) => {
+  const clearFieldError = (name: SignupField) =>
+    setFieldErrors((errors) => (errors[name] ? { ...errors, [name]: undefined } : errors));
+
+  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const validationError = AuthValidation.signup({ name, email, password, confirmPassword }, !!token);
-    if (validationError) {
-      setError(validationError);
+    // Read from the form at submit: a password manager's suggested password (or any autofill)
+    // may be in the DOM only. The invite path carries no email field; its read is ''.
+    const form = event.currentTarget;
+    const { name, email, password, confirmPassword } = AuthFormFields.read(form, [
+      'name',
+      'email',
+      'password',
+      'confirmPassword',
+    ] as const);
+    const invalid = AuthValidation.signup({ name, email, password, confirmPassword }, !!token);
+    setFieldErrors(invalid ?? {});
+    if (invalid) {
+      AuthFormFields.focusFirstInvalid(form, invalid);
       return;
     }
 
@@ -116,7 +129,14 @@ const SignupComponent: React.FC = () => {
       </Helmet>
       <AuthLayout title='Create your account'>
         <form onSubmit={onSubmit} noValidate>
-          <AuthTextField label='Name' value={name} onChange={setName} autoComplete='name' disabled={busy} />
+          <AuthTextField
+            label='Name'
+            name='name'
+            onChange={() => clearFieldError('name')}
+            error={fieldErrors.name}
+            autoComplete='name'
+            disabled={busy}
+          />
           {token ? (
             // The invite fixes the email; render it read-only, tagged as the username. Without
             // an email field here, password managers captured the NAME field as the saved
@@ -127,8 +147,9 @@ const SignupComponent: React.FC = () => {
             // save and fill; type='email' still gives the email keyboard.
             <AuthTextField
               label='Email'
-              value={email}
-              onChange={setEmail}
+              name='email'
+              onChange={() => clearFieldError('email')}
+              error={fieldErrors.email}
               type='email'
               autoComplete='username'
               disabled={busy}
@@ -136,16 +157,18 @@ const SignupComponent: React.FC = () => {
           )}
           <AuthTextField
             label='Password'
-            value={password}
-            onChange={setPassword}
+            name='password'
+            onChange={() => clearFieldError('password')}
+            error={fieldErrors.password}
             password
             autoComplete='new-password'
             disabled={busy}
           />
           <AuthTextField
             label='Confirm password'
-            value={confirmPassword}
-            onChange={setConfirmPassword}
+            name='confirmPassword'
+            onChange={() => clearFieldError('confirmPassword')}
+            error={fieldErrors.confirmPassword}
             password
             autoComplete='new-password'
             disabled={busy}

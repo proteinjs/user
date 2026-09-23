@@ -1,39 +1,78 @@
 import { emailRegex } from '@proteinjs/util';
 
+/** A user-readable message per invalid field, keyed by the field's form name. */
+export type AuthFieldErrors<F extends string> = { [K in F]?: string };
+
 /**
- * Client-side validation for the auth flows. Each method returns a user-readable
- * error message, or undefined when the input is valid.
+ * Client-side validation for the auth flows. Each method returns the invalid fields with a
+ * user-readable message each (the page marks those fields), or undefined when the input is
+ * valid. A blank field is refused here, in the page, so a real form never sends one.
  */
 export class AuthValidation {
+  static login(fields: { email: string; password: string }): AuthFieldErrors<'email' | 'password'> | undefined {
+    const errors: AuthFieldErrors<'email' | 'password'> = {};
+    if (!fields.email.trim()) {
+      errors.email = 'Enter your email';
+    }
+
+    if (!fields.password) {
+      errors.password = 'Enter your password';
+    }
+
+    return AuthValidation.outcome(errors);
+  }
+
+  static forgotPassword(fields: { email: string }): AuthFieldErrors<'email'> | undefined {
+    const errors: AuthFieldErrors<'email'> = {};
+    if (!fields.email.trim()) {
+      errors.email = 'Enter your email';
+    }
+
+    return AuthValidation.outcome(errors);
+  }
+
   /** @param invited invited users don't enter an email (the invite token carries it) */
   static signup(
     fields: { name: string; email: string; password: string; confirmPassword: string },
     invited: boolean
-  ): string | undefined {
+  ): AuthFieldErrors<'name' | 'email' | 'password' | 'confirmPassword'> | undefined {
+    const errors: AuthFieldErrors<'name' | 'email' | 'password' | 'confirmPassword'> = {};
     if (!fields.name.trim()) {
-      return 'Please enter your name.';
+      errors.name = 'Enter your name';
     }
 
-    if (!invited && !emailRegex.test(fields.email.trim())) {
-      return 'Please enter a valid email address.';
+    if (!invited) {
+      if (!fields.email.trim()) {
+        errors.email = 'Enter your email';
+      } else if (!emailRegex.test(fields.email.trim())) {
+        errors.email = 'Enter a valid email address';
+      }
     }
 
     if (!fields.password) {
-      return 'Please enter a password.';
+      errors.password = 'Enter a password';
+    } else if (fields.password !== fields.confirmPassword) {
+      errors.confirmPassword = 'Passwords do not match';
     }
 
-    if (fields.password !== fields.confirmPassword) {
-      return 'Passwords do not match.';
-    }
+    return AuthValidation.outcome(errors);
   }
 
-  static passwordReset(fields: { newPassword: string; confirmPassword: string }): string | undefined {
+  static passwordReset(fields: {
+    newPassword: string;
+    confirmPassword: string;
+  }): AuthFieldErrors<'newPassword' | 'confirmPassword'> | undefined {
+    const errors: AuthFieldErrors<'newPassword' | 'confirmPassword'> = {};
     if (!fields.newPassword) {
-      return 'Please enter a new password.';
+      errors.newPassword = 'Enter a new password';
+    } else if (fields.newPassword !== fields.confirmPassword) {
+      errors.confirmPassword = 'Passwords do not match';
     }
 
-    if (fields.newPassword !== fields.confirmPassword) {
-      return 'Passwords do not match.';
-    }
+    return AuthValidation.outcome(errors);
+  }
+
+  private static outcome<F extends string>(errors: AuthFieldErrors<F>): AuthFieldErrors<F> | undefined {
+    return Object.keys(errors).length > 0 ? errors : undefined;
   }
 }

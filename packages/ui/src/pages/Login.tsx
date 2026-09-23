@@ -8,19 +8,36 @@ import { AuthTextField } from '../auth/AuthTextField';
 import { AuthButton } from '../auth/AuthButton';
 import { AuthFormError } from '../auth/AuthFormError';
 import { AuthApi } from '../auth/AuthApi';
+import { AuthFormFields } from '../auth/AuthFormFields';
+import { AuthFieldErrors, AuthValidation } from '../auth/AuthValidation';
+
+type LoginField = 'email' | 'password';
 
 const LoginComponent: React.FC = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors<LoginField>>({});
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
 
-  const onSubmit = async (event: React.FormEvent) => {
+  const clearFieldError = (name: LoginField) =>
+    setFieldErrors((errors) => (errors[name] ? { ...errors, [name]: undefined } : errors));
+
+  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    // The fields' values as they are NOW, read from the form — a password manager or autofill
+    // that wrote a field without an input event is only in the DOM (AuthFormFields).
+    const form = event.currentTarget;
+    const { email, password } = AuthFormFields.read(form, ['email', 'password'] as const);
+    const invalid = AuthValidation.login({ email, password });
+    setFieldErrors(invalid ?? {});
+    if (invalid) {
+      AuthFormFields.focusFirstInvalid(form, invalid);
+      return;
+    }
+
     setError(undefined);
     setBusy(true);
     try {
-      await new AuthApi().login(email, password);
+      await new AuthApi().login(email.trim(), password);
       window.location.href = '/';
     } catch (error: any) {
       setError(error.message);
@@ -39,16 +56,18 @@ const LoginComponent: React.FC = () => {
               fill from the saved login; type='email' still gives the email keyboard. */}
           <AuthTextField
             label='Email'
-            value={email}
-            onChange={setEmail}
+            name='email'
+            onChange={() => clearFieldError('email')}
+            error={fieldErrors.email}
             type='email'
             autoComplete='username'
             disabled={busy}
           />
           <AuthTextField
             label='Password'
-            value={password}
-            onChange={setPassword}
+            name='password'
+            onChange={() => clearFieldError('password')}
+            error={fieldErrors.password}
             password
             autoComplete='current-password'
             disabled={busy}
