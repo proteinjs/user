@@ -6,6 +6,7 @@ import { SourceRepository } from '@proteinjs/reflection';
 import { ServiceAuth } from '@proteinjs/service/dist/src/ServiceAuth';
 import { MachineAccount, RoleCatalogEntry, User, UserRepo, tables } from '@proteinjs/user';
 import { authenticate } from '../src/authentication/authenticate';
+import { SocketIOSessionWatcher } from '../src/authentication/SocketIOSessionWatcher';
 import { UserStatusTableWatcher } from '../src/authentication/UserStatusTableWatcher';
 import { MachineCredentials } from '../src/services/MachineCredentials';
 import { Roles } from '../src/services/Roles';
@@ -51,9 +52,9 @@ const resetTableWatcherMap = () => {
  * table, a declared address held by a row the sync does not own (a person's signup, a hand-made
  * row) REFUSED — never taken over, its credential and sessions never inherited — and said so on
  * the admin list and the mint; removed-from-source auto-deactivation with session kill through
- * the categorical UserStatusTableWatcher, the machine/human ledger split (Roles refuses machine
- * targets), declaration validation, and credential minting (hash-only at rest, plaintext shown
- * once).
+ * the categorical UserStatusTableWatcher, completing at boot before any socket server exists;
+ * the machine/human ledger split (Roles refuses machine targets), declaration validation, and
+ * credential minting (hash-only at rest, plaintext shown once).
  */
 describe('Machine accounts as source records', () => {
   const objectCache = () => (SourceRepository.get() as unknown as SourceRepositoryInternals).objectCache;
@@ -92,8 +93,10 @@ describe('Machine accounts as source records', () => {
       '@proteinjs/user-auth/AuthenticatedUserRepo'
     ] = [new UserRepo()];
     objectCache()['@proteinjs/user/RoleCatalogEntry'] = [new OpsRole()];
-    // Exactly the deactivation watcher observes this run, rebuilt from the seeded cache.
-    objectCache()['@proteinjs/db/TableWatcher'] = [new UserStatusTableWatcher()];
+    // The two session watchers a real server registers, rebuilt from the seeded cache — and no
+    // socket server exists in this process: the shape of a boot's sync (and of a migration Job,
+    // which never starts one), where deactivations delete sessions before the server is up.
+    objectCache()['@proteinjs/db/TableWatcher'] = [new UserStatusTableWatcher(), new SocketIOSessionWatcher()];
     resetTableWatcherMap();
   }, 120000);
 
@@ -220,6 +223,23 @@ describe('Machine accounts as source records', () => {
       refusal: 'a hand-made machine row holds this address',
       hasCredential: false,
     });
+  });
+
+  it('withdrawing a declaration while its account holds a live session: the boot completes before any socket server exists — the row deactivated, the session gone', async () => {
+    class Keeper extends TestOpsMachineAccount {
+      id = 'machine-keeper';
+      email = 'machine-keeper@test.local';
+      accountName = 'Keeper machine';
+      secretName = 'keeper-secret';
+    }
+    await boot([new TestOpsMachineAccount(), new Keeper()]);
+    await insertSession('machine-live-session', 'machine-ops@test.local');
+
+    // The declaration is withdrawn; the package still boots with its other declaration.
+    await boot([new Keeper()]);
+
+    expect((await machineRow()).status).toBe('deactivated');
+    expect(await sessionEmails()).toEqual([]);
   });
 
   it('removed from source: deactivated (never deleted), sessions killed, login refused; re-declaring reactivates', async () => {
