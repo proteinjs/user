@@ -57,9 +57,11 @@ export type User = SourceRecord & {
    * pre-existing human rows need no backfill (the `status`/opt-out null-default convention).
    * ONE owner for the question "is this a machine": every consumer (audience derivations,
    * people lists, purge walkers) reads THIS column — never `isLoadedFromSource`, which merely
-   * says who SYNCS the row. Stamped true by the `MachineAccount` declaration on every boot
-   * (insert and adopt alike), by provisioning migrations for hand-made machine rows, and by
-   * the source-loaded backfill (user-server BackfillMachineFlagForSourceLoadedAccounts).
+   * says who SYNCS the row. Stamped true by the `MachineAccount` declaration (on insert and on
+   * every boot after), by provisioning migrations for hand-made machine rows, and by
+   * the source-loaded backfill (user-server BackfillMachineFlagForSourceLoadedAccounts). A
+   * hand-made row marked machine is still never taken over by a declaration (the sync refuses a
+   * row it does not own) — the marker only says what the row is.
    */
   machine?: boolean | null;
   /**
@@ -111,12 +113,13 @@ export class UserTable extends Table<User> {
     serviceProtectedColumns: ['roles', 'status', 'deleteRequestedAt', 'purgeAfter', 'isLoadedFromSource'],
   };
   /**
-   * Machine accounts sync by EMAIL, not id: existing envs hold hand-made machine rows with
-   * env-random ids that other rows reference — the boot sync adopts them in place (id kept,
-   * declared fields reverted, runtime fields like `password` untouched). Removal from source
-   * deactivates (the same status the staff toggle and account deletion write — the
-   * UserStatusTableWatcher kills sessions on every deactivation write); re-declaring
-   * reactivates via normal drift reversion.
+   * Machine accounts sync by EMAIL, not id: accounts adopted from hand-made rows before
+   * declarations existed keep their env-random ids, which other rows reference (declared fields
+   * reverted, runtime fields like `password` untouched). A row the sync does not own under a
+   * declared email — a person's signup, a hand-made row — is never taken over: the natural key
+   * refuses the declaration (@proteinjs/db). Removal from source deactivates (the same status the
+   * staff toggle and account deletion write — the UserStatusTableWatcher kills sessions on every
+   * deactivation write); re-declaring reactivates via normal drift reversion.
    */
   sourceRecordOptions: Table<User>['sourceRecordOptions'] = {
     naturalKey: 'email',

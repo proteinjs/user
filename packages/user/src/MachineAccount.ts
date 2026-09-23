@@ -22,24 +22,32 @@ export const getMachineAccounts = (): MachineAccount[] =>
  * A code-declared machine account: identity in source, credentials at runtime.
  *
  * Extend this (server-side — declarations name real operational emails and grants) to declare a
- * machine account into the `user` table. The boot sync inserts it on first boot of a fresh env,
- * ADOPTS an existing row by email in deployed envs (id kept — rows the account filed reference
- * it; password kept — the credential is runtime-owned), reverts the declared fields on every
- * boot (a runtime grant/revoke on a machine account is drift), and deactivates the account —
- * sessions killed, never deleted — when the declaration is removed. Re-declaring a removed
- * account reactivates it, even under a renamed email: the user table soft-removes (keeps rows),
- * so the sync re-adopts the kept row by its stable declared id and re-derives its state from
- * the declaration (id and minted credential survive; no stale grants resurrect). Git history of
- * the declaration is the machine-grant audit trail; the Roles service refuses machine targets.
+ * machine account into the `user` table. The boot sync inserts it on the first boot that
+ * carries the declaration, matches it by email on every boot after (an account an earlier build
+ * adopted keeps its environment's own id — rows the account filed reference it), reverts the
+ * declared fields on every boot (a runtime grant/revoke on a machine account is drift), and
+ * deactivates the account — sessions killed, never deleted — when the declaration is removed.
+ * Re-declaring a removed account reactivates it, even under a renamed email: the user table
+ * soft-removes (keeps rows), so the sync re-adopts the kept row by its stable declared id and
+ * re-derives its state from the declaration (id and minted credential survive; no stale grants
+ * resurrect). Git history of the declaration is the machine-grant audit trail; the Roles service
+ * refuses machine targets.
+ *
+ * A declared address held by a row the sync does not own — a person who registered it, or a row
+ * made by hand — is NEVER taken over: the boot refuses the declaration (the row untouched, the
+ * boot continuing, one warning naming the declaration), so no one inherits the declared roles
+ * with a password of their own. The machine-accounts list shows the refusal and the mint refuses;
+ * the account is created by the first boot after that row is gone. Signup refuses a declared
+ * address outright.
  *
  * A `password` is deliberately NOT declarable: a fresh machine row has a NULL password, which
  * `authenticate`'s verify treats as matching no password at all, so "account exists" can never
  * reach "account can log in" without the explicit credential mint (`MachineCredentialsService`).
  */
 export abstract class MachineAccount implements SourceRecordLoader<User> {
-  /** Stable id, used ONLY when inserting into a fresh env — existing rows adopt by email. */
+  /** Stable id, used ONLY when the boot sync inserts the row — the sync matches rows by email. */
   abstract id: string;
-  /** The account's email (lowercase — validated at boot). The natural key adoption matches on. */
+  /** The account's email (lowercase — validated at boot). The natural key the sync matches on. */
   abstract email: string;
   /** Display name shown wherever the account's actions surface. */
   abstract accountName: string;
@@ -69,9 +77,8 @@ export abstract class MachineAccount implements SourceRecordLoader<User> {
       // No mailbox ceremony for machines; forced so runtime flips get reverted.
       emailVerified: true,
       // The explicit machine marker (founder ruling 2026-09-02): the declaration IS the
-      // stamp — inserts are born with it, adopted hand-made rows converge on the next boot
-      // (ordinary drift reversion), and existing source-loaded accounts pick it up the same
-      // way with no backfill migration.
+      // stamp — inserts are born with it, and existing source-loaded accounts converge on the
+      // next boot (ordinary drift reversion) with no backfill migration.
       machine: true,
       // Source-owned on purpose: re-declaring a removed (auto-deactivated) account is what
       // reactivates it, via normal drift reversion.
@@ -80,7 +87,7 @@ export abstract class MachineAccount implements SourceRecordLoader<User> {
       // `User.password` is a required column, but a machine declaration NEVER emits a password
       // key — the credential is runtime-owned, minted and stored as a hash by the credential
       // service. The loader only writes fields present on the record, so the column stays
-      // untouched on adopted rows and NULL on fresh inserts (unloggable until minted).
+      // untouched on the account's row and NULL on fresh inserts (unloggable until minted).
     } as unknown as SourceRecordLoader<User>['record'];
   }
 

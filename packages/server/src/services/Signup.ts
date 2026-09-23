@@ -11,6 +11,7 @@ import {
   User,
   UserSignup,
   USER_PERMISSIONS,
+  getMachineAccounts,
 } from '@proteinjs/user';
 import moment from 'moment';
 import { lib } from 'crypto-js';
@@ -316,6 +317,11 @@ export class Signup implements SignupService {
    * (`devLogin`, which auto-creates missing same-domain test accounts). Not exposed as an RPC:
    * the service surface is the `SignupService` INTERFACE (ServiceRouter walks its declared
    * methods), so extra class methods stay server-internal.
+   *
+   * An address a `MachineAccount` declaration owns is never registered, whatever its row state:
+   * a person's row under it would make the boot sync refuse the declaration (it never takes over
+   * a row it does not own), so the address is refused here in plain words — the declared machine
+   * accounts of this build are the list, nothing else.
    */
   async createAccount(account: {
     name: string;
@@ -326,6 +332,10 @@ export class Signup implements SignupService {
   }): Promise<'created' | 'exists'> {
     const db = getDbAsSystem();
     const email = account.email.toLowerCase();
+    if (getMachineAccounts().some((machineAccount) => machineAccount.email === email)) {
+      throw new Error(`This address can't be registered.`);
+    }
+
     const existingUser = await db.get(tables.User, { email });
     if (existingUser) {
       return 'exists';

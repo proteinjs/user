@@ -48,10 +48,12 @@ const resetTableWatcherMap = () => {
 
 /**
  * Machine accounts as source records, at the user layer: declare-only on the REAL mixed user
- * table, adopt-in-place by email (id + password survive — the old credential still logs in),
- * removed-from-source auto-deactivation with session kill through the categorical
- * UserStatusTableWatcher, the machine/human ledger split (Roles refuses machine targets),
- * declaration validation, and credential minting (hash-only at rest, plaintext shown once).
+ * table, a declared address held by a row the sync does not own (a person's signup, a hand-made
+ * row) REFUSED — never taken over, its credential and sessions never inherited — and said so on
+ * the admin list and the mint; removed-from-source auto-deactivation with session kill through
+ * the categorical UserStatusTableWatcher, the machine/human ledger split (Roles refuses machine
+ * targets), declaration validation, and credential minting (hash-only at rest, plaintext shown
+ * once).
  */
 describe('Machine accounts as source records', () => {
   const objectCache = () => (SourceRepository.get() as unknown as SourceRepositoryInternals).objectCache;
@@ -139,32 +141,85 @@ describe('Machine accounts as source records', () => {
     expect(humanAfter).toMatchObject({ name: 'A human', roles: ['ops'] });
   });
 
-  it('adopt-in-place by email: the hand-made row keeps its id and password; declared fields revert', async () => {
-    // The deployed-env shape: a hand-made machine row with an env-random id, a provisioned
-    // credential, and runtime-granted roles that have drifted from the declaration.
+  it(`a person's row holding a declared address refuses the declaration: no roles, no machine flag, their password and sessions stand; the list and the mint say so`, async () => {
+    // A person registered the address before the declaration shipped (inviteless signup): their
+    // own row, their own password, a live session — never a machine.
+    const person = await testEnv.createUser({ name: 'A person', email: 'machine-ops@test.local' });
+    await insertSession('person-session', 'machine-ops@test.local');
+    class Sibling extends TestOpsMachineAccount {
+      id = 'machine-sibling';
+      email = 'machine-sibling@test.local';
+      accountName = 'Sibling machine';
+      secretName = 'sibling-secret';
+    }
+
+    // The boot completes and the rest of the declarations land.
+    await boot([new TestOpsMachineAccount(), new Sibling()]);
+    expect(await getDbAsSystem().get(tables.User, { email: 'machine-sibling@test.local' })).toMatchObject({
+      roles: ['ops'],
+      isLoadedFromSource: true,
+      machine: true,
+    });
+
+    // The person's row is untouched: none of the declared roles, not a machine, not source-owned.
+    const row = await machineRow();
+    expect(row.id).toBe(person.id);
+    expect(row).toMatchObject({ name: 'A person', roles: [], emailVerified: true });
+    expect(row.machine).toBeFalsy();
+    expect(row.isLoadedFromSource).toBeFalsy();
+    expect(row.password).toBe(person.password);
+    expect(row.updated.valueOf()).toBe(person.updated.valueOf());
+    expect(await sessionEmails()).toEqual(['machine-ops@test.local']);
+
+    // The admin list names the refusal; the mint refuses in the same words and changes nothing.
+    const view = (await new MachineCredentials().listMachineAccounts()).find(
+      (account) => account.email === 'machine-ops@test.local'
+    );
+    expect(view).toMatchObject({
+      status: 'declaration refused',
+      refusal: 'a person holds this address',
+      hasCredential: false,
+    });
+    await expect(new MachineCredentials().mintCredential('machine-ops@test.local')).rejects.toThrow(
+      /declaration for 'machine-ops@test\.local' was refused at boot: a person holds this address/
+    );
+    expect((await machineRow()).password).toBe(person.password);
+    expect(await sessionEmails()).toEqual(['machine-ops@test.local']);
+
+    // Idempotent: the next boot refuses again and still grants nothing.
+    await boot([new TestOpsMachineAccount(), new Sibling()]);
+    const again = await machineRow();
+    expect(again).toMatchObject({ roles: [] });
+    expect(again.isLoadedFromSource).toBeFalsy();
+  });
+
+  it('a hand-made machine row the sync never owned is refused too — no row is taken over by a declaration any more', async () => {
+    // The pre-declaration provisioning shape: a row made by hand and marked machine, with a
+    // provisioned credential and runtime-granted roles.
     const handMade = await testEnv.createUser({
       name: 'Hand-made bridge',
       email: 'machine-ops@test.local',
       roles: ['ops', 'stale-role'],
     });
+    await getDbAsSystem().update(tables.User, { id: handMade.id, machine: true });
 
     await boot([new TestOpsMachineAccount()]);
 
-    const adopted = await machineRow();
-    expect(adopted.id).toBe(handMade.id);
-    expect(adopted).toMatchObject({
-      name: 'Test ops machine',
-      roles: ['ops'],
-      status: 'active',
-      isLoadedFromSource: true,
-      // Adoption stamps the explicit machine column onto the hand-made row (the deployed-env
-      // provisioning shape — e.g. a hand-provisioned deploy account becomes honest on boot).
+    const row = await machineRow();
+    expect(row).toMatchObject({
+      id: handMade.id,
+      name: 'Hand-made bridge',
+      roles: ['ops', 'stale-role'],
       machine: true,
     });
-    // The credential survived adoption: the account still authenticates with its old password
-    // (createUser stores sha256('test')... it stores the raw string; assert equality instead).
-    expect(adopted.password).toBe(handMade.password);
-    expect((await getDbAsSystem().query(tables.User, { email: 'machine-ops@test.local' })).length).toBe(1);
+    expect(row.isLoadedFromSource).toBeFalsy();
+    expect(row.password).toBe(handMade.password);
+    const [view] = await new MachineCredentials().listMachineAccounts();
+    expect(view).toMatchObject({
+      status: 'declaration refused',
+      refusal: 'a hand-made machine row holds this address',
+      hasCredential: false,
+    });
   });
 
   it('removed from source: deactivated (never deleted), sessions killed, login refused; re-declaring reactivates', async () => {
