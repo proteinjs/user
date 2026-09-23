@@ -8,6 +8,15 @@ import {
   getDefaultPasswordResetEmailConfigFactory as getDefaultConfigFactory,
 } from '@proteinjs/email-server';
 import { PasswordResetToken } from '../authentication/PasswordResetToken';
+import { ClientAddress } from '../throttle/ClientAddress';
+import { RequestDigests } from '../throttle/RequestDigests';
+import { passwordResetThrottle } from '../throttle/PasswordResetThrottle';
+
+/**
+ * The door's one answer: the same words for an address with an account or without, inside or
+ * past a window, mailed or not — the page shows exactly this sentence.
+ */
+const ONE_ANSWER = { message: 'If that address has an account, a reset link is on its way.' };
 
 /**
  * Route for initiating a password reset process.
@@ -15,6 +24,13 @@ import { PasswordResetToken } from '../authentication/PasswordResetToken';
  * Mints a reset token through `PasswordResetToken` — which stores only the token's digest and
  * its expiry on the user row — and mails the token to the account as a reset link. The token is
  * withdrawn again when the mail fails to send.
+ *
+ * ONE ANSWER: every request with an address is answered `ONE_ANSWER` — BEFORE the address is
+ * looked up — whether it has an account, is throttled (`PasswordResetThrottle`: per client and
+ * per address), is inside the account's five-minute gap, or its mail fails; so neither the
+ * words, the status nor the timing say whether an address has an account. The work runs after
+ * the answer. Every request is one outcome line carrying the account digest and the coarse IP
+ * hash (`RequestDigests`) — never the address.
  *
  * Requires an implementation of `DefaultPasswordResetEmailConfigFactory` to build the password reset email with.
  *
@@ -34,16 +50,20 @@ export const initiatePasswordReset: Route = {
       return;
     }
 
+    const digests = new RequestDigests();
+    const fields = { account: digests.account(requestedEmail), ip: digests.coarseIp(new ClientAddress().of(request)) };
+    const window = passwordResetThrottle.admit(fields.ip, fields.account);
+    response.send(ONE_ANSWER);
+    if (window) {
+      logger.warn({ message: `Password reset throttled`, obj: { ...fields, window } });
+      return;
+    }
+
     const email = requestedEmail.toLowerCase();
     const db = getDbAsSystem();
-
-    const genericResponse = { message: 'If an account with that email exists, we have sent a password reset link.' };
-
     const user = await db.get(tables.User, { email });
     if (!user) {
-      logger.info({ message: `Password reset requested for non-existent user`, obj: { email } });
-      // Don't reveal that the user doesn't exist
-      response.send(genericResponse);
+      logger.info({ message: `Password reset requested for non-existent user`, obj: fields });
       return;
     }
 
@@ -51,8 +71,7 @@ export const initiatePasswordReset: Route = {
     const resetToken = new PasswordResetToken();
     const mintedAt = resetToken.mintedAt(user);
     if (mintedAt && moment().diff(mintedAt, 'minutes') < 5) {
-      logger.info({ message: `Password reset requested too soon for user`, obj: { email } });
-      response.send(genericResponse);
+      logger.info({ message: `Password reset requested too soon for user`, obj: fields });
       return;
     }
 
@@ -81,12 +100,11 @@ export const initiatePasswordReset: Route = {
         ...config.options,
       });
 
-      response.send(genericResponse);
+      logger.info({ message: `Password reset link mailed`, obj: fields });
     } catch (error: any) {
-      logger.error({ message: `Failed to send password reset email`, obj: { email }, error });
+      logger.error({ message: `Failed to send password reset email`, obj: fields, error });
       // The link never reached the account: withdraw the token so asking again is not throttled
       await resetToken.revoke(user, passwordResetToken);
-      response.status(500).send({ error: 'Failed to send password reset email. Please try again later.' });
     }
   },
 };

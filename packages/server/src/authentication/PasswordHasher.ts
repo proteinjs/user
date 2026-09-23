@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from 'crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import * as argon2 from 'argon2';
 
 /**
@@ -38,6 +38,9 @@ export class PasswordHasher {
 
   private static readonly ARGON2ID_PREFIX = '$argon2id$';
 
+  /** The stand-in `verifyAgainstNothing` verifies against: a random secret's hash at the current cost, minted once per process. */
+  private static standIn: Promise<string> | undefined;
+
   async hash(password: string, mode: PasswordHashMode = 'human'): Promise<string> {
     if (mode === 'machine') {
       return this.sha256Hex(password);
@@ -60,6 +63,20 @@ export class PasswordHasher {
     }
 
     return this.constantTimeEqual(storedHash, this.sha256Hex(password));
+  }
+
+  /**
+   * Spends what verifying a human credential spends, and matches nothing: the refusal for an
+   * address with no account pays the same argon2 verification a wrong password pays, so how
+   * long a refusal takes says nothing about whether the address has an account. (The stand-in
+   * hash is minted on the first call; that one call also pays a hash.)
+   */
+  async verifyAgainstNothing(password: string): Promise<false> {
+    if (!PasswordHasher.standIn) {
+      PasswordHasher.standIn = argon2.hash(randomBytes(32).toString('hex'), PasswordHasher.ARGON2_OPTIONS);
+    }
+    await argon2.verify(await PasswordHasher.standIn, password);
+    return false;
   }
 
   /**

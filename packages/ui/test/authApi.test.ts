@@ -52,6 +52,13 @@ describe('AuthApi.initiatePasswordReset', () => {
     );
   });
 
+  it("resolves with the door's answer — the one sentence it gives for every address", async () => {
+    mockFetch({ body: { message: 'If that address has an account, a reset link is on its way.' } });
+    await expect(new AuthApi().initiatePasswordReset('ada@example.com')).resolves.toBe(
+      'If that address has an account, a reset link is on its way.'
+    );
+  });
+
   it('throws a user-readable error on failure', async () => {
     mockFetch({ status: 500, statusText: 'Internal Server Error' });
     await expect(new AuthApi().initiatePasswordReset('ada@example.com')).rejects.toThrow(

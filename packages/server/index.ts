@@ -8,3 +8,8 @@ export { AccessInvite } from './src/services/AccessInvite';
 export { AccountDeletion } from './src/services/AccountDeletion';
 export * from './src/emails/AccountDeletionEmailConfigs';
 export { AccountDeletionEmails } from './src/emails/AccountDeletionEmails';
+// The throttle primitives, for consumer doors throttling per client (the invite-request door):
+// ONE sliding window, ONE client-address read, ONE pair of keyed digests — never a second copy.
+export { SlidingWindow } from './src/throttle/SlidingWindow';
+export { ClientAddress } from './src/throttle/ClientAddress';
+export { RequestDigests } from './src/throttle/RequestDigests';

@@ -1,0 +1,85 @@
+import { SlidingWindow } from './SlidingWindow';
+
+/** Which window refused a try: the client's (its coarse IP hash) or the account's (its digest). */
+export type ThrottleWindow = 'client' | 'account';
+
+/**
+ * The sign-in door's two windows (`POST /user/login`), keyed by digests (`RequestDigests`),
+ * never by an address:
+ * - per CLIENT: every try counts — blank ones too, the client made them — so one device cannot
+ *   sweep many accounts;
+ * - per ACCOUNT: only refused passwords count (a blank submission judges no password), so
+ *   guesses spread over many devices still stop; a success clears the account's count.
+ *
+ * A throttled try is told `ANSWER` whichever window refused it and whether or not the address
+ * has an account, in the same time a refused password takes (the door runs the same password
+ * check and discards its verdict).
+ *
+ * The windows are in process memory (`SlidingWindow`): per replica. A deployment of three
+ * replicas behind a load balancer (up to ten under load) keeps three sets of windows, so its
+ * effective ceiling is ~3× the numbers below (up to ~10×). Friction, not the wall — a shared
+ * store is a separate step.
+ */
+export class SignInThrottle {
+  /** What a throttled try is told — in plain words, the same for every address, known or not. */
+  static readonly ANSWER = 'Too many attempts. Try again in a few minutes.';
+
+  /**
+   * Per client: 20 tries in 10 minutes. A person mistyping, a household or office behind one
+   * address, a password manager retrying — all well under it; a guessing script from one device
+   * is held to ~120 tries an hour per replica.
+   */
+  private static readonly CLIENT_LIMIT = 20;
+  private static readonly CLIENT_WINDOW_MS = 10 * 60 * 1000;
+
+  /**
+   * Per account: 10 refused passwords in 15 minutes. Someone who has forgotten a password tries
+   * a handful and asks for a reset link; ten wrong in a quarter of an hour is guessing, and
+   * counting per account holds however many devices the guesses come from. "A few minutes" in
+   * the answer is honest: the oldest refusal leaves the window within 15.
+   */
+  private static readonly ACCOUNT_REFUSAL_LIMIT = 10;
+  private static readonly ACCOUNT_WINDOW_MS = 15 * 60 * 1000;
+
+  private readonly clients: SlidingWindow;
+  private readonly accounts: SlidingWindow;
+
+  constructor(options?: { now?: () => number }) {
+    this.clients = new SlidingWindow({
+      windowMs: SignInThrottle.CLIENT_WINDOW_MS,
+      limit: SignInThrottle.CLIENT_LIMIT,
+      now: options?.now,
+    });
+    this.accounts = new SlidingWindow({
+      windowMs: SignInThrottle.ACCOUNT_WINDOW_MS,
+      limit: SignInThrottle.ACCOUNT_REFUSAL_LIMIT,
+      now: options?.now,
+    });
+  }
+
+  /**
+   * Count this try against the client and answer which window refuses it, if any. `account` is
+   * the digest of the address tried (absent for a submission with no address); it is only read
+   * here — a refusal counts it (`recordRefusal`), a success clears it (`recordSuccess`).
+   */
+  admit(client: string, account?: string): ThrottleWindow | undefined {
+    if (this.clients.hit(client)) {
+      return 'client';
+    }
+    if (account !== undefined && this.accounts.isOver(account)) {
+      return 'account';
+    }
+    return undefined;
+  }
+
+  recordRefusal(account: string): void {
+    this.accounts.record(account);
+  }
+
+  recordSuccess(account: string): void {
+    this.accounts.clear(account);
+  }
+}
+
+/** The process-wide windows the sign-in door shares — they must span requests. */
+export const signInThrottle = new SignInThrottle();

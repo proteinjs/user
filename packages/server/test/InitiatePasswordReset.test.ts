@@ -7,6 +7,7 @@ import { tables } from '@proteinjs/user';
 import { initiatePasswordReset } from '../src/routes/initiatePasswordReset';
 import { executePasswordReset } from '../src/routes/executePasswordReset';
 import { PasswordHasher } from '../src/authentication/PasswordHasher';
+import { PasswordResetToken } from '../src/authentication/PasswordResetToken';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 import { LogCapture } from './LogCapture';
 
@@ -22,12 +23,30 @@ const testEnv = new UserServerTestEnvironment();
  * - an unknown address gets the same response and no mail;
  * - a request with no body, or no usable email: 400, no mail, nothing changes;
  * - no minted token, no leading characters of one and no full digest reach the log — on the
- *   mailed path, the throttled repeat, the unknown address, or the failed send's error line.
+ *   mailed path, the throttled repeat, the unknown address, or the failed send's error line;
+ * - ONE answer, whatever happens behind it: an account mailed, no account, too soon, over a
+ *   window, a failed send — the same 200 and the same sentence, sent before the account is
+ *   looked up (so its timing says nothing either);
+ * - per address three requests an hour and per client address ten: past either, nothing is mailed;
+ * - every request is one outcome line carrying the account digest and the coarse IP hash, never
+ *   the address.
  */
 
 type RouteOutcome = { status: number; body?: any };
 
-const invoke = async (route: typeof initiatePasswordReset, request: Record<string, unknown>): Promise<RouteOutcome> => {
+/** Each request arrives from its own client address unless the test names one (the dev shape: no proxy). */
+let nextAddress = 0;
+const fromAddress = (ip?: string) => ({
+  headers: {},
+  socket: { remoteAddress: ip ?? `10.20.${Math.floor(nextAddress / 250)}.${(nextAddress++ % 250) + 1}` },
+  app: { get: () => false },
+});
+
+const invoke = async (
+  route: typeof initiatePasswordReset,
+  request: Record<string, unknown>,
+  events?: string[]
+): Promise<RouteOutcome> => {
   const outcome: RouteOutcome = { status: 200 };
   const response = {
     status(code: number) {
@@ -35,14 +54,15 @@ const invoke = async (route: typeof initiatePasswordReset, request: Record<strin
       return this;
     },
     send(body?: unknown) {
+      events?.push('answered');
       outcome.body = body;
     },
   };
-  await route.onRequest(request as never, response as never);
+  await route.onRequest({ ...fromAddress(), ...request } as never, response as never);
   return outcome;
 };
 
-const GENERIC = { message: 'If an account with that email exists, we have sent a password reset link.' };
+const GENERIC = { message: 'If that address has an account, a reset link is on its way.' };
 
 const sha256Hex = (value: string) => createHash('sha256').update(value).digest('hex');
 
@@ -70,6 +90,25 @@ const tokenInLink = (mailText: string | undefined): string => {
 const mailedToken = (): string => tokenInLink(MailSink.get().list(1)[0]?.text);
 
 type SourceRepositoryInternals = { objectCache: Record<string, unknown[]> };
+
+/** Moves an account's last mint back past the five-minute gap, so only the windows can refuse. */
+const ageLastMint = async (email: string) => {
+  const armed = await userRow(email);
+  await getDbAsSystem().update(tables.User, {
+    id: armed.id,
+    passwordResetTokenExpiration: moment().add(54, 'minutes'),
+  });
+};
+
+/** Log text without terminal colour codes. */
+const plain = (text: string) => text.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '');
+
+/** The `field: '<16 hex>'` value on each line containing `marker` ('missing' where absent). */
+const fieldsOn = (log: LogCapture, marker: string, field: string): string[] =>
+  log.lines
+    .map(plain)
+    .filter((line) => line.includes(marker))
+    .map((line) => new RegExp(`${field}: '([0-9a-f]{16})'`).exec(line)?.[1] ?? 'missing');
 
 describe('initiatePasswordReset route', () => {
   const originalTransport = process.env.EMAIL_TRANSPORT;
@@ -144,7 +183,7 @@ describe('initiatePasswordReset route', () => {
     try {
       const failed = await invoke(initiatePasswordReset, { body: { email: 'initiate-send-fails@test.local' } });
 
-      expect(failed.status).toBe(500);
+      expect(failed).toEqual({ status: 200, body: GENERIC });
       const withdrawn = await userRow('initiate-send-fails@test.local');
       expect(withdrawn.passwordResetToken).toBeNull();
       expect(withdrawn.passwordResetTokenExpiration).toBeNull();
@@ -209,7 +248,7 @@ describe('initiatePasswordReset route', () => {
       });
       try {
         const failed = await invoke(initiatePasswordReset, { body: { email: 'initiate-log-send-fails@test.local' } });
-        expect(failed.status).toBe(500);
+        expect(failed).toEqual({ status: 200, body: GENERIC });
       } finally {
         send.mockRestore();
       }
@@ -246,5 +285,137 @@ describe('initiatePasswordReset route', () => {
     expect(outcome.status).toBe(400);
     expect(MailSink.get().list()).toHaveLength(0);
     expect(await tokensByEmail()).toEqual(tokensBefore);
+  });
+
+  it('one answer whatever happens behind it: mailed, no account, too soon, over a window, a failed send', async () => {
+    await testEnv.createUser({ name: 'Reset User', email: 'one-answer@test.local' });
+    await testEnv.createUser({ name: 'Reset User', email: 'one-answer-fails@test.local' });
+    const answers: RouteOutcome[] = [];
+    const ask = async (email: string, ip?: string) =>
+      answers.push(await invoke(initiatePasswordReset, { ...fromAddress(ip), body: { email } }));
+
+    await ask('one-answer@test.local'); // mailed
+    await ask('one-answer-nobody@test.local'); // no account
+    await ask('one-answer@test.local'); // too soon
+    await ask('one-answer@test.local');
+    await ask('one-answer@test.local'); // over the address window
+    for (let i = 0; i < 11; i++) {
+      await ask(`one-answer-sweep-${i}@test.local`, '198.18.0.1'); // the eleventh is over the client window
+    }
+    const send = jest
+      .spyOn(EmailSender.prototype, 'sendEmail')
+      .mockRejectedValueOnce(new Error('Failed to send email'));
+    try {
+      await ask('one-answer-fails@test.local'); // a failed send
+    } finally {
+      send.mockRestore();
+    }
+
+    expect(answers).toHaveLength(17);
+    expect(new Set(answers.map((answer) => JSON.stringify(answer)))).toEqual(
+      new Set([JSON.stringify({ status: 200, body: GENERIC })])
+    );
+  });
+
+  it('the answer goes out before the account is looked up, a token minted or a mail sent — its timing says nothing', async () => {
+    await testEnv.createUser({ name: 'Reset User', email: 'answer-first@test.local' });
+    const events: string[] = [];
+    const realMint = PasswordResetToken.prototype.mint;
+    const mint = jest.spyOn(PasswordResetToken.prototype, 'mint').mockImplementation(async function (
+      this: PasswordResetToken,
+      ...args: Parameters<PasswordResetToken['mint']>
+    ) {
+      events.push('minted');
+      return await realMint.apply(this, args);
+    });
+    const send = jest.spyOn(EmailSender.prototype, 'sendEmail').mockImplementation(async () => {
+      events.push('mailed');
+    });
+    try {
+      await invoke(initiatePasswordReset, { body: { email: 'answer-first@test.local' } }, events);
+    } finally {
+      mint.mockRestore();
+      send.mockRestore();
+    }
+
+    expect(events).toEqual(['answered', 'minted', 'mailed']);
+  });
+
+  it('per address: the fourth request inside the hour mails nothing, even past the five-minute gap', async () => {
+    await testEnv.createUser({ name: 'Reset User', email: 'address-window@test.local' });
+    for (let i = 0; i < 3; i++) {
+      await invoke(initiatePasswordReset, { body: { email: 'Address-Window@test.local' } });
+      await ageLastMint('address-window@test.local');
+    }
+    expect(MailSink.get().list()).toHaveLength(3);
+    const armed = await userRow('address-window@test.local');
+
+    const fourth = await invoke(initiatePasswordReset, { body: { email: 'address-window@test.local' } });
+
+    expect(fourth).toEqual({ status: 200, body: GENERIC });
+    expect(MailSink.get().list()).toHaveLength(3);
+    expect((await userRow('address-window@test.local')).passwordResetToken).toBe(armed.passwordResetToken);
+  });
+
+  it('per client address: after ten requests the eleventh mails nothing, even for an account; another address still gets its link', async () => {
+    await testEnv.createUser({ name: 'Reset User', email: 'client-window@test.local' });
+    for (let i = 0; i < 10; i++) {
+      await invoke(initiatePasswordReset, {
+        ...fromAddress('198.18.1.1'),
+        body: { email: `client-window-${i}@test.local` },
+      });
+    }
+
+    const eleventh = await invoke(initiatePasswordReset, {
+      ...fromAddress('198.18.1.1'),
+      body: { email: 'client-window@test.local' },
+    });
+
+    expect(eleventh).toEqual({ status: 200, body: GENERIC });
+    expect(MailSink.get().list()).toHaveLength(0);
+
+    await invoke(initiatePasswordReset, { ...fromAddress('198.18.1.2'), body: { email: 'client-window@test.local' } });
+    expect(
+      MailSink.get()
+        .list()
+        .map((mail) => mail.to)
+    ).toEqual([['client-window@test.local']]);
+  });
+
+  it('every request is one outcome line with the account digest and the coarse IP hash — never the address', async () => {
+    await testEnv.createUser({ name: 'Reset User', email: 'reset.privacy.person@test.local' });
+
+    const log = await LogCapture.during(async () => {
+      const ask = (email: string) => invoke(initiatePasswordReset, { ...fromAddress('198.18.2.7'), body: { email } });
+      await ask('reset.privacy.person@test.local'); // mailed
+      await ask('Reset.Privacy.Person@TEST.local'); // too soon
+      await ask('RESET.PRIVACY.PERSON@test.local'); // too soon
+      await ask('reset.privacy.person@test.local'); // over the address window
+      await ask('reset.privacy.nobody@test.local'); // no account
+    });
+
+    const markers = [
+      'Password reset link mailed',
+      'Password reset requested too soon for user',
+      'Password reset throttled',
+      'Password reset requested for non-existent user',
+    ];
+    const accounts = markers.map((marker) => fieldsOn(log, marker, 'account'));
+    expect(accounts.map((values) => values.length)).toEqual([1, 2, 1, 1]);
+    const person = accounts[0][0];
+    expect(person).toMatch(/^[0-9a-f]{16}$/);
+    expect([...accounts[1], ...accounts[2]]).toEqual([person, person, person]);
+    expect(accounts[3][0]).toMatch(/^[0-9a-f]{16}$/);
+    expect(accounts[3][0]).not.toBe(person);
+
+    const ips = ([] as string[]).concat(...markers.map((marker) => fieldsOn(log, marker, 'ip')));
+    expect(ips).toHaveLength(5);
+    expect(ips[0]).toMatch(/^[0-9a-f]{16}$/);
+    expect(new Set(ips)).toEqual(new Set([ips[0]]));
+
+    const text = plain(log.text).toLowerCase();
+    for (const fragment of ['reset.privacy.person', 'reset.privacy.nobody', 'reset.privacy', '198.18.2.']) {
+      expect(text).not.toContain(fragment);
+    }
   });
 });

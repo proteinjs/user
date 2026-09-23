@@ -1,6 +1,7 @@
 import { getDbAsSystem } from '@proteinjs/db';
-import { tables } from '@proteinjs/user';
+import { User, tables } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
+import { RequestDigests } from '../throttle/RequestDigests';
 import { DefaultAdminCredentials } from './DefaultAdminCredentials';
 import { PasswordHasher } from './PasswordHasher';
 
@@ -24,15 +25,12 @@ export async function authenticate(email: string, password: string): Promise<tru
     return true;
   }
 
-  // Fetch by EMAIL ONLY and compare in code — never query by password hash. Query-by-hash
-  // forced every stored credential into one deterministic queryable value (unsalted sha256);
-  // in-code comparison is what lets the stored format be salted and per-user.
-  const db = getDbAsSystem();
-  const user = await db.get(tables.User, { email: email.toLowerCase() });
-  const hasher = new PasswordHasher();
-  if (!user || !(await hasher.verify(user.password, password))) {
+  const { user, matches } = await checkPassword(email, password);
+  if (!user || !matches) {
     return 'User name or password incorrect';
   }
+  const db = getDbAsSystem();
+  const hasher = new PasswordHasher();
 
   // Verify-then-rehash: the just-proven password re-hashes a legacy sha256 row into the
   // current format in place — the only moment the plaintext is available to migrate with.
@@ -53,9 +51,31 @@ export async function authenticate(email: string, password: string): Promise<tru
       return true;
     }
 
-    logger.warn({ message: 'Refused login for deactivated account', obj: { email: email.toLowerCase() } });
+    logger.warn({
+      message: 'Refused login for deactivated account',
+      obj: { account: new RequestDigests().account(email) },
+    });
     return 'This account has been deactivated';
   }
 
   return true;
+}
+
+/**
+ * Looks the account up and verifies the password — the cost every refusal pays, whether or not
+ * the address has an account: with none, the password is verified against a stand-in of the
+ * same cost (`PasswordHasher.verifyAgainstNothing`), so a refusal's timing says nothing about
+ * the address. The login door also runs it on a throttled try and discards the verdict, so a
+ * throttled answer takes as long as a refused password. No side effects (no rehash, no log).
+ */
+export async function checkPassword(email: string, password: string): Promise<{ user?: User; matches: boolean }> {
+  // Fetch by EMAIL ONLY and compare in code — never query by password hash. Query-by-hash
+  // forced every stored credential into one deterministic queryable value (unsalted sha256);
+  // in-code comparison is what lets the stored format be salted and per-user.
+  const user = await getDbAsSystem().get(tables.User, { email: email.toLowerCase() });
+  const hasher = new PasswordHasher();
+  if (!user) {
+    return { matches: await hasher.verifyAgainstNothing(password) };
+  }
+  return { user, matches: await hasher.verify(user.password, password) };
 }

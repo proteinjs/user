@@ -16,7 +16,7 @@ const ForgotPasswordComponent: React.FC = () => {
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors<'email'>>({});
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [answer, setAnswer] = useState<string | undefined>();
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -33,19 +33,20 @@ const ForgotPasswordComponent: React.FC = () => {
     setError(undefined);
     setBusy(true);
     try {
-      await new AuthApi().initiatePasswordReset(email.trim());
-      setSent(true);
+      setAnswer(await new AuthApi().initiatePasswordReset(email.trim()));
     } catch (error: any) {
       setError(error.message);
       setBusy(false);
     }
   };
 
-  if (sent) {
+  // The door's own sentence: it gives the same one for every address, so the page never claims
+  // a mail was sent (it cannot know, and must not seem to).
+  if (answer) {
     return (
       <AuthMessagePanel
         title='Check your email'
-        body='We sent an email with a link to reset your password.'
+        body={answer}
         actionName='Back to log in'
         actionHref={`/${uiRoutes.auth.login}`}
       />

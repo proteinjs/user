@@ -46,7 +46,11 @@ export class AuthApi {
     }
   }
 
-  async initiatePasswordReset(email: string): Promise<void> {
+  /**
+   * Resolves with the door's answer — the one sentence it gives for every address, with an
+   * account or without — for the page to show as it is.
+   */
+  async initiatePasswordReset(email: string): Promise<string> {
     const response = await fetch(routes.initiatePasswordReset.path, {
       method: routes.initiatePasswordReset.method,
       body: JSON.stringify({ email }),
@@ -62,6 +66,8 @@ export class AuthApi {
     if (body.error) {
       throw new Error(`Failed to send the reset email. Please try again.`);
     }
+
+    return body.message;
   }
 
   /**
