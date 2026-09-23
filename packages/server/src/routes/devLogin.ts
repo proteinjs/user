@@ -89,13 +89,23 @@ export const devLogin: Route = {
     }
     email = email.toLowerCase();
 
-    const creation = await new Signup().createAccount({
-      name: email.slice(0, email.indexOf('@')),
-      email,
-      password: 'test',
-      emailVerified: false, // same shape an inviteless signup produces
-      invitedBy: null,
-    });
+    let creation: 'created' | 'exists';
+    try {
+      creation = await new Signup().createAccount({
+        name: email.slice(0, email.indexOf('@')),
+        email,
+        password: 'test',
+        emailVerified: false, // same shape an inviteless signup produces
+        invitedBy: null,
+      });
+    } catch (error) {
+      // createAccount refuses in plain words (an address a machine-account declaration owns); the
+      // dev door answers the way its other refusals do — the words, no session, no row.
+      response
+        .status(400)
+        .send(`/dev/login: ${error instanceof Error ? error.message : 'the account could not be created'}`);
+      return;
+    }
     if (creation === 'created') {
       logger.info({ message: 'Dev auto-login created missing test account', obj: { email } });
     }

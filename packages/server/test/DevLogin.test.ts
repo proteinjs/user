@@ -1,5 +1,6 @@
 import { getDbAsSystem } from '@proteinjs/db';
-import { tables } from '@proteinjs/user';
+import { SourceRepository } from '@proteinjs/reflection';
+import { MachineAccount, tables } from '@proteinjs/user';
 import { PasswordHasher } from '../src/authentication/PasswordHasher';
 import { invokeDevLogin } from './devLoginHarness';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
@@ -105,6 +106,39 @@ describe('devLogin route', () => {
     expect(outcome.sessionSaved).toBe(false);
     expect(outcome.redirect).toBeUndefined();
     expect(await getUserRow('intruder@evil.example')).toBeUndefined();
+  });
+
+  it('refuses a ?email a machine-account declaration owns with 400 in plain words — no session, no row', async () => {
+    // The declared machine accounts of the build are the list signup refuses from; the dev door
+    // creates missing accounts through the same function and must answer the way its other
+    // refusals do — in words, not as an unhandled throw.
+    class DeclaredMachineAccount extends MachineAccount {
+      id = 'declared-machine';
+      email = 'declared.machine@test.local';
+      accountName = 'Declared machine';
+      roles = [];
+      secretName = 'declared-machine-secret';
+    }
+    const repo = SourceRepository.get() as unknown as { namedObjectCache: Record<string, unknown[]> };
+    repo.namedObjectCache['@proteinjs/db/SourceRecordLoader'] = [
+      {
+        qualifiedName: '@proteinjs/user-server-test/DeclaredMachineAccount',
+        packageName: '@test/declarer',
+        object: new DeclaredMachineAccount(),
+      },
+    ];
+    try {
+      const outcome = await invokeDevLogin({ email: 'declared.machine@test.local' });
+
+      expect(outcome.status).toBe(400);
+      expect(String(outcome.body)).toContain(`This address can't be registered.`);
+      expect(outcome.loggedInAs).toBeUndefined();
+      expect(outcome.sessionSaved).toBe(false);
+      expect(outcome.redirect).toBeUndefined();
+      expect(await getUserRow('declared.machine@test.local')).toBeUndefined();
+    } finally {
+      delete repo.namedObjectCache['@proteinjs/db/SourceRecordLoader'];
+    }
   });
 
   it('rejects a malformed same-domain ?email with 400 — no session, no stray account', async () => {
