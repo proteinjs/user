@@ -1,5 +1,6 @@
 import { Route } from '@proteinjs/server-api';
 import { Logger } from '@proteinjs/logger';
+import { RequestDigests } from '@proteinjs/util-node';
 import { emailRegex } from '@proteinjs/util';
 import { establishSession } from '../authentication/establishSession';
 import { Roles } from '../services/Roles';
@@ -88,6 +89,7 @@ export const devLogin: Route = {
       email = requested;
     }
     email = email.toLowerCase();
+    const digests = new RequestDigests();
 
     const creation = await new Signup().createAccount({
       name: email.slice(0, email.indexOf('@')),
@@ -97,13 +99,13 @@ export const devLogin: Route = {
       invitedBy: null,
     });
     if (creation === 'created') {
-      logger.info({ message: 'Dev auto-login created missing test account', obj: { email } });
+      logger.info({ message: 'Dev auto-login created missing test account', obj: { account: digests.account(email) } });
     }
 
     const bootstrapEmail = (process.env.DEV_BOOTSTRAP_ADMIN_EMAIL ?? '').trim().toLowerCase();
     if (bootstrapEmail && email === bootstrapEmail) {
       const outcome = await new Roles().bootstrapAdmin(email);
-      logger.info({ message: `Dev bootstrap admin door: ${outcome}`, obj: { email } });
+      logger.info({ message: `Dev bootstrap admin door: ${outcome}`, obj: { account: digests.account(email) } });
     }
 
     const bootstrapRoles = DevBootstrapRoles.rolesFor(email);
@@ -115,7 +117,7 @@ export const devLogin: Route = {
     // establishSession commits the session row before the redirect — the redirected GET / must
     // never read the store ahead of the write (observed: first /dev/login load landed on /login).
     await establishSession(request, email);
-    logger.info({ message: 'Dev auto-login session established', obj: { email } });
+    logger.info({ message: 'Dev auto-login session established', obj: { account: digests.account(email) } });
     response.redirect('/');
   },
 };

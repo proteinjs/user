@@ -9,6 +9,8 @@ import { createHash } from 'crypto';
 export class LogCapture {
   /** How many leading characters of a token count as the token showing up in a log. */
   private static readonly TOKEN_PREFIX_LENGTH = 12;
+  /** An e-mail address, as the house's log check reads one. */
+  private static readonly ADDRESS_SHAPE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 
   private constructor(readonly lines: string[]) {}
 
@@ -36,6 +38,11 @@ export class LogCapture {
 
   get text(): string {
     return this.lines.join('\n');
+  }
+
+  /** Every e-mail address the log holds, in order of appearance — a log names people by their digests, never by address. */
+  get addresses(): string[] {
+    return this.text.match(LogCapture.ADDRESS_SHAPE) ?? [];
   }
 
   /**

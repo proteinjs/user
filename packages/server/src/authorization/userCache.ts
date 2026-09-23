@@ -2,6 +2,7 @@ import moment from 'moment';
 import { SessionDataCache } from '@proteinjs/server-api';
 import { getDbAsSystem } from '@proteinjs/db';
 import { Logger } from '@proteinjs/logger';
+import { RequestDigests } from '@proteinjs/util-node';
 import { User, tables, guestUser, USER_SESSION_CACHE_KEY } from '@proteinjs/user';
 import { DefaultAdminCredentials } from '../authentication/DefaultAdminCredentials';
 
@@ -42,7 +43,7 @@ export const userCache: SessionDataCache<User> = {
           // account is deactivated — every request runs as the unauthenticated guest.
           logger.warn({
             message: `Session references a deactivated account; resolving as unauthenticated`,
-            obj: { sessionId, userEmail },
+            obj: { sessionId, account: new RequestDigests().account(userEmail) },
           });
         } else if (accountUser) {
           delete (accountUser as any)['password'];
@@ -54,7 +55,7 @@ export const userCache: SessionDataCache<User> = {
           // build as an unhandled rejection and downs the process.
           logger.warn({
             message: `Session references an account that does not exist; resolving as unauthenticated`,
-            obj: { sessionId, userEmail },
+            obj: { sessionId, account: new RequestDigests().account(userEmail) },
           });
         }
       }

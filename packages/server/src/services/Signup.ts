@@ -15,6 +15,7 @@ import {
 import moment from 'moment';
 import { lib } from 'crypto-js';
 import { Logger } from '@proteinjs/logger';
+import { RequestDigests } from '@proteinjs/util-node';
 import {
   EmailSender,
   getDefaultInviteEmailConfigFactory,
@@ -124,7 +125,10 @@ export class Signup implements SignupService {
       invitedBy: invite ? invite.invitedBy : null,
     });
     if (creation === 'exists') {
-      logger.error({ message: `User with this email already exists`, obj: { email } });
+      logger.error({
+        message: `User with this email already exists`,
+        obj: { account: new RequestDigests().account(email) },
+      });
       if (config.getExistingUserEmailContent) {
         const { text, html } = config.getExistingUserEmailContent();
         await emailSender.sendEmail({
@@ -146,7 +150,7 @@ export class Signup implements SignupService {
       html,
       ...config.options,
     });
-    logger.info({ message: `Created user`, obj: { email } });
+    logger.info({ message: `Created user`, obj: { account: new RequestDigests().account(email) } });
     return { outcome: 'created', email };
   }
 
@@ -183,7 +187,11 @@ export class Signup implements SignupService {
       await this.emailInvite(caseInsensitiveEmail, token, config);
       return { sent: true };
     } catch (error: any) {
-      logger.error({ message: 'Error sending invite', obj: { email: caseInsensitiveEmail }, error });
+      logger.error({
+        message: 'Error sending invite',
+        obj: { invitee: new RequestDigests().address(caseInsensitiveEmail) },
+        error,
+      });
       return {
         sent: false,
         error: 'Error occurred.',
@@ -218,7 +226,11 @@ export class Signup implements SignupService {
       await this.emailInvite(caseInsensitiveEmail, token, config);
       return { sent: true };
     } catch (error: any) {
-      logger.error({ message: 'Error re-sending invite', obj: { email: caseInsensitiveEmail }, error });
+      logger.error({
+        message: 'Error re-sending invite',
+        obj: { invitee: new RequestDigests().address(caseInsensitiveEmail) },
+        error,
+      });
       return {
         sent: false,
         error: 'Error occurred.',

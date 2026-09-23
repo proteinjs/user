@@ -1,9 +1,9 @@
 import { Route } from '@proteinjs/server-api';
 import { routes } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
+import { RequestDigests } from '@proteinjs/util-node';
 import { PasswordHasher } from '../authentication/PasswordHasher';
 import { PasswordResetToken } from '../authentication/PasswordResetToken';
-import { RequestDigests } from '../throttle/RequestDigests';
 import { signInThrottle } from '../throttle/SignInThrottle';
 
 /**
@@ -27,6 +27,7 @@ export const executePasswordReset: Route = {
   method: routes.executePasswordReset.method,
   onRequest: async (request, response): Promise<void> => {
     const logger = new Logger({ name: 'executePasswordReset' });
+    const digests = new RequestDigests();
     const { token, newPassword } = request.body ?? {};
     if (typeof newPassword !== 'string' || newPassword.length === 0) {
       response.status(400).send({ error: 'New password cannot be blank' });
@@ -45,7 +46,7 @@ export const executePasswordReset: Route = {
     }
 
     if (resolution.status === 'expired') {
-      logger.info({ message: `Expired reset token used`, obj: { email: resolution.user.email } });
+      logger.info({ message: `Expired reset token used`, obj: { account: digests.account(resolution.user.email) } });
       response.status(400).send({ error: 'Reset token has expired' });
       return;
     }
@@ -53,13 +54,13 @@ export const executePasswordReset: Route = {
     const { user } = resolution;
     const hashedPassword = await new PasswordHasher().hash(newPassword);
     if (!(await resetToken.redeem(user, resolution.token, hashedPassword))) {
-      logger.info({ message: `Reset token already redeemed`, obj: { email: user.email } });
+      logger.info({ message: `Reset token already redeemed`, obj: { account: digests.account(user.email) } });
       response.status(400).send({ error: 'Invalid or expired reset token' });
       return;
     }
 
-    signInThrottle.recordSuccess(new RequestDigests().account(user.email));
-    logger.info({ message: `Password successfully reset`, obj: { email: user.email } });
+    signInThrottle.recordSuccess(digests.account(user.email));
+    logger.info({ message: `Password successfully reset`, obj: { account: digests.account(user.email) } });
     response.send({ message: 'Password has been successfully reset' });
   },
 };

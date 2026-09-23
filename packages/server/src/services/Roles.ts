@@ -1,6 +1,7 @@
 import { getDbAsSystem, QueryBuilderFactory } from '@proteinjs/db';
 import { RolesService, RolesCatalog, UserAuth, UserRepo, tables, USER_PERMISSIONS } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
+import { RequestDigests } from '@proteinjs/util-node';
 import { Service } from '@proteinjs/service';
 
 /**
@@ -67,7 +68,10 @@ export class Roles implements RolesService {
       await db.update(tables.User, { id: user.id, roles: [...roles, 'admin'] });
       await db.insert(tables.RoleGrantEvent, { actor: user.id, target: user.id, role: 'admin', action: 'grant' });
     });
-    logger.info({ message: 'Break-glass admin granted by the dev first-admin door', obj: { target: user.id, email } });
+    logger.info({
+      message: 'Break-glass admin granted by the dev first-admin door',
+      obj: { target: user.id, account: new RequestDigests().account(email) },
+    });
     return 'granted';
   }
 
@@ -122,7 +126,7 @@ export class Roles implements RolesService {
     });
     logger.info({
       message: 'Roles granted by the dev role-bootstrap door',
-      obj: { target: user.id, email, granted: outcome.granted },
+      obj: { target: user.id, account: new RequestDigests().account(email), granted: outcome.granted },
     });
     return outcome;
   }

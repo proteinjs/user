@@ -1,6 +1,7 @@
 import { QueryBuilder, Table, TableWatcher, getDbAsSystem } from '@proteinjs/db';
 import { User, tables } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
+import { RequestDigests } from '@proteinjs/util-node';
 
 /**
  * The one owner of "deactivated ⇒ sessions die": any user-table update writing
@@ -48,7 +49,7 @@ export class UserStatusTableWatcher implements TableWatcher<User> {
       if (deletedSessions > 0) {
         this.logger.info({
           message: `Deactivation killed sessions`,
-          obj: { email: user.email, sessions: deletedSessions },
+          obj: { account: new RequestDigests().account(user.email), sessions: deletedSessions },
         });
       }
     });

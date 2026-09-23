@@ -9,6 +9,7 @@ import {
   tables,
 } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
+import { RequestDigests } from '@proteinjs/util-node';
 import { Service } from '@proteinjs/service';
 import { PasswordHasher } from '../authentication/PasswordHasher';
 
@@ -79,7 +80,7 @@ export class MachineCredentials implements MachineCredentialsService {
     await db.delete(tables.Session, { userEmail: normalizedEmail });
     logger.info({
       message: `Minted machine credential`,
-      obj: { email: normalizedEmail, secretName: declaration.secretName },
+      obj: { account: new RequestDigests().account(normalizedEmail), secretName: declaration.secretName },
     });
 
     return {

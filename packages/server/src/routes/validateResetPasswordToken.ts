@@ -1,6 +1,7 @@
 import { Route } from '@proteinjs/server-api';
 import { routes } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
+import { RequestDigests } from '@proteinjs/util-node';
 import { PasswordResetToken } from '../authentication/PasswordResetToken';
 
 export const validateResetPasswordToken: Route = {
@@ -26,7 +27,10 @@ export const validateResetPasswordToken: Route = {
     }
 
     if (resolution.status === 'expired') {
-      logger.info({ message: `Expired reset token used`, obj: { email: resolution.user.email } });
+      logger.info({
+        message: `Expired reset token used`,
+        obj: { account: new RequestDigests().account(resolution.user.email) },
+      });
       response.status(200).send({ isValid: false, message: 'Token has expired' });
       return;
     }

@@ -2,6 +2,7 @@ import { Route } from '@proteinjs/server-api';
 import { getDbAsSystem } from '@proteinjs/db';
 import { routes, tables, uiRoutes } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
+import { RequestDigests } from '@proteinjs/util-node';
 import moment from 'moment';
 import {
   EmailSender,
@@ -9,7 +10,6 @@ import {
 } from '@proteinjs/email-server';
 import { PasswordResetToken } from '../authentication/PasswordResetToken';
 import { ClientAddress } from '../throttle/ClientAddress';
-import { RequestDigests } from '../throttle/RequestDigests';
 import { passwordResetThrottle } from '../throttle/PasswordResetThrottle';
 
 /**

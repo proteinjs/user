@@ -1,7 +1,7 @@
 import { getDbAsSystem } from '@proteinjs/db';
 import { User, tables } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
-import { RequestDigests } from '../throttle/RequestDigests';
+import { RequestDigests } from '@proteinjs/util-node';
 import { DefaultAdminCredentials } from './DefaultAdminCredentials';
 import { PasswordHasher } from './PasswordHasher';
 
