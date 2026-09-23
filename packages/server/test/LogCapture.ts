@@ -9,8 +9,12 @@ import { createHash } from 'crypto';
 export class LogCapture {
   /** How many leading characters of a token count as the token showing up in a log. */
   private static readonly TOKEN_PREFIX_LENGTH = 12;
-  /** An e-mail address, as the house's log check reads one. */
-  private static readonly ADDRESS_SHAPE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+  /**
+   * An e-mail address, as the house's log check reads one: bare, or URL-encoded (`%40` for the `@`)
+   * as a logged request path carries it — a check that read only the bare spelling missed the one
+   * place an address is known to reach a log, the request log's URL.
+   */
+  private static readonly ADDRESS_SHAPE = /[A-Za-z0-9._%+-]+(?:@|%40)[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 
   private constructor(readonly lines: string[]) {}
 
