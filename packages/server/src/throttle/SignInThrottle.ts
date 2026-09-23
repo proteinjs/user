@@ -6,8 +6,10 @@ export type ThrottleWindow = 'client' | 'account';
 /**
  * The sign-in door's two windows (`POST /user/login`), keyed by digests (`RequestDigests`),
  * never by an address:
- * - per CLIENT: every try counts — blank ones too, the client made them — so one device cannot
- *   sweep many accounts;
+ * - per CLIENT: every try that is not a success counts — wrong passwords, blank ones too, the
+ *   client made them — so one device cannot sweep many accounts; a successful sign-in never
+ *   counts (it is forgiven the moment it succeeds), so the people behind one shared address
+ *   signing in do not spend the window on each other;
  * - per ACCOUNT: every try that carries a password counts (a blank submission judges no
  *   password, so it never counts), so guesses spread over many devices still stop; a success
  *   clears the account's count. A try is counted as it ARRIVES, before it is judged: tries in
@@ -27,11 +29,13 @@ export class SignInThrottle {
   static readonly ANSWER = 'Too many attempts. Try again in a few minutes.';
 
   /**
-   * Per client: 20 tries in 10 minutes. A person mistyping, a household or office behind one
-   * address, a password manager retrying — all well under it; a guessing script from one device
-   * is held to ~120 tries an hour per replica.
+   * Per client: 50 tries that are not successes in 10 minutes (the founder's number, 2026-09-23).
+   * Successes never count, so an office or a school behind one address signing in at nine o'clock
+   * never spends this window on itself — only its mistypes do, and fifty wrong or blank tries in
+   * ten minutes is beyond any human population behind one address; a guessing script from one
+   * device is held to ~300 tries an hour per replica.
    */
-  private static readonly CLIENT_LIMIT = 20;
+  private static readonly CLIENT_LIMIT = 50;
   private static readonly CLIENT_WINDOW_MS = 10 * 60 * 1000;
 
   /**
@@ -77,9 +81,16 @@ export class SignInThrottle {
     return undefined;
   }
 
-  /** The account proved itself (a password, or a reset link redeemed): its window opens again. */
-  recordSuccess(account: string): void {
+  /**
+   * The account proved itself: its window opens again. When it was a sign-in try from `client`
+   * (rather than a reset link redeemed), that try is forgiven — a success never counts against
+   * the device.
+   */
+  recordSuccess(account: string, client?: string): void {
     this.accounts.clear(account);
+    if (client !== undefined) {
+      this.clients.forgive(client);
+    }
   }
 }
 

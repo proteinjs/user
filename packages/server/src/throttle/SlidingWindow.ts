@@ -61,6 +61,16 @@ export class SlidingWindow {
     this.attempts.delete(key);
   }
 
+  /**
+   * Uncount `key`'s latest attempt (for doors that count a try as it arrives and learn afterwards
+   * that it should never have counted — a sign-in that succeeded).
+   */
+  forgive(key: string): void {
+    const attempts = this.inWindow(key);
+    attempts.pop();
+    this.touch(key, attempts);
+  }
+
   private inWindow(key: string): number[] {
     const cutoff = this.now() - this.windowMs;
     return (this.attempts.get(key) ?? []).filter((time) => time > cutoff);

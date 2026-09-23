@@ -15,7 +15,8 @@ const testEnv = new UserServerTestEnvironment();
  * - per account: ten refused passwords in the window, then every try — the right password too —
  *   answers "Too many attempts. Try again in a few minutes." and binds no session; an address
  *   with no account walks the same steps with the same answers; a success clears the count;
- * - per client address: twenty tries, then the same answer for any account;
+ * - per client address: fifty tries that are not successes, then the same answer for any account;
+ *   successes never count, however many;
  * - a blank submission counts toward the address window, never an account's;
  * - the throttled answer takes as long as a refused password, and a refusal for an address with
  *   no account takes as long as one for an account (no timing tell either way);
@@ -145,11 +146,11 @@ describe('login route throttle', () => {
     });
   });
 
-  it('twenty tries from one client address across twenty accounts, then the same answer for any account; another address is unaffected', async () => {
+  it('fifty wrong tries from one client address across fifty accounts, then the same answer for any account; another address is unaffected', async () => {
     await createAccount('throttle-ip-target@test.local');
     const ip = () => '203.0.113.20';
     const email = (i: number) => `throttle-ip-${i}@test.local`;
-    expect(await errors(20, ip, email, 'wrong guess')).toEqual(Array(20).fill(WRONG));
+    expect(await errors(50, ip, email, 'wrong guess')).toEqual(Array(50).fill(WRONG));
 
     const right = await attempt('203.0.113.20', 'throttle-ip-target@test.local', RIGHT_PASSWORD);
     expect(right.sent).toEqual({ error: THROTTLED });
@@ -160,6 +161,20 @@ describe('login route throttle', () => {
     expect(elsewhere.signedInAs).toBe('throttle-ip-target@test.local');
   });
 
+  it('successes never count against the address: thirty sign-ins from one address, then fifty wrong tries are still judged before the window shuts', async () => {
+    await createAccount('throttle-office@test.local');
+    const ip = () => '203.0.113.30';
+    for (let i = 0; i < 30; i++) {
+      const signedIn = await attempt(ip(), 'throttle-office@test.local', RIGHT_PASSWORD);
+      expect(signedIn.sent).toEqual({});
+      expect(signedIn.signedInAs).toBe('throttle-office@test.local');
+    }
+
+    const email = (i: number) => `throttle-office-guess-${i}@test.local`;
+    expect(await errors(50, ip, email, 'wrong guess')).toEqual(Array(50).fill(WRONG));
+    expect((await attempt(ip(), 'throttle-office@test.local', RIGHT_PASSWORD)).sent).toEqual({ error: THROTTLED });
+  });
+
   it("blank submissions count toward the client address's window, never an account's", async () => {
     await createAccount('throttle-blank@test.local');
     // Fifteen blank passwords for one account, from fifteen addresses: the account is not throttled.
@@ -167,15 +182,15 @@ describe('login route throttle', () => {
     expect(await errors(15, ip, () => 'throttle-blank@test.local', '')).toEqual(Array(15).fill(BLANK));
     expect((await attempt('192.0.2.100', 'throttle-blank@test.local', 'wrong guess')).sent).toEqual({ error: WRONG });
 
-    // Twenty blank submissions from one address: its twenty-first try is throttled.
+    // Fifty blank submissions from one address: its fifty-first try is throttled.
     expect(
       await errors(
-        20,
+        50,
         () => '192.0.2.200',
         () => '',
         ''
       )
-    ).toEqual(Array(20).fill(BLANK));
+    ).toEqual(Array(50).fill(BLANK));
     expect((await attempt('192.0.2.200', 'throttle-blank@test.local', RIGHT_PASSWORD)).sent).toEqual({
       error: THROTTLED,
     });

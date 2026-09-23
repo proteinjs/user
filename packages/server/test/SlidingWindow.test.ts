@@ -55,6 +55,21 @@ describe('SlidingWindow', () => {
     expect(window.isOver('a')).toBe(false);
   });
 
+  it('forgive uncounts the latest attempt only', () => {
+    const window = new SlidingWindow({ windowMs: 10 * MINUTE, limit: 2, now: clock });
+    window.hit('a');
+    window.hit('a');
+    expect(window.isOver('a')).toBe(true);
+
+    window.forgive('a');
+
+    expect(window.isOver('a')).toBe(false);
+    expect(window.hit('a')).toBe(false);
+    expect(window.hit('a')).toBe(true);
+    window.forgive('b'); // a key never seen: nothing to uncount, nothing thrown
+    expect(window.isOver('b')).toBe(false);
+  });
+
   it('bounds the keys it tracks: at the bound the oldest-touched key is forgotten first', () => {
     const window = new SlidingWindow({ windowMs: 10 * MINUTE, limit: 1, maxKeys: 2, now: clock });
     window.hit('a');

@@ -52,7 +52,7 @@ export const login: Route = {
       response.send({ error: result });
       return;
     }
-    signInThrottle.recordSuccess(account);
+    signInThrottle.recordSuccess(account, ip);
 
     // Cancel-by-login: a pending-deletion account's successful authentication IS the cancel
     // signal. The restore runs synchronously here, BEFORE request.login, so the first
