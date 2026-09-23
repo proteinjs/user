@@ -1,10 +1,12 @@
 import { randomBytes } from 'crypto';
 import { getDbAsSystem } from '@proteinjs/db';
 import {
+  MachineAccountRefusal,
   MachineAccountView,
   MachineCredentialsService,
   MintedMachineCredential,
   USER_PERMISSIONS,
+  User,
   getMachineAccounts,
   tables,
 } from '@proteinjs/user';
@@ -23,7 +25,9 @@ import { PasswordHasher } from '../authentication/PasswordHasher';
  * account's existing sessions (the old
  * credential dies with them), and returns the plaintext ONCE for pasting into the declaration's
  * Secret Manager secret. The same call rotates. Machine rows only (`is_loaded_from_source`);
- * human credentials go through the password-reset flow.
+ * human credentials go through the password-reset flow. A declared address held by a row the
+ * boot sync does not own (a person's signup, a hand-made row) has no machine account at all —
+ * the sync refused the declaration — and both the list and the mint say so.
  */
 export class MachineCredentials implements MachineCredentialsService {
   public serviceMetadata: Service['serviceMetadata'] = {
@@ -36,15 +40,22 @@ export class MachineCredentials implements MachineCredentialsService {
     const db = getDbAsSystem();
     const views: MachineAccountView[] = [];
     for (const declaration of getMachineAccounts()) {
-      const row = await db.get(tables.User, { email: declaration.email });
-      const booted = !!row && row.isLoadedFromSource === true;
+      const row: User | undefined = await db.get(tables.User, { email: declaration.email });
+      const refusal = row && this.refusal(row);
       views.push({
         email: declaration.email,
         accountName: declaration.accountName,
         roles: [...declaration.roles],
         secretName: declaration.secretName,
-        status: booted ? (row.status === 'deactivated' ? 'deactivated' : 'active') : 'pending first boot',
-        hasCredential: booted && !!row.password,
+        status: !row
+          ? 'pending first boot'
+          : refusal
+            ? 'declaration refused'
+            : row.status === 'deactivated'
+              ? 'deactivated'
+              : 'active',
+        ...(refusal ? { refusal } : {}),
+        hasCredential: !!row && !refusal && !!row.password,
       });
     }
 
@@ -63,11 +74,20 @@ export class MachineCredentials implements MachineCredentialsService {
     }
 
     const db = getDbAsSystem();
-    const user = await db.get(tables.User, { email: normalizedEmail });
-    if (!user || user.isLoadedFromSource !== true) {
+    const user: User | undefined = await db.get(tables.User, { email: normalizedEmail });
+    if (!user) {
       throw new Error(
         `The machine account row for '${normalizedEmail}' has not been loaded from source yet — ` +
-          `the boot sync creates (or adopts) it. Boot the server with the declaration, then mint.`
+          `the boot sync creates it. Boot the server with the declaration, then mint.`
+      );
+    }
+
+    const refusal = this.refusal(user);
+    if (refusal) {
+      throw new Error(
+        `The declaration for '${normalizedEmail}' was refused at boot: ${refusal} — the boot sync ` +
+          `never takes over a row it does not own, so there is no machine account to mint for. The ` +
+          `first boot after that row is gone creates it.`
       );
     }
 
@@ -90,5 +110,19 @@ export class MachineCredentials implements MachineCredentialsService {
         `Shown once. Paste this password into the '${declaration.secretName}' Secret Manager ` +
         `secret, then restart the service that reads it — the previous credential is already invalid.`,
     };
+  }
+
+  /**
+   * Why the boot sync refused a declaration whose address this row holds — undefined for the
+   * account's own row. The sync owns a row only when it created it (`isLoadedFromSource`); any
+   * other row under a declared address is never taken over (@proteinjs/db's natural-key refusal),
+   * and the one machine marker says whose row it is.
+   */
+  private refusal(row: User): MachineAccountRefusal | undefined {
+    if (row.isLoadedFromSource === true) {
+      return undefined;
+    }
+
+    return row.machine === true ? 'a hand-made machine row holds this address' : 'a person holds this address';
   }
 }

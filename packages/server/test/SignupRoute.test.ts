@@ -35,7 +35,7 @@ jest.mock('@proteinjs/email-server', () => ({
 
 import { getDbAsSystem, Reference } from '@proteinjs/db';
 import { SourceRepository } from '@proteinjs/reflection';
-import { tables } from '@proteinjs/user';
+import { MachineAccount, tables } from '@proteinjs/user';
 import { signup } from '../src/routes/signup';
 import { createPassportRequest } from './passportSessionHarness';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
@@ -45,6 +45,31 @@ const testEnv = new UserServerTestEnvironment();
 const INVITE_CONFIG_KEY = '@proteinjs/user-server/DefaultInviteConfigFactory';
 
 type ObjectCache = { objectCache: Record<string, unknown[]> };
+type NamedObjectCache = {
+  namedObjectCache: Record<string, { qualifiedName: string; packageName: string; object: unknown }[]>;
+};
+
+/** A code-declared machine account owning an address (the declaration only — never booted here). */
+class DeclaredMachineAccount extends MachineAccount {
+  id = 'declared-machine';
+  email = 'declared.machine@test.local';
+  accountName = 'Declared machine';
+  roles = [];
+  secretName = 'declared-machine-secret';
+}
+
+const LOADER_KEY = '@proteinjs/db/SourceRecordLoader';
+
+/** Seed the build's source-record declarations (the machine-account read resolves them by name). */
+const setDeclarations = (declarations: unknown[]) => {
+  (SourceRepository.get() as unknown as NamedObjectCache).namedObjectCache[LOADER_KEY] = declarations.map(
+    (object, i) => ({
+      qualifiedName: `@proteinjs/user-server-test/Declared${i}`,
+      packageName: '@test/declarer',
+      object,
+    })
+  );
+};
 
 /** Seed the invite-config lookup (tests don't load the generated source graph). */
 const setInviteConfig = (factories: unknown[]) => {
@@ -94,12 +119,14 @@ describe('signup route — auto-login after signup', () => {
   }, 120000);
 
   afterAll(async () => {
+    delete (SourceRepository.get() as unknown as NamedObjectCache).namedObjectCache[LOADER_KEY];
     await testEnv.afterAll();
   });
 
   beforeEach(async () => {
     jest.clearAllMocks();
     setInviteConfig([]);
+    setDeclarations([]);
     const db = getDbAsSystem();
     await db.delete(tables.Invite, {});
     await db.delete(tables.User, {});
@@ -178,6 +205,32 @@ describe('signup route — auto-login after signup', () => {
     const existing = await getUserRow('existing@test.local');
     expect(existing!.password).toBe('test'); // untouched — seeded by testEnv.createUser
     expect(sendEmail).toHaveBeenCalledTimes(1); // "account already exists" email
+  });
+
+  it(`an address a machine-account declaration owns can't be registered — by signup or by invite: plain words, no account, no session`, async () => {
+    setDeclarations([new DeclaredMachineAccount()]);
+
+    const direct = await invokeSignup({
+      name: 'Squatter',
+      email: 'Declared.Machine@test.local',
+      password: 'pw-squat-1',
+    });
+    expect(direct.body).toEqual({ error: "This address can't be registered." });
+    expect(direct.loggedInAs).toBeUndefined();
+    expect(direct.sessionEvents).toEqual([]);
+
+    await getDbAsSystem().insert(tables.Invite, {
+      email: 'declared.machine@test.local',
+      token: 'invite-token-declared',
+      tokenExpiresAt: moment().add(1, 'day'),
+      invitedBy: new Reference(tables.User.name, 'inviter-1'),
+    });
+    const invited = await invokeSignup({ name: 'Squatter', password: 'pw-squat-2', token: 'invite-token-declared' });
+    expect(invited.body).toEqual({ error: "This address can't be registered." });
+    expect(invited.loggedInAs).toBeUndefined();
+
+    expect(await getUserRow('declared.machine@test.local')).toBeUndefined();
+    expect(sendEmail).not.toHaveBeenCalled();
   });
 
   it('an unknown invite token gets the honest error — no session, no account', async () => {
