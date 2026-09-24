@@ -50,6 +50,9 @@ export class UserServerTestEnvironment {
     const objectCache = (SourceRepository.get() as unknown as SourceRepositoryInternals).objectCache;
     objectCache['@proteinjs/server-api/SessionDataStorage'] = [new TestSessionDataStorage()];
     objectCache['@proteinjs/db/DefaultDbDriverFactory'] = [{ getDbDriver: () => this.spannerDriver }];
+    // No shared window store registered: the counted throttle windows use the library's own
+    // per-process store (the suites load src, never the generated source graph).
+    objectCache['@proteinjs/user-server/DefaultThrottleWindowStoreFactory'] = [];
     Session.setData({
       sessionId: 'test-session',
       user: 'guest',

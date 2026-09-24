@@ -31,7 +31,7 @@ export const login: Route = {
     const fields = account ? { account, ip } : { ip };
 
     // The account is counted only when a password came with the try: a blank one judges nothing.
-    const window = signInThrottle.admit(ip, password ? account : undefined);
+    const window = await signInThrottle.admit(ip, password ? account : undefined);
     if (window) {
       await checkPassword(email, password);
       logger.warn({ message: 'Sign-in throttled', obj: { ...fields, window } });
@@ -52,7 +52,7 @@ export const login: Route = {
       response.send({ error: result });
       return;
     }
-    signInThrottle.recordSuccess(account, ip);
+    await signInThrottle.recordSuccess(account, ip);
 
     // Cancel-by-login: a pending-deletion account's successful authentication IS the cancel
     // signal. The restore runs synchronously here, BEFORE request.login, so the first
