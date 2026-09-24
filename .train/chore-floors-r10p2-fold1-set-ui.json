@@ -1,0 +1,3 @@
+{ "branch": "chore/floors-r10p2-fold1-set-ui", "packages": ["ui"],
+  "suites": ["packages/ui/test/InviteRecordFormCustomization.test.ts", "packages/ui/test/UserRecordFormCustomization.test.tsx"],
+  "removes": [] }
