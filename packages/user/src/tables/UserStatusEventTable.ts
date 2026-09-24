@@ -18,6 +18,8 @@ export type UserStatusEvent = Record & {
 
 export class UserStatusEventTable extends Table<UserStatusEvent> {
   name = 'user_status_event';
+  /** The status audit trail keeps its rows: no caller deletes one (`Table.durable`) — and the record surfaces draw no delete act. */
+  durable = true;
   auth: Table<UserStatusEvent>['auth'] = {
     db: {
       query: ['admin'],

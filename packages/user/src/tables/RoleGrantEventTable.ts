@@ -18,6 +18,8 @@ export type RoleGrantEvent = Record & {
 
 export class RoleGrantEventTable extends Table<RoleGrantEvent> {
   name = 'role_grant_event';
+  /** The role audit trail keeps its rows: no caller deletes one (`Table.durable`) — and the record surfaces draw no delete act. */
+  durable = true;
   auth: Table<RoleGrantEvent>['auth'] = {
     db: {
       query: { permission: USER_PERMISSIONS.roles },
