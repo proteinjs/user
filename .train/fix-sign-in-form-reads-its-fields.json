@@ -1,2 +1,0 @@
-{ "branch": "fix/sign-in-form-reads-its-fields", "packages": ["ui"],
-  "suites": ["packages/ui/test/authFormsReadTheirFields.test.tsx", "packages/ui/test/authValidation.test.ts", "packages/ui/test/authPages.test.tsx", "packages/ui/test/passwordResetAutofill.test.tsx", "packages/ui/test/signupAutofill.test.tsx"], "removes": [] }
