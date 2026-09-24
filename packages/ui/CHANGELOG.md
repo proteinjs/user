@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.11.2](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.11.1...@proteinjs/user-ui@1.11.2) (2026-09-24)
+
+
+### Bug Fixes
+
+* **ui:** the sign-in form reads its fields at submit ([b0eda61](https://github.com/proteinjs/user/commit/b0eda61cf9f6a990179f83a8fd4edb045af22c57))
+
+
+
+
+
 ## [1.11.1](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.11.0...@proteinjs/user-ui@1.11.1) (2026-09-20)
 
 **Note:** Version bump only for package @proteinjs/user-ui
