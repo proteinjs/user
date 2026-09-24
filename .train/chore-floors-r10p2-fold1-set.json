@@ -1,3 +1,0 @@
-{ "branch": "chore/floors-r10p2-fold1-set", "packages": ["user", "server"],
-  "suites": ["packages/server/test/MachineAccounts.integration.test.ts", "packages/server/test/SignupRoute.test.ts", "packages/server/test/DevLogin.test.ts", "packages/server/test/InitiatePasswordReset.test.ts"],
-  "removes": [] }
