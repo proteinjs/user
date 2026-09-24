@@ -111,3 +111,30 @@ describe('AuthApi.executePasswordReset', () => {
     await expect(new AuthApi().executePasswordReset('tok', 'hunter22')).rejects.toThrow('Failed to reset password');
   });
 });
+
+/**
+ * A 429 on the sign-in, sign-up and reset doors is a per-address limit in FRONT of the server (the
+ * load balancer's rate-based ban): no body the form can read, and over HTTP/2 no status text either
+ * (`statusText` is ''), so the old reading showed "Failed to log in, error: " and nothing after it.
+ * The forms say what the doors' own throttles say instead.
+ */
+describe('AuthApi — a 429 from in front of the door reads as the throttle answer', () => {
+  const TOO_MANY = 'Too many attempts. Try again in a few minutes.';
+
+  it('sign-in', async () => {
+    mockFetch({ status: 429, statusText: '' });
+    await expect(new AuthApi().login('ada@example.com', 'nope')).rejects.toThrow(TOO_MANY);
+  });
+
+  it('sign-up', async () => {
+    mockFetch({ status: 429, statusText: '' });
+    await expect(new AuthApi().signup({ name: 'Ada', email: 'ada@example.com', password: 'hunter22' })).rejects.toThrow(
+      TOO_MANY
+    );
+  });
+
+  it('the password reset request', async () => {
+    mockFetch({ status: 429, statusText: '' });
+    await expect(new AuthApi().initiatePasswordReset('ada@example.com')).rejects.toThrow(TOO_MANY);
+  });
+});
