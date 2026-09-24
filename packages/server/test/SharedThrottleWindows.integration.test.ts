@@ -1,4 +1,5 @@
 import { getDbAsSystem } from '@proteinjs/db';
+import { MailSink } from '@proteinjs/email-server';
 import { SourceRepository } from '@proteinjs/reflection';
 import { tables } from '@proteinjs/user';
 import { RequestDigests as UtilRequestDigests } from '@proteinjs/util-node';
@@ -27,10 +28,11 @@ const testEnv = new UserServerTestEnvironment();
  *   per reset address) clears it;
  * - a success on one pod clears the account's window for every pod;
  * - the reset door's per-address window is one count across pods;
- * - the store failing or stalling FAILS CLOSED: the door answers "Too many attempts. Try again in a
- *   few minutes." for the account (the right password too, no session), the reset door mails
- *   nothing, and the outage is one WARN line per window — once, however many tries meet it — until
- *   the store answers again.
+ * - the store failing or stalling is the NAMED FALLBACK: the door counts in this process's memory
+ *   window until the store answers again — ten wrong passwords are judged wrong and the eleventh is
+ *   refused, the right password signs in, a stalled store is judged within its deadline, the reset
+ *   door still mints and mails — and the outage is one WARN line per window saying so, once however
+ *   many tries meet it, and one INFO line when the store answers again.
  *
  * The backing store here is a stand-in for the shared one (a map every instance reads and writes,
  * the way every process reads and writes one Redis), with its own clock for the TTL.
@@ -295,25 +297,29 @@ describe('the account and reset-address windows, one count across server process
     expect((await signIn(email, 'wrong guess')).sent).toEqual({ error: THROTTLED });
   });
 
-  describe('when the store fails, the counted doors fail closed', () => {
-    it('a store that is down: every try is "Too many attempts…" — the right password too, no session — logged once at WARN until the store answers again', async () => {
+  describe("when the store fails, the counted doors count in this process's memory until it answers", () => {
+    it('a store that is down: the right password signs in, ten wrong passwords are judged wrong, the eleventh is refused (the right password too, no session) — one WARN saying so until the store answers again', async () => {
       const email = address('down');
       await createAccount(email);
       register(() => new DownStore());
 
       const log = await LogCapture.during(async () => {
-        expect((await signIn(email, 'wrong guess')).sent).toEqual({ error: THROTTLED });
-        expect((await signIn(email, 'another guess')).sent).toEqual({ error: THROTTLED });
-        const right = await signIn(email, RIGHT_PASSWORD);
-        expect(right.sent).toEqual({ error: THROTTLED });
-        expect(right.signedInAs).toBeUndefined();
+        const first = await signIn(email, RIGHT_PASSWORD);
+        expect(first.sent).toEqual({});
+        expect(first.signedInAs).toBe(email);
+        expect(await wrongTries(10, email)).toEqual(Array(10).fill(WRONG));
+        const eleventh = await signIn(email, RIGHT_PASSWORD);
+        expect(eleventh.sent).toEqual({ error: THROTTLED });
+        expect(eleventh.signedInAs).toBeUndefined();
       });
       const unavailable = log.linesContaining('Throttle window store unavailable');
       expect(unavailable.lines).toHaveLength(1);
+      expect(unavailable.text).toContain("counting in this process's memory until it answers");
       expect(unavailable.text).toContain('sign-in-account');
       expect(log.addresses).toEqual([]);
 
-      // The store answers again: the door judges again, and the next outage is its own line.
+      // The store answers again: the door counts there again (the outage's tries were this process's
+      // own), the right password signs in — and its success clears the memory window too.
       register(() => new SharedBackingStore());
       const recovered = await LogCapture.during(async () => {
         const right = await signIn(email, RIGHT_PASSWORD);
@@ -322,35 +328,42 @@ describe('the account and reset-address windows, one count across server process
       });
       expect(recovered.linesContaining('Throttle window store answering again').lines).toHaveLength(1);
 
+      // The next outage is its own line, and the memory window starts clean.
       register(() => new DownStore());
       const again = await LogCapture.during(async () => {
-        expect((await signIn(email, 'wrong guess')).sent).toEqual({ error: THROTTLED });
+        expect((await signIn(email, 'wrong guess')).sent).toEqual({ error: WRONG });
       });
       expect(again.linesContaining('Throttle window store unavailable').lines).toHaveLength(1);
     });
 
-    it('a store that never answers: the door answers "Too many attempts…" within the store deadline, not never', async () => {
+    it('a store that never answers: the door judges the try within the store deadline — not never, and not a refusal', async () => {
       const email = address('stalled');
       register(() => new StalledStore());
 
       const started = Date.now();
       const answer = await signIn(email, 'wrong guess');
 
-      expect(answer.sent).toEqual({ error: THROTTLED });
+      expect(answer.sent).toEqual({ error: WRONG });
       expect(Date.now() - started).toBeLessThan(5000);
     });
 
-    it('the reset door with the store down: the one answer as always, and nothing minted or mailed', async () => {
+    it('the reset door with the store down: the one answer as always, AND the link minted and mailed', async () => {
       const email = address('reset-down');
       const user = await createAccount(email);
       register(() => new DownStore());
+      MailSink.get().clear();
 
       expect(await requestReset(email)).toEqual({
         message: 'If that address has an account, a reset link is on its way.',
       });
 
       const row = await getDbAsSystem().get(tables.User, { id: user.id });
-      expect(new PasswordResetToken().mintedAt(row)).toBeUndefined();
+      expect(new PasswordResetToken().mintedAt(row)).toBeDefined();
+      expect(
+        MailSink.get()
+          .list()
+          .map((mail) => mail.to)
+      ).toEqual([[email]]);
     });
   });
 });
