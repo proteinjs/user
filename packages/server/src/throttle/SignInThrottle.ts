@@ -29,7 +29,11 @@ export type ThrottleWindow = 'client' | 'account';
  * behind it, and keeping it local keeps the per-try forgiveness of a success exact and cheap.
  */
 export class SignInThrottle {
-  /** What a throttled try is told — in plain words, the same for every address, known or not. */
+  /**
+   * What a throttled try is told — in plain words, the same for every address, known or not. The
+   * sign-in, sign-up and reset forms say the same when a load balancer's per-address limit answers
+   * 429 in front of the door (@proteinjs/user-ui `AuthApi.TOO_MANY_ATTEMPTS`).
+   */
   static readonly ANSWER = 'Too many attempts. Try again in a few minutes.';
 
   /**
