@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.22.3](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.22.2...@proteinjs/user-server@1.22.3) (2026-09-24)
+
+
+### Bug Fixes
+
+* **user-server:** a session deletion before the socket server exists closes nothing instead of throwing ([c0909d1](https://github.com/proteinjs/user/commit/c0909d1f25c13b9c422d9fef5a3f09d54dcdd2d8))
+* **user-server:** no address in a log line — the account digest for an account, the address digest for an invitee ([57ae9b7](https://github.com/proteinjs/user/commit/57ae9b7a94b89c9b1fc31fcdc50a5e01c9b4eda5))
+* **user-server:** the dev-login door answers a refused address in words (400) instead of an unhandled throw ([1bcd2b3](https://github.com/proteinjs/user/commit/1bcd2b3b237e0c6058436bbb1cd2822801f3ab6d))
+* **user-server:** the signup and invite doors log a caught error through RequestDigests.redactError ([cab7ed7](https://github.com/proteinjs/user/commit/cab7ed720c20395e2b88fd8ec4f1cb4de6a5b674))
+* **user:** a declared machine account never takes over a person's row — the declaration is refused, and signup refuses a declared address ([4cdaed2](https://github.com/proteinjs/user/commit/4cdaed2b77bec3746e60b291322a81e84f6b2b62))
+
+
+
+
+
 ## [1.22.2](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.22.1...@proteinjs/user-server@1.22.2) (2026-09-24)
 
 

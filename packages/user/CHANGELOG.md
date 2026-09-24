@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.20.2](https://github.com/proteinjs/user/compare/@proteinjs/user@1.20.1...@proteinjs/user@1.20.2) (2026-09-24)
+
+
+### Bug Fixes
+
+* **user:** a declared machine account never takes over a person's row — the declaration is refused, and signup refuses a declared address ([4cdaed2](https://github.com/proteinjs/user/commit/4cdaed2b77bec3746e60b291322a81e84f6b2b62))
+
+
+
+
+
 ## [1.20.1](https://github.com/proteinjs/user/compare/@proteinjs/user@1.20.0...@proteinjs/user@1.20.1) (2026-09-20)
 
 **Note:** Version bump only for package @proteinjs/user
