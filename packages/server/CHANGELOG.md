@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.22.4](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.22.3...@proteinjs/user-server@1.22.4) (2026-09-24)
+
+
+### Bug Fixes
+
+* **user-server:** a create that loses the race for an address answers 'exists' — the same response, no session, the owner's mail, no address in the log ([82260d2](https://github.com/proteinjs/user/commit/82260d23534a5131ad8fb438b825af24b22d5d26))
+
+
+
+
+
 ## [1.22.3](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.22.2...@proteinjs/user-server@1.22.3) (2026-09-24)
 
 
