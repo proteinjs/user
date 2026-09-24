@@ -6,15 +6,18 @@ import { SourceRepository } from '@proteinjs/reflection';
 import { MachineAccount, RoleCatalogEntry, UserRepo, tables } from '@proteinjs/user';
 import { RequestDigests } from '@proteinjs/util-node';
 import { authenticate } from '../src/authentication/authenticate';
+import { PasswordHasher } from '../src/authentication/PasswordHasher';
 import { PasswordResetToken } from '../src/authentication/PasswordResetToken';
 import { UserStatusTableWatcher } from '../src/authentication/UserStatusTableWatcher';
 import { userCache } from '../src/authorization/userCache';
 import { executePasswordReset } from '../src/routes/executePasswordReset';
 import { initiatePasswordReset } from '../src/routes/initiatePasswordReset';
 import { validateResetPasswordToken } from '../src/routes/validateResetPasswordToken';
+import { signup } from '../src/routes/signup';
 import { MachineCredentials } from '../src/services/MachineCredentials';
 import { Signup } from '../src/services/Signup';
 import { invokeDevLogin } from './devLoginHarness';
+import { createPassportRequest } from './passportSessionHarness';
 import { LogCapture } from './LogCapture';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 
@@ -34,7 +37,9 @@ const testEnv = new UserServerTestEnvironment();
  * - sign-in and sessions: a deactivated account refused, a session on a deactivated account, a
  *   session on a missing account;
  * - the sessions a deactivation kills, and a minted machine credential;
- * - the dev doors: a missing test account created, the first-admin grant, a session established.
+ * - the dev doors: a missing test account created, the first-admin grant, a session established;
+ * - a caught error whose words name an address: a double sign-up's unique-index refusal (the
+ *   database's own words), an invite whose send or write fails with the address in its error.
  *
  * The one line that keeps an address is the dev role-bootstrap door's `[dev-bootstrap]` marker —
  * development only, and read back by address by the development tooling — so it is closed here.
@@ -245,6 +250,87 @@ describe('no e-mail address reaches the server log', () => {
 
     expect(log.addresses).toEqual([]);
     expect(log.text).toContain(digests.account('logs-signup@test.local'));
+  });
+
+  it("a double sign-up race: the database's refusal names the address — the log carries its digest instead", async () => {
+    // Both requests pass the existence check before either writes: each one's password hash is held
+    // until both have arrived, so both inserts race and the unique index on the address refuses one —
+    // the refusal's own words name the address it refused.
+    const hash = PasswordHasher.prototype.hash;
+    let arrived = 0;
+    let bothArrived!: () => void;
+    const both = new Promise<void>((resolve) => (bothArrived = resolve));
+    const held = jest.spyOn(PasswordHasher.prototype, 'hash').mockImplementation(async function (
+      this: PasswordHasher,
+      password: string
+    ) {
+      const hashed = await hash.call(this, password);
+      if (++arrived === 2) {
+        bothArrived();
+      }
+      await both;
+      return hashed;
+    });
+    const body = { name: 'Racer', email: 'Logs-Race@test.local', password: 'a-password' };
+
+    let outcomes: (RouteOutcome & { loggedInAs?: string })[] = [];
+    const log = await LogCapture.during(async () => {
+      try {
+        outcomes = await Promise.all(
+          [0, 1].map(async () => {
+            const { request } = await createPassportRequest({ body });
+            const outcome = await invoke(signup, request);
+            return { ...outcome, loggedInAs: request.session.passport?.user };
+          })
+        );
+      } finally {
+        held.mockRestore();
+      }
+    });
+
+    // One account, one session; the loser was refused by the index and logged it — the refusal
+    // naming the index, the address in its words replaced by the address's digest.
+    expect((await getDbAsSystem().query(tables.User, { email: 'logs-race@test.local' })).length).toBe(1);
+    expect(outcomes.filter((outcome) => outcome.loggedInAs === 'logs-race@test.local')).toHaveLength(1);
+    const refusal = log.linesContaining('Signup failed');
+    expect(refusal.lines).toHaveLength(1);
+    expect(refusal.text).toContain('user_email_unique');
+    expect(refusal.addresses).toEqual([]);
+    expect(refusal.text).toContain(digests.address('logs-race@test.local'));
+    // The database driver's own line for the refused statement is the driver's (the version a
+    // package lock pins decides whether it prints bound values); this door's lines are the ones above.
+    expect(log.linesContaining('[signup]').addresses).toEqual([]);
+  });
+
+  it('an invite whose send or write fails with the address in its error: the invitee by its digest, the error too', async () => {
+    const inviter = await testEnv.createUser({ name: 'Inviter', email: 'logs-inviter-2@test.local', roles: ['admin'] });
+    testEnv.actAs(inviter);
+    await new Signup().sendInvite('invitee-standing@example.invalid');
+    // What a caught error looks like when its words are the address's: a refusal naming the key.
+    const naming = (address: string) =>
+      Object.assign(new Error(`6 ALREADY_EXISTS: Row [${address}] in table Invite already exists`), {
+        code: 6,
+        details: `Row [${address}] in table Invite already exists`,
+      });
+
+    const log = await LogCapture.during(async () => {
+      const failing = jest
+        .spyOn(EmailSender.prototype, 'sendEmail')
+        .mockImplementation(async (options) => Promise.reject(naming(String(options.to))));
+      try {
+        expect((await new Signup().sendInvite('Invitee-Named@Example.invalid')).sent).toBe(false);
+        expect((await new Signup().resendInvite('invitee-standing@example.invalid')).sent).toBe(false);
+      } finally {
+        failing.mockRestore();
+      }
+    });
+
+    expect(log.text).toContain('Error sending invite');
+    expect(log.text).toContain('Error re-sending invite');
+    expect(log.text).toContain('in table Invite already exists');
+    expect(log.addresses).toEqual([]);
+    expect(log.text).toContain(digests.address('invitee-named@example.invalid'));
+    expect(log.text).toContain(digests.address('invitee-standing@example.invalid'));
   });
 
   it('sign-in and sessions: a deactivated account refused, a session on a deactivated account, a session on a missing account', async () => {

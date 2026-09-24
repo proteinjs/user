@@ -49,6 +49,11 @@ export class LogCapture {
     return this.text.match(LogCapture.ADDRESS_SHAPE) ?? [];
   }
 
+  /** The capture narrowed to the writes that contain `text` — one door's lines, read with the same readers. */
+  linesContaining(text: string): LogCapture {
+    return new LogCapture(this.lines.filter((line) => line.includes(text)));
+  }
+
   /**
    * Fails unless the log is free of `token` in every form that would let a log reader act on it
    * or tie a line to a row: the token, the SHA-256 digest a row stores for it, and the token's

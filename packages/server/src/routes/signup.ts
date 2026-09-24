@@ -1,5 +1,6 @@
 import { Route } from '@proteinjs/server-api';
 import { Logger } from '@proteinjs/logger';
+import { RequestDigests } from '@proteinjs/util-node';
 import { UserSignup, routes } from '@proteinjs/user';
 import { establishSession } from '../authentication/establishSession';
 import { Signup } from '../services/Signup';
@@ -40,8 +41,10 @@ export const signup: Route = {
       );
     } catch (error: any) {
       // createUser throws plain-words errors deliberately (invite expired / invite required /
-      // email missing); the message is the user-facing contract, same as the RPC layer's.
-      logger.error({ message: 'Signup failed', error });
+      // email missing); the message is the user-facing contract, same as the RPC layer's. The log
+      // gets the error through the digest door: a concurrent double sign-up's unique-index refusal
+      // names the address in the database's own words.
+      logger.error({ message: 'Signup failed', error: new RequestDigests().redactError(error) });
       response.send({ error: error instanceof Error ? error.message : 'Sign up failed.' });
       return;
     }

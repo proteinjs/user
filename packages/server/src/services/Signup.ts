@@ -187,10 +187,13 @@ export class Signup implements SignupService {
       await this.emailInvite(caseInsensitiveEmail, token, config);
       return { sent: true };
     } catch (error: any) {
+      // The try block covers the Invite row's write and the mail: a refusal's own words may name
+      // the address, so the error reaches the log through the digest door too.
+      const digests = new RequestDigests();
       logger.error({
         message: 'Error sending invite',
-        obj: { invitee: new RequestDigests().address(caseInsensitiveEmail) },
-        error,
+        obj: { invitee: digests.address(caseInsensitiveEmail) },
+        error: digests.redactError(error),
       });
       return {
         sent: false,
@@ -226,10 +229,11 @@ export class Signup implements SignupService {
       await this.emailInvite(caseInsensitiveEmail, token, config);
       return { sent: true };
     } catch (error: any) {
+      const digests = new RequestDigests();
       logger.error({
         message: 'Error re-sending invite',
-        obj: { invitee: new RequestDigests().address(caseInsensitiveEmail) },
-        error,
+        obj: { invitee: digests.address(caseInsensitiveEmail) },
+        error: digests.redactError(error),
       });
       return {
         sent: false,
