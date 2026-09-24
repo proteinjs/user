@@ -1,2 +1,0 @@
-{ "branch": "fix/last-address-paths", "packages": ["server"],
-  "suites": ["packages/server/test/NoAddressesInLogs.integration.test.ts", "packages/server/test/LogCapture.test.ts", "packages/server/test/SignupRoute.test.ts", "packages/server/test/SignupInvite.test.ts", "packages/server/test/SignupResendInvite.integration.test.ts", "packages/server/test/Signup.test.ts"], "removes": [] }
