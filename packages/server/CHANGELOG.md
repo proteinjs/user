@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.22.2](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.22.1...@proteinjs/user-server@1.22.2) (2026-09-24)
+
+
+### Bug Fixes
+
+* sign-in and reset throttles ([8fb6cdb](https://github.com/proteinjs/user/commit/8fb6cdbe97048e3f509fbb6ffbc481b075d5f75b))
+* the account window counts a try as it arrives; a redeemed reset link opens it; legacy rows and missing keys ([2dff3f5](https://github.com/proteinjs/user/commit/2dff3f52774f7af4bd579fd61c31d4e22a80b1a6))
+* the per-device sign-in window counts only tries that are not successes, fifty in ten minutes ([74d0e64](https://github.com/proteinjs/user/commit/74d0e6492e752417442ec7014eefc666d32350bb))
+
+
+
+
+
 ## [1.22.1](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.22.0...@proteinjs/user-server@1.22.1) (2026-09-20)
 
 
