@@ -322,6 +322,14 @@ export class Signup implements SignupService {
    * a person's row under it would make the boot sync refuse the declaration (it never takes over
    * a row it does not own), so the address is refused here in plain words — the declared machine
    * accounts of this build are the list, nothing else.
+   *
+   * 'exists' means the address has an account this call did not create — found by the check, or
+   * written by a concurrent create between the check and this insert. Two creates for one address
+   * both pass the check; the database's unique index on the address refuses the second insert, and
+   * that refusal is the same fact the check reads, so the second answers 'exists' exactly as if it
+   * had arrived a moment later: its caller gets the existing-address response, no session, and the
+   * owner's mail — never the database's sentence, which names the address. An insert that fails
+   * while the address still has no account is a real failure and throws.
    */
   async createAccount(account: {
     name: string;
@@ -330,26 +338,37 @@ export class Signup implements SignupService {
     emailVerified: boolean;
     invitedBy: User['invitedBy'];
   }): Promise<'created' | 'exists'> {
-    const db = getDbAsSystem();
     const email = account.email.toLowerCase();
     if (getMachineAccounts().some((machineAccount) => machineAccount.email === email)) {
       throw new Error(`This address can't be registered.`);
     }
 
-    const existingUser = await db.get(tables.User, { email });
-    if (existingUser) {
+    if (await this.hasAccount(email)) {
       return 'exists';
     }
 
-    await db.insert(tables.User, {
-      name: account.name,
-      email,
-      password: await new PasswordHasher().hash(account.password),
-      emailVerified: account.emailVerified,
-      roles: [],
-      invitedBy: account.invitedBy,
-    });
+    const password = await new PasswordHasher().hash(account.password);
+    try {
+      await getDbAsSystem().insert(tables.User, {
+        name: account.name,
+        email,
+        password,
+        emailVerified: account.emailVerified,
+        roles: [],
+        invitedBy: account.invitedBy,
+      });
+    } catch (error: unknown) {
+      if (await this.hasAccount(email)) {
+        return 'exists';
+      }
+      throw error;
+    }
     return 'created';
+  }
+
+  /** Whether an account holds `email` (already lowercased) — the one existence read `createAccount` makes. */
+  private async hasAccount(email: string): Promise<boolean> {
+    return Boolean(await getDbAsSystem().get(tables.User, { email }));
   }
 
   /** Resolves an invite token, distinguishing "expired" from "never existed / already revoked". */
