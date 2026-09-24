@@ -59,7 +59,7 @@ export const executePasswordReset: Route = {
       return;
     }
 
-    signInThrottle.recordSuccess(digests.account(user.email));
+    await signInThrottle.recordSuccess(digests.account(user.email));
     logger.info({ message: `Password successfully reset`, obj: { account: digests.account(user.email) } });
     response.send({ message: 'Password has been successfully reset' });
   },

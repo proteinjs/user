@@ -11,5 +11,9 @@ export { AccountDeletionEmails } from './src/emails/AccountDeletionEmails';
 // The throttle primitives, for consumer doors throttling per client (the invite-request door):
 // ONE sliding window, ONE client-address read, ONE pair of keyed digests — never a second copy.
 export { SlidingWindow } from './src/throttle/SlidingWindow';
+// The seam a deployment of several processes registers its shared window store through, so the
+// per-account and per-reset-address windows are one count across replicas (the library's own
+// store is per process).
+export { ThrottleWindowStore, DefaultThrottleWindowStoreFactory } from './src/throttle/ThrottleWindowStore';
 export { ClientAddress } from './src/throttle/ClientAddress';
 export { RequestDigests } from './src/throttle/RequestDigests';

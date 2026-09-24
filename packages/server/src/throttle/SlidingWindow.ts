@@ -1,13 +1,15 @@
 /**
  * A per-key sliding window: how many attempts a key made in the last `windowMs`, against a
- * `limit`. The one window every throttled door shares — the sign-in and password-reset doors in
- * this package, and any consumer door throttling per client (lifted from the invite-request
- * door's per-IP throttle, which it replaces).
+ * `limit`. The per-CLIENT window the throttled doors share — the sign-in and password-reset doors
+ * in this package, and any consumer door throttling per client (lifted from the invite-request
+ * door's per-IP throttle, which it replaces). The windows that must hold across replicas (per
+ * account, per reset address) are `StoredWindow`s, counted in a shared `ThrottleWindowStore`.
  *
  * Held in process memory only, which is what makes it cheap and what bounds it:
  * - PER PROCESS. Each replica keeps its own windows, so behind a load balancer spreading a
  *   client over N replicas the effective ceiling is ~N× the limit; a restart forgets them.
- *   A throttle built on this is friction, not the wall. A shared store is a separate step.
+ *   A throttle built on this is friction, not the wall — the per-address wall across replicas
+ *   belongs in front of the servers (a rate limit at the load balancer).
  * - BOUNDED. At most `maxKeys` keys are tracked; at the bound the oldest-touched key is
  *   forgotten first, so a flood of fresh keys degrades the friction before it grows memory.
  *

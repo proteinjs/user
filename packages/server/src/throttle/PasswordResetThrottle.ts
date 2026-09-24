@@ -1,4 +1,5 @@
 import { SlidingWindow } from './SlidingWindow';
+import { StoredWindow } from './StoredWindow';
 import { ThrottleWindow } from './SignInThrottle';
 
 /**
@@ -9,11 +10,12 @@ import { ThrottleWindow } from './SignInThrottle';
  * same sentence as always (see the route).
  *
  * These sit on top of the account row's own five-minute gap between links, which spans replicas
- * (it is stored); the windows are in process memory (`SlidingWindow`): per replica. A
- * deployment of three replicas behind a load balancer (up to ten under load) keeps three sets
- * of windows, so its effective ceiling is ~3× the numbers below (up to ~10×) — for one address
- * still at most one mail per five minutes. Friction, not the wall — a shared store is a
- * separate step.
+ * (it is stored). The per-address window is a `StoredWindow`: counted in the store the deployment
+ * registers (`DefaultThrottleWindowStoreFactory`), so with a shared store it is one count across
+ * every replica and survives a deploy; it fails closed when that store fails (nothing is mailed
+ * while it cannot count). The per-client window stays in process memory (`SlidingWindow`), per
+ * replica — the second line behind a per-address limit at the load balancer (see
+ * `SignInThrottle`).
  */
 export class PasswordResetThrottle {
   /**
@@ -24,14 +26,14 @@ export class PasswordResetThrottle {
   private static readonly CLIENT_WINDOW_MS = 60 * 60 * 1000;
 
   /**
-   * Per address: 3 requests an hour. A person whose mail is slow asks once or twice more; beyond
-   * that it is mail aimed at somebody's inbox.
+   * Per address: 3 requests in an hour's window. A person whose mail is slow asks once or twice
+   * more; beyond that it is mail aimed at somebody's inbox.
    */
   private static readonly ACCOUNT_LIMIT = 3;
   private static readonly ACCOUNT_WINDOW_MS = 60 * 60 * 1000;
 
   private readonly clients: SlidingWindow;
-  private readonly accounts: SlidingWindow;
+  private readonly accounts: StoredWindow;
 
   constructor(options?: { now?: () => number }) {
     this.clients = new SlidingWindow({
@@ -39,7 +41,8 @@ export class PasswordResetThrottle {
       limit: PasswordResetThrottle.CLIENT_LIMIT,
       now: options?.now,
     });
-    this.accounts = new SlidingWindow({
+    this.accounts = new StoredWindow({
+      name: 'reset-address',
       windowMs: PasswordResetThrottle.ACCOUNT_WINDOW_MS,
       limit: PasswordResetThrottle.ACCOUNT_LIMIT,
       now: options?.now,
@@ -47,11 +50,11 @@ export class PasswordResetThrottle {
   }
 
   /** Count this request and answer which window refuses it, if any. */
-  admit(client: string, account: string): ThrottleWindow | undefined {
+  async admit(client: string, account: string): Promise<ThrottleWindow | undefined> {
     if (this.clients.hit(client)) {
       return 'client';
     }
-    if (this.accounts.hit(account)) {
+    if (await this.accounts.hit(account)) {
       return 'account';
     }
     return undefined;

@@ -52,8 +52,9 @@ export const initiatePasswordReset: Route = {
 
     const digests = new RequestDigests();
     const fields = { account: digests.account(requestedEmail), ip: digests.coarseIp(new ClientAddress().of(request)) };
-    const window = passwordResetThrottle.admit(fields.ip, fields.account);
     response.send(ONE_ANSWER);
+    // Counted after the answer: the count is a shared store's round trip, and the answer never waits on it.
+    const window = await passwordResetThrottle.admit(fields.ip, fields.account);
     if (window) {
       logger.warn({ message: `Password reset throttled`, obj: { ...fields, window } });
       return;
