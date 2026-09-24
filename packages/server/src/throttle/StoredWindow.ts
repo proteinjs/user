@@ -11,16 +11,20 @@ import { MemoryThrottleWindowStore } from './MemoryThrottleWindowStore';
  * per-process `MemoryThrottleWindowStore`. The window's name prefixes every key, so windows sharing
  * one store never meet.
  *
- * FAILS CLOSED, deliberately: when the store fails — an error, or no answer within
- * `STORE_DEADLINE_MS` (a client queueing commands while it reconnects never answers at all) —
- * `hit` answers "refuse". A door that cannot count cannot tell guessing from a person, and the
- * windows exist to stop guessing; the person is told to try again in a few minutes, which is true
- * the moment the store answers. The outage is one WARN line per window, however many tries meet
- * it, and one INFO line when the store answers again. `clear` meeting a failed store leaves the
- * window to end on its own (its TTL) rather than failing the door that proved the account.
+ * THE NAMED FALLBACK when the store fails — an error, or no answer within `STORE_DEADLINE_MS` (a
+ * client queueing commands while it reconnects never answers at all): the window COUNTS IN THIS
+ * PROCESS'S MEMORY (the `MemoryThrottleWindowStore` it already holds) until the store answers
+ * again — `hit` counts and judges there, `clear` clears there. A door that cannot reach the shared
+ * count still counts the way a single process does: each process holds its own count for the
+ * outage (at most the limit per process), behind the per-client window and any per-address limit
+ * in front of the servers — where refusing every try would lock out every person for a blip with
+ * a sentence that is untrue for them. The outage is one WARN line per window saying so, however
+ * many tries meet it, and one INFO line when the store answers again; the store then counts again
+ * from what it holds (the outage's tries were this process's own). A success clears the memory
+ * window as well as the store's, so an account that proved itself starts clean in both.
  */
 export class StoredWindow {
-  /** How long a door waits on the store before refusing: well above a healthy store's milliseconds. */
+  /** How long a door waits on the store before counting in memory: well above a healthy store's milliseconds. */
   private static readonly STORE_DEADLINE_MS = 2000;
   private static readonly FACTORY = '@proteinjs/user-server/DefaultThrottleWindowStoreFactory';
 
@@ -42,7 +46,7 @@ export class StoredWindow {
   /**
    * Count an attempt for `key` and answer whether it is over the window — `true` means refuse.
    * Every attempt is counted (the window's end is fixed at its first count, so counting a refused
-   * attempt never extends it). A failed store answers `true` (see the class comment).
+   * attempt never extends it). A failed store counts it in this process's memory (see the class comment).
    */
   async hit(key: string): Promise<boolean> {
     try {
@@ -51,12 +55,13 @@ export class StoredWindow {
       return count > this.limit;
     } catch (error) {
       this.failed(error);
-      return true;
+      return (await this.memory.increment(this.key(key), this.windowMs)) > this.limit;
     }
   }
 
-  /** Forget `key`'s window. A failed store leaves it to end on its own. */
+  /** Forget `key`'s window — in this process's memory, and in the store when it answers. */
   async clear(key: string): Promise<void> {
+    await this.memory.clear(this.key(key));
     try {
       await this.withDeadline((store) => store.clear(this.key(key)));
       this.answered();
@@ -98,7 +103,7 @@ export class StoredWindow {
     }
     this.storeUnavailable = true;
     this.logger.warn({
-      message: 'Throttle window store unavailable; refusing the counted tries until it answers',
+      message: "Throttle window store unavailable; counting in this process's memory until it answers",
       obj: { window: this.name, errorMessage: error instanceof Error ? error.message : String(error) },
     });
   }

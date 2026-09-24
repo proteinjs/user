@@ -12,8 +12,8 @@ import { ThrottleWindow } from './SignInThrottle';
  * These sit on top of the account row's own five-minute gap between links, which spans replicas
  * (it is stored). The per-address window is a `StoredWindow`: counted in the store the deployment
  * registers (`DefaultThrottleWindowStoreFactory`), so with a shared store it is one count across
- * every replica and survives a deploy; it fails closed when that store fails (nothing is mailed
- * while it cannot count). The per-client window stays in process memory (`SlidingWindow`), per
+ * every replica and survives a deploy; while that store fails it counts in this process's memory
+ * (the named fallback, see `StoredWindow`), so the door still mints and mails. The per-client window stays in process memory (`SlidingWindow`), per
  * replica — the second line behind a per-address limit at the load balancer (see
  * `SignInThrottle`).
  */

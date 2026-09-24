@@ -22,8 +22,8 @@ export type ThrottleWindow = 'client' | 'account';
  *
  * WHERE THE COUNTS LIVE. The account window is a `StoredWindow`: counted in the store the
  * deployment registers (`DefaultThrottleWindowStoreFactory`), so with a shared store it is ONE
- * count across every replica and survives a deploy; it fails closed when that store fails (see
- * `StoredWindow`). The client window stays in process memory (`SlidingWindow`), per replica: a
+ * count across every replica and survives a deploy; while that store fails it counts in this
+ * process's memory (the named fallback, see `StoredWindow`). The client window stays in process memory (`SlidingWindow`), per replica: a
  * deployment that needs one per-address wall across replicas puts it in front of the servers (a
  * rate limit at the load balancer, keyed on the client address); this window is the second line
  * behind it, and keeping it local keeps the per-try forgiveness of a success exact and cheap.
