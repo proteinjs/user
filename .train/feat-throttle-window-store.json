@@ -1,6 +1,9 @@
 {
   "branch": "feat/throttle-window-store",
-  "packages": ["server"],
+  "packages": [
+    "server",
+    "ui"
+  ],
   "suites": [
     "packages/server/test/SharedThrottleWindows.integration.test.ts",
     "packages/server/test/MemoryThrottleWindowStore.test.ts",
@@ -9,7 +12,8 @@
     "packages/server/test/ExecutePasswordReset.test.ts",
     "packages/server/test/NoAddressesInLogs.integration.test.ts",
     "packages/server/test/AccountDeletion.integration.test.ts",
-    "packages/server/test/SlidingWindow.test.ts"
+    "packages/server/test/SlidingWindow.test.ts",
+    "packages/ui/test/authApi.test.ts"
   ],
   "removes": []
 }
