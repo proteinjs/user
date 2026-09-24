@@ -252,7 +252,7 @@ describe('no e-mail address reaches the server log', () => {
     expect(log.text).toContain(digests.account('logs-signup@test.local'));
   });
 
-  it("a double sign-up race: the database's refusal names the address — the log carries its digest instead", async () => {
+  it("a double sign-up race: the loser answers 'exists' — the same bytes, no session, no refusal line, no address", async () => {
     // Both requests pass the existence check before either writes: each one's password hash is held
     // until both have arrived, so both inserts race and the unique index on the address refuses one —
     // the refusal's own words name the address it refused.
@@ -288,18 +288,19 @@ describe('no e-mail address reaches the server log', () => {
       }
     });
 
-    // One account, one session; the loser was refused by the index and logged it — the refusal
-    // naming the index, the address in its words replaced by the address's digest.
+    // One account, one session; the loser's refused insert re-read the address and answered 'exists':
+    // both bodies are the existing-address response (`{}`), no refusal line is written, and the two
+    // account lines carry the account digest.
     expect((await getDbAsSystem().query(tables.User, { email: 'logs-race@test.local' })).length).toBe(1);
     expect(outcomes.filter((outcome) => outcome.loggedInAs === 'logs-race@test.local')).toHaveLength(1);
-    const refusal = log.linesContaining('Signup failed');
-    expect(refusal.lines).toHaveLength(1);
-    expect(refusal.text).toContain('user_email_unique');
-    expect(refusal.addresses).toEqual([]);
-    expect(refusal.text).toContain(digests.address('logs-race@test.local'));
+    expect(outcomes.map((outcome) => outcome.body)).toEqual([{}, {}]);
+    expect(log.linesContaining('Signup failed').lines).toHaveLength(0);
+    expect(log.linesContaining('already exists').text).toContain(digests.account('logs-race@test.local'));
+    expect(log.linesContaining('Created user').text).toContain(digests.account('logs-race@test.local'));
     // The database driver's own line for the refused statement is the driver's (the version a
     // package lock pins decides whether it prints bound values); this door's lines are the ones above.
     expect(log.linesContaining('[signup]').addresses).toEqual([]);
+    expect(log.linesContaining('[Signup.createUser]').addresses).toEqual([]);
   });
 
   it('an invite whose send or write fails with the address in its error: the invitee by its digest, the error too', async () => {
