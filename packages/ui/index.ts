@@ -14,3 +14,5 @@ export * from './src/auth/AuthMessagePanel';
 // form itself) — exported so a consumer page fixes the same class the same way, not by hand.
 export * from './src/auth/AuthFormFields';
 export type { AuthFieldErrors } from './src/auth/AuthValidation';
+// What a navigation to the login page may carry (`{ message }`, the page's message seat).
+export type { LoginLocationState } from './src/pages/Login';

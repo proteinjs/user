@@ -21,6 +21,7 @@
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
+import { MemoryRouter } from 'react-router-dom';
 import { routes } from '@proteinjs/user';
 import type { InitializeSignupResponse } from '@proteinjs/user';
 import { loginPage } from '../src/pages/Login';
@@ -86,8 +87,13 @@ function mockServer() {
 
 async function renderPage(Component: React.ComponentType<any>, url: string) {
   window.history.replaceState({}, '', url);
+  // A page renders under the app's router (the login page reads its arrival's location state).
   await act(async () => {
-    root.render(<Component urlParams={{}} />);
+    root.render(
+      <MemoryRouter initialEntries={[url]}>
+        <Component urlParams={{}} />
+      </MemoryRouter>
+    );
   });
 }
 
