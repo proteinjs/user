@@ -6,6 +6,7 @@ import { tables } from '@proteinjs/user';
 import { PasswordHasher } from '../src/authentication/PasswordHasher';
 import { signup } from '../src/routes/signup';
 import { Signup } from '../src/services/Signup';
+import { RequestDigests } from '../src/throttle/RequestDigests';
 import { LogCapture } from './LogCapture';
 import { createPassportRequest } from './passportSessionHarness';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
@@ -182,14 +183,21 @@ describe('two sign-ups for one address at once', () => {
     const lines = log.lines.filter((line) => !line.includes('[SpannerDriver]'));
     expect(lines.length).toBeGreaterThan(0);
     expect(lines.filter((line) => line.toLowerCase().includes(local))).toEqual([]);
+    // The account lines name the account by its digest: the winner's `Created user` and the
+    // loser's `already exists`, each carrying the same digest for the one address.
+    const digest = new RequestDigests().account(address);
+    expect(lines.filter((line) => line.includes('Created user') && line.includes(digest))).toHaveLength(1);
+    expect(lines.filter((line) => line.includes('already exists') && line.includes(digest))).toHaveLength(1);
   });
 
   it('a create that loses the race to the same address reports it as existing, the account row the winner wrote untouched', async () => {
     const local = `race-${randomBytes(4).toString('hex')}`;
     const address = `${local}@test.local`;
+    // Both creates carry the address as typed (capitals): the row is stored lowercased, and the
+    // loser's re-read must ask for the address the way the row holds it.
     const account = (name: string) => ({
       name,
-      email: address,
+      email: `${local.toUpperCase()}@Test.local`,
       password: 'a-password',
       emailVerified: false,
       invitedBy: null,
