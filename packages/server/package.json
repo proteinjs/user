@@ -22,7 +22,7 @@
     "test": "jest --runInBand --passWithNoTests"
   },
   "dependencies": {
-    "@proteinjs/db": "^1.48.0",
+    "@proteinjs/db": "^1.49.0",
     "@proteinjs/db-file": "^1.5.3",
     "@proteinjs/email-server": "^1.4.0",
     "@proteinjs/logger": "^1.0.21",
@@ -40,7 +40,7 @@
     "sharp": "0.33.4"
   },
   "devDependencies": {
-    "@proteinjs/db-driver-spanner": "^1.32.0",
+    "@proteinjs/db-driver-spanner": "^1.32.1",
     "@proteinjs/reflection-build": "^2.0.1",
     "@types/crypto-js": "4.0.1",
     "@types/express-session": "1.17.0",
