@@ -22,7 +22,7 @@
     "test": "jest --runInBand --passWithNoTests"
   },
   "dependencies": {
-    "@proteinjs/db": "^1.48.0",
+    "@proteinjs/db": "^1.49.0",
     "@proteinjs/logger": "^1.0.21",
     "@proteinjs/reflection": "^1.2.0",
     "@proteinjs/server-api": "^3.0.11",
@@ -31,7 +31,7 @@
     "moment": "2.29.4"
   },
   "devDependencies": {
-    "@proteinjs/db-driver-knex": "^1.15.0",
+    "@proteinjs/db-driver-knex": "^1.15.1",
     "@proteinjs/reflection-build": "^2.0.1",
     "@types/jest": "29.5.5",
     "@types/node": "14.0.13",
