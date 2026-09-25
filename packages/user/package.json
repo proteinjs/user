@@ -31,7 +31,7 @@
     "moment": "2.29.4"
   },
   "devDependencies": {
-    "@proteinjs/db-driver-knex": "^1.11.8",
+    "@proteinjs/db-driver-knex": "^1.15.0",
     "@proteinjs/reflection-build": "^2.0.1",
     "@types/jest": "29.5.5",
     "@types/node": "14.0.13",
