@@ -1,9 +1,0 @@
-{
-  "branch": "feat/consent-at-signup",
-  "packages": ["ui"],
-  "suites": [
-    "packages/ui/test/loginMessageSeat.test.tsx",
-    "packages/ui/test/authFormsReadTheirFields.test.tsx"
-  ],
-  "removes": []
-}

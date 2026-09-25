@@ -1,6 +1,0 @@
-{
-  "branch": "fix/record-surface-durable-viewer-copy",
-  "packages": ["user"],
-  "suites": ["packages/user/test/auditTrailsDurable.test.ts", "packages/user/test/tablesAuth.test.ts"],
-  "removes": []
-}
