@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.21.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.20.2...@proteinjs/user@1.21.0) (2026-09-25)
+
+
+### Features
+
+* **user:** the role and status audit trails are durable — no caller deletes a role_grant_event or user_status_event row, break-glass included ([a48e3e1](https://github.com/proteinjs/user/commit/a48e3e14174a294cbed28b72829eb32185f31864))
+
+
+
+
+
 ## [1.20.2](https://github.com/proteinjs/user/compare/@proteinjs/user@1.20.1...@proteinjs/user@1.20.2) (2026-09-24)
 
 

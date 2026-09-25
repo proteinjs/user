@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.12.0](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.11.4...@proteinjs/user-ui@1.12.0) (2026-09-25)
+
+
+### Bug Fixes
+
+* **user-ui:** a 429 on the sign-in, sign-up and reset doors reads as the throttle's answer ([b5fb788](https://github.com/proteinjs/user/commit/b5fb7882440ab4047b2964df091517e0c1573216))
+
+
+### Features
+
+* the login page gains a message seat read from the arrival's location state ([fbe6c76](https://github.com/proteinjs/user/commit/fbe6c761dbd4eeb718d8c2899498c69c56212bdf))
+
+
+
+
+
 ## [1.11.4](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.11.3...@proteinjs/user-ui@1.11.4) (2026-09-24)
 
 **Note:** Version bump only for package @proteinjs/user-ui

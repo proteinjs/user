@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.23.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.22.4...@proteinjs/user-server@1.23.0) (2026-09-25)
+
+
+### Bug Fixes
+
+* **user-server:** the memory window continues from this process's own count across an outage ([68addc6](https://github.com/proteinjs/user/commit/68addc68c47ad6a0598340e4b7fc4bebb6025afe))
+* **user-ui:** a 429 on the sign-in, sign-up and reset doors reads as the throttle's answer ([b5fb788](https://github.com/proteinjs/user/commit/b5fb7882440ab4047b2964df091517e0c1573216))
+
+
+### Features
+
+* **user-server:** a counted window whose shared store cannot answer counts in the process's memory until it does — the named fallback, never a lock-out ([6feb210](https://github.com/proteinjs/user/commit/6feb2102b4b48835d6f7ed185d48889db3091582))
+* **user-server:** the account and reset-address windows count in a registered window store ([e81ee5f](https://github.com/proteinjs/user/commit/e81ee5f55cb37ffc869b680188b80a188ad65ca2))
+
+
+
+
+
 ## [1.22.4](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.22.3...@proteinjs/user-server@1.22.4) (2026-09-24)
 
 
