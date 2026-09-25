@@ -32,7 +32,11 @@ const testEnv = new UserServerTestEnvironment();
  *   window until the store answers again — ten wrong passwords are judged wrong and the eleventh is
  *   refused, the right password signs in, a stalled store is judged within its deadline, the reset
  *   door still mints and mails — and the outage is one WARN line per window saying so, once however
- *   many tries meet it, and one INFO line when the store answers again.
+ *   many tries meet it, and one INFO line when the store answers again;
+ * - an outage's boundary continues from this process's own count (every try the store answered was
+ *   counted in memory too): nine wrong in the store, then the store fails, and the eleventh is
+ *   refused; on recovery the store counts from what it holds (the outage's tries were this
+ *   process's own and never reach it).
  *
  * The backing store here is a stand-in for the shared one (a map every instance reads and writes,
  * the way every process reads and writes one Redis), with its own clock for the TTL.
@@ -334,6 +338,40 @@ describe('the account and reset-address windows, one count across server process
         expect((await signIn(email, 'wrong guess')).sent).toEqual({ error: WRONG });
       });
       expect(again.linesContaining('Throttle window store unavailable').lines).toHaveLength(1);
+    });
+
+    it("the store fails after nine wrong tries: the memory window continues from this process's own nine — the tenth is judged wrong, the eleventh refused; one WARN", async () => {
+      const email = address('boundary');
+      await createAccount(email);
+      expect(await wrongTries(9, email)).toEqual(Array(9).fill(WRONG));
+
+      register(() => new DownStore());
+      const log = await LogCapture.during(async () => {
+        expect(await wrongTries(2, email)).toEqual([WRONG, THROTTLED]);
+        const right = await signIn(email, RIGHT_PASSWORD);
+        expect(right.sent).toEqual({ error: THROTTLED });
+        expect(right.signedInAs).toBeUndefined();
+      });
+      expect(log.linesContaining('Throttle window store unavailable').lines).toHaveLength(1);
+      expect(log.addresses).toEqual([]);
+    });
+
+    it("on recovery the store counts from what it holds: the outage's five wrong tries never reach the shared count (ten fresh before the refusal, one INFO) — and this process's own count, kept all along, refuses at once in the next outage", async () => {
+      const email = address('recovery');
+      await createAccount(email);
+      register(() => new DownStore());
+      expect(await wrongTries(5, email)).toEqual(Array(5).fill(WRONG));
+
+      register(() => new SharedBackingStore());
+      const recovered = await LogCapture.during(async () => {
+        expect(await wrongTries(11, email)).toEqual([...Array(10).fill(WRONG), THROTTLED]);
+      });
+      expect(recovered.linesContaining('Throttle window store answering again').lines).toHaveLength(1);
+
+      // Sixteen tries met this process within the window (five in the outage, eleven while the store
+      // answered): when the store fails again, memory judges from all sixteen.
+      register(() => new DownStore());
+      expect((await signIn(email, 'wrong guess')).sent).toEqual({ error: THROTTLED });
     });
 
     it('a store that never answers: the door judges the try within the store deadline — not never, and not a refusal', async () => {

@@ -22,6 +22,11 @@ import { MemoryThrottleWindowStore } from './MemoryThrottleWindowStore';
  * many tries meet it, and one INFO line when the store answers again; the store then counts again
  * from what it holds (the outage's tries were this process's own). A success clears the memory
  * window as well as the store's, so an account that proved itself starts clean in both.
+ *
+ * THE SHADOW: every try the store answers is counted in the memory window too, so memory always
+ * holds this process's own count — judged by the store while it answers, by memory when it does
+ * not. An outage therefore continues from what this process already counted (nine wrong tries,
+ * then the store fails: the eleventh is refused), never from zero.
  */
 export class StoredWindow {
   /** How long a door waits on the store before counting in memory: well above a healthy store's milliseconds. */
@@ -46,17 +51,26 @@ export class StoredWindow {
   /**
    * Count an attempt for `key` and answer whether it is over the window — `true` means refuse.
    * Every attempt is counted (the window's end is fixed at its first count, so counting a refused
-   * attempt never extends it). A failed store counts it in this process's memory (see the class comment).
+   * attempt never extends it): in the store, and in this process's memory too (the shadow) — judged
+   * by the store when it answers, by memory when it fails (see the class comment).
    */
   async hit(key: string): Promise<boolean> {
+    let answer: { count: number; store: ThrottleWindowStore };
     try {
-      const count = await this.withDeadline((store) => store.increment(this.key(key), this.windowMs));
+      answer = await this.withDeadline(async (store) => ({
+        count: await store.increment(this.key(key), this.windowMs),
+        store,
+      }));
       this.answered();
-      return count > this.limit;
     } catch (error) {
       this.failed(error);
       return (await this.memory.increment(this.key(key), this.windowMs)) > this.limit;
     }
+    if (answer.store !== this.memory) {
+      // The shadow: this process's own count, for the outage (no shared store registered: counted once).
+      await this.memory.increment(this.key(key), this.windowMs);
+    }
+    return answer.count > this.limit;
   }
 
   /** Forget `key`'s window — in this process's memory, and in the store when it answers. */
