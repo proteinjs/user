@@ -53,7 +53,12 @@ const LoginComponent: React.FC = () => {
     setBusy(true);
     try {
       await new AuthApi().login(email.trim(), password);
-      window.location.href = '/';
+      // REPLACE, not assign: a full navigation (the fresh load renders under the just-established
+      // session), but it replaces the login page in history rather than pushing home on top of it.
+      // Left in history, the login page sits one back-forward entry behind home, and a signed-in
+      // user's back gesture from a route the app pushed after home can land on it — a page a
+      // signed-in user can never be on. Replacing it makes home the base of their history.
+      window.location.replace('/');
     } catch (error: any) {
       setError(error.message);
       setBusy(false);

@@ -95,7 +95,10 @@ const SignupComponent: React.FC = () => {
 
     // Full navigation, not a router transition: the fresh page load renders under the
     // just-established session, landing the new user in the app — never on the login form.
-    window.location.href = '/';
+    // REPLACE, not assign: the signup page leaves history rather than sitting one back-forward
+    // entry behind home, where a signed-in user's back gesture from a route the app pushed after
+    // home could land on it. Replacing it makes home the base of their history.
+    window.location.replace('/');
   };
 
   if (initializing) {
