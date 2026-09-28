@@ -1,0 +1,1 @@
+{ "branch": "fix/auth-redirect-replaces-the-auth-page", "packages": ["ui"], "suites": ["packages/ui/test/authRedirectReplacesTheAuthPage.test.tsx", "packages/ui/test/authPages.test.tsx", "packages/ui/test/authFormsReadTheirFields.test.tsx", "packages/ui/test/authApi.test.ts"], "removes": [] }
