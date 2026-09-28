@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.12.1](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.12.0...@proteinjs/user-ui@1.12.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* **ui:** sign-in and sign-up enter the app by replacing the auth page in history ([2982b7e](https://github.com/proteinjs/user/commit/2982b7e75674f747f331401105eba7d0032a76ee))
+
+
+
+
+
 # [1.12.0](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.11.4...@proteinjs/user-ui@1.12.0) (2026-09-25)
 
 
