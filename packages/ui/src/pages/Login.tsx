@@ -11,6 +11,7 @@ import { AuthFormError } from '../auth/AuthFormError';
 import { AuthApi } from '../auth/AuthApi';
 import { AuthFormFields } from '../auth/AuthFormFields';
 import { AuthFieldErrors, AuthValidation } from '../auth/AuthValidation';
+import { ReturnTo } from '../auth/ReturnTo';
 
 type LoginField = 'email' | 'password';
 
@@ -19,6 +20,9 @@ type LoginField = 'email' | 'password';
  * for the person arriving (e.g. why they were just signed out), rendered in the page's message seat
  * above the fields. The state key is this page's API; anything that is not a non-empty string is no
  * message.
+ *
+ * Where the sign-in should land travels separately, in the URL's query string (`?returnTo=<path>`,
+ * `ReturnTo`): state is lost on a reload of the page, the query is not.
  */
 export type LoginLocationState = { message?: string };
 
@@ -31,7 +35,10 @@ const LoginComponent: React.FC = () => {
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors<LoginField>>({});
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
-  const message = arrivalMessage(useLocation().state);
+  const location = useLocation();
+  const message = arrivalMessage(location.state);
+  // Where a successful sign-in lands: the same-origin path the URL asked for, else home.
+  const landing = ReturnTo.landing(location.search);
 
   const clearFieldError = (name: LoginField) =>
     setFieldErrors((errors) => (errors[name] ? { ...errors, [name]: undefined } : errors));
@@ -54,11 +61,11 @@ const LoginComponent: React.FC = () => {
     try {
       await new AuthApi().login(email.trim(), password);
       // REPLACE, not assign: a full navigation (the fresh load renders under the just-established
-      // session), but it replaces the login page in history rather than pushing home on top of it.
-      // Left in history, the login page sits one back-forward entry behind home, and a signed-in
-      // user's back gesture from a route the app pushed after home can land on it — a page a
-      // signed-in user can never be on. Replacing it makes home the base of their history.
-      window.location.replace('/');
+      // session), but it replaces the login page in history rather than pushing the landing on top
+      // of it. Left in history, the login page sits one back-forward entry behind the landing, and a
+      // signed-in user's back gesture from a route the app pushed after it can land on it — a page a
+      // signed-in user can never be on. Replacing it makes the landing the base of their history.
+      window.location.replace(landing);
     } catch (error: any) {
       setError(error.message);
       setBusy(false);

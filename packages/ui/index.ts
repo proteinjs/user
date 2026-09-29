@@ -16,3 +16,6 @@ export * from './src/auth/AuthFormFields';
 export type { AuthFieldErrors } from './src/auth/AuthValidation';
 // What a navigation to the login page may carry (`{ message }`, the page's message seat).
 export type { LoginLocationState } from './src/pages/Login';
+// Where a sign-in lands (`?returnTo=<same-origin path>` on the login URL) — the parameter's name
+// and the rule, exported so the page that sends a person to sign in names the parameter, never spells it.
+export * from './src/auth/ReturnTo';
