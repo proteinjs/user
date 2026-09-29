@@ -17,6 +17,7 @@ import {
 import { Logger } from '@proteinjs/logger';
 
 import { AccessGrant, AccessGrantTable } from './tables/AccessGrantTable';
+import { NoPrincipalError } from './NoPrincipalError';
 import { UserRepo } from './UserRepo';
 import { UserTable } from './tables/UserTable';
 import { tables } from './tables/tables';
@@ -25,15 +26,38 @@ import { tables } from './tables/tables';
 const WRITE_ACCESS_LEVELS: AccessGrant['accessLevel'][] = ['write', 'admin', 'owner'];
 
 /**
+ * The caller's principal for a grant-scoped `operation` on `table`: the session user's id. With
+ * access grants enforced there is no grant-scoped operation without one — a context with no session
+ * user (a background executor, a boot- or deploy-time migration, a socket event callback, a startup
+ * task's timer) refuses HERE, by name, instead of threading `undefined` into the grant subquery and
+ * failing in the query builder with a message that names neither the table nor the caller
+ * (`Must not pass in undefined for value in condition … principal` — a stack-walk to attribute,
+ * every time). Only reached with grants enforced and outside a system
+ * db: every caller below checks both first, so a session user and a skipped-grants run see no change.
+ */
+function requirePrincipal(table: string, operation: string): string {
+  const principal = new UserRepo().getUser().id;
+  if (!principal) {
+    throw new NoPrincipalError({ table, operation });
+  }
+  return principal;
+}
+
+/**
  * Does the CURRENT caller hold a write-or-greater grant on the given permission source? Queries
  * the caller's own grants directly as SYSTEM — never through the read-scoped `resource.get()` that
  * let a no-access caller's undefined fetch skip the check (the escalation-hole shape). This is the
  * one owner for "can this caller write into this permission scope", shared by the insert guard and
- * the zero-row write refusal below.
+ * the zero-row write refusal below. `on` names the table and operation being guarded, for the
+ * no-principal refusal.
  */
-async function callerHasWriteAccess(permissionSourceId: string, permissionSourceTableName: string): Promise<boolean> {
+async function callerHasWriteAccess(
+  permissionSourceId: string,
+  permissionSourceTableName: string,
+  on: { table: string; operation: string }
+): Promise<boolean> {
   const qb = new QueryBuilder(tables.AccessGrant.name);
-  qb.condition({ field: 'principal', operator: '=', value: new UserRepo().getUser().id });
+  qb.condition({ field: 'principal', operator: '=', value: requirePrincipal(on.table, on.operation) });
   qb.condition({ field: 'resource', operator: '=', value: permissionSourceId });
   qb.condition({ field: 'resourceTable', operator: '=', value: permissionSourceTableName });
   qb.condition({ field: 'accessLevel', operator: 'IN', value: WRITE_ACCESS_LEVELS });
@@ -133,7 +157,7 @@ const getSharedRecordColumns = ({
           return;
         }
 
-        if (!(await callerHasWriteAccess(sourceId, sourceTable))) {
+        if (!(await callerHasWriteAccess(sourceId, sourceTable, { table: table.name, operation: 'insert' }))) {
           throw new RecordAccessError(
             `User does not have write access to the permission source (${sourceTable}:${sourceId})`
           );
@@ -205,7 +229,7 @@ const getSharedRecordColumns = ({
           return;
         }
 
-        if (!(await callerHasWriteAccess(sourceId, sourceTable))) {
+        if (!(await callerHasWriteAccess(sourceId, sourceTable, { table: table.name, operation }))) {
           throw new RecordAccessError(`User does not have ${operation} access to ${table.name}:${id}`);
         }
       },
@@ -228,7 +252,7 @@ const getSharedRecordColumns = ({
         subQuery.condition({
           field: 'principal',
           operator: '=',
-          value: new UserRepo().getUser().id,
+          value: requirePrincipal(qb.tableName, operation),
         });
 
         subQuery.condition({

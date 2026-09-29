@@ -23,6 +23,7 @@ export * from './src/permissions';
 export * from './src/MachineAccount';
 export * from './src/RolesCatalog';
 export * from './src/UserRepo';
+export * from './src/NoPrincipalError';
 export * from './src/ScopedRecord';
 export * from './src/SharedRecord';
 export * from './src/SharedScopeKeyOwners';
