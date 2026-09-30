@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.22.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.21.0...@proteinjs/user@1.22.0) (2026-09-30)
+
+
+### Features
+
+* **user:** a grant-scoped operation with no principal refuses by name — NoPrincipalError carries the table, the operation and the first frame outside the libraries ([52ffcdf](https://github.com/proteinjs/user/commit/52ffcdfee975b09ef28ec8f2c55841b1e8099013))
+
+
+
+
+
 # [1.21.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.20.2...@proteinjs/user@1.21.0) (2026-09-25)
 
 
