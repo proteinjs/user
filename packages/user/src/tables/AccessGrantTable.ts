@@ -20,6 +20,14 @@ export type AccessGrant = Record & {
   resource: Reference<any>;
   resourceTable?: Table<any>['name'];
   accessLevel: 'read' | 'write' | 'admin' | 'owner';
+  /**
+   * WHO CONFERRED THIS GRANT — the stored "shared with you by". A grant conferred through an invite
+   * carries the invite's MINTER (copied at the accept, never the acceptor); a grant a caller inserts
+   * directly carries that caller (a direct share, a re-level); the grant the system confers with no
+   * one behind it — the creator's own owner grant at a shared record's birth — carries nobody.
+   * `created` beside it is the "when".
+   */
+  grantedBy?: Reference<any>;
 };
 
 /**
@@ -105,6 +113,20 @@ export class AccessGrantTable extends Table<AccessGrant> {
       onBeforeInsert: async (_table, insertObj: AccessGrant) => this.assertWellFormed(insertObj),
     }),
     resource: new DynamicReferenceColumn<any>('resource', 'resource_table', false),
+    // The granter, stamped at the table so EVERY direct road carries it — a caller's insert names the
+    // caller; a system insert keeps whatever the writer set (the accept copies the invite's minter;
+    // the shared-record bootstrap sets nothing, and nothing is what the creator's own grant carries).
+    grantedBy: new ReferenceColumn<User>('granted_by', 'user', false, {
+      onBeforeInsert: async (_table, insertObj: AccessGrant, runAsSystem) => {
+        if (runAsSystem || insertObj.grantedBy?._id) {
+          return;
+        }
+        const callerId = new UserRepo().getUser().id;
+        if (callerId) {
+          insertObj.grantedBy = new Reference<User>('user', callerId);
+        }
+      },
+    }),
     resourceTable: new DynamicReferenceTableNameColumn('resource_table', 'resource', {
       onBeforeInsert: async (_table, insertObj: AccessGrant, runAsSystem) => {
         if (runAsSystem) {

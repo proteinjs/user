@@ -29,6 +29,14 @@ export type AccessInvite<T extends Record = any> = Record & {
   accepted?: boolean;
   acceptedBy?: Reference<User>;
   acceptedAt?: Moment;
+  /**
+   * THE MINTER — the account that created this invite, stamped from the caller at the mint. The one
+   * durable "who shared this": an accepted invite copies it onto the grant it confers
+   * (`AccessGrant.grantedBy`), so a recipient's grant names the person who sent the link, never the
+   * last account that happened to open a multi-use link (the telemetry above). Absent only on a
+   * system mint with no caller behind it.
+   */
+  createdBy?: Reference<User>;
 };
 
 export class AccessInviteTable extends Table<AccessInvite> {
@@ -50,6 +58,19 @@ export class AccessInviteTable extends Table<AccessInvite> {
     accepted: new BooleanColumn('accepted', { defaultValue: async () => false }),
     acceptedBy: new ReferenceColumn('accepted_by', new UserTable().name, false),
     acceptedAt: new DateTimeColumn('accepted_at'),
+    // The minter, stamped at the table so EVERY mint road carries it — a caller's insert names the
+    // caller; a system insert keeps whatever the writer set (nothing, when no one is behind it).
+    createdBy: new ReferenceColumn('created_by', new UserTable().name, false, {
+      onBeforeInsert: async (_table, insertObj: AccessInvite, runAsSystem) => {
+        if (runAsSystem || insertObj.createdBy?._id) {
+          return;
+        }
+        const callerId = new UserRepo().getUser().id;
+        if (callerId) {
+          insertObj.createdBy = new Reference<User>(new UserTable().name, callerId);
+        }
+      },
+    }),
     accessLevel: new StringColumn('access_level'),
     resource: new DynamicReferenceColumn('resource', 'resource_table'),
     resourceTable: new DynamicReferenceTableNameColumn('resource_table', 'resource', {

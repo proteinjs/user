@@ -64,16 +64,26 @@ export class AccessInvite<T extends Record> implements AccessInviteService<T> {
       resourceTable: invite.resourceTable,
     });
     const currentLevel = maxAccessLevel(existingGrants.map((grant) => grant.accessLevel));
+    // The grant names WHO SHARED: the invite's minter rides onto it (`grantedBy`), both on the first
+    // accept and on an upgrade through a higher link — never the acceptor, whom the grant is FOR.
+    // The insert is SYSTEM (the owner ceiling lives at the mint), so the table's caller stamp stays
+    // out of it; an invite minted before minters were stored confers a grant that names nobody.
+    const grantedBy = invite.createdBy?._id ? new Reference(tables.User.name, invite.createdBy._id) : undefined;
     if (!currentLevel) {
       await db.insert(tables.AccessGrant, {
         principal: new Reference(tables.User.name, user.id),
         resource: invite.resource,
         resourceTable: invite.resourceTable,
         accessLevel: invite.accessLevel,
+        ...(grantedBy ? { grantedBy } : {}),
       });
     } else if (ACCESS_LEVEL_RANK[invite.accessLevel] > ACCESS_LEVEL_RANK[currentLevel]) {
       const bearer = existingGrants.find((grant) => grant.accessLevel === currentLevel)!;
-      await db.update(tables.AccessGrant, { id: bearer.id, accessLevel: invite.accessLevel });
+      await db.update(tables.AccessGrant, {
+        id: bearer.id,
+        accessLevel: invite.accessLevel,
+        ...(grantedBy ? { grantedBy } : {}),
+      });
     }
 
     // Last-accept telemetry only — `accepted` no longer gates anything.
