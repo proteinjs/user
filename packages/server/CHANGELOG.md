@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.24.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.23.1...@proteinjs/user-server@1.24.0) (2026-10-02)
+
+
+### Features
+
+* **user:** store who conferred a grant — the invite's minter and the grant's granter ([669a5b8](https://github.com/proteinjs/user/commit/669a5b8b7a2bf951f633f68348c3900e0ab0737b))
+
+
+
+
+
 ## [1.23.1](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.23.0...@proteinjs/user-server@1.23.1) (2026-09-30)
 
 **Note:** Version bump only for package @proteinjs/user-server

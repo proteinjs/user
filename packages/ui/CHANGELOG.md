@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.12.3](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.12.2...@proteinjs/user-ui@1.12.3) (2026-10-02)
+
+
+### Bug Fixes
+
+* **user-ui:** annotate the two form customizations' table fields so the declaration emit is portable ([900b033](https://github.com/proteinjs/user/commit/900b0335b92c92fd39924ceff5c23ec1647e8c3c))
+
+
+
+
+
 ## [1.12.2](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.12.1...@proteinjs/user-ui@1.12.2) (2026-09-30)
 
 **Note:** Version bump only for package @proteinjs/user-ui

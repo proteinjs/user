@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.23.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.22.0...@proteinjs/user@1.23.0) (2026-10-02)
+
+
+### Features
+
+* **user:** store who conferred a grant — the invite's minter and the grant's granter ([669a5b8](https://github.com/proteinjs/user/commit/669a5b8b7a2bf951f633f68348c3900e0ab0737b))
+
+
+
+
+
 # [1.22.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.21.0...@proteinjs/user@1.22.0) (2026-09-30)
 
 
