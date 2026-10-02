@@ -1,4 +1,5 @@
 import { Fields, FormButton, FormButtons } from '@proteinjs/ui';
+import type { Table } from '@proteinjs/db';
 import { RecordFormCustomization, recordFormLink, recordTableLink } from '@proteinjs/db-ui';
 import { getSignupService, Invite, tables, UserAuth, USER_PERMISSIONS } from '@proteinjs/user';
 import { emailRegex } from '@proteinjs/util';
@@ -14,7 +15,9 @@ import { emailRegex } from '@proteinjs/util';
  * that can never be redeemed.
  */
 export class InviteRecordFormCustomization extends RecordFormCustomization {
-  public table = tables.Invite;
+  // Annotated so the declaration emit names the type through this package's own `@proteinjs/db` — portable
+  // wherever `@proteinjs/user` resolves a different copy of it (a linked workspace).
+  public table: Table<Invite> = tables.Invite;
 
   getFieldLayout(invite: Invite | undefined, defaultFieldLayout: string[] | string[][]): string[] | string[][] {
     // Sending an invite takes only an email; the token, its expiry, and the inviter are minted server-side.

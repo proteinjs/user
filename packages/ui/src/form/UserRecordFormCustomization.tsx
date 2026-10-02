@@ -1,3 +1,4 @@
+import type { Table } from '@proteinjs/db';
 import { RecordFormCustomization, RecordFormFieldRenderer } from '@proteinjs/db-ui';
 import { tables, User } from '@proteinjs/user';
 import { UserRolesField } from './UserRolesField';
@@ -12,7 +13,9 @@ import { UserStatusField } from './UserStatusField';
  *    whose edits the form's save would silently drop — see `UserStatusField`.
  */
 export class UserRecordFormCustomization extends RecordFormCustomization {
-  public table = tables.User;
+  // Annotated so the declaration emit names the type through this package's own `@proteinjs/db` — portable
+  // wherever `@proteinjs/user` resolves a different copy of it (a linked workspace).
+  public table: Table<User> = tables.User;
 
   getFieldRenderer(fieldName: string, user: User): RecordFormFieldRenderer<User> | undefined {
     if (fieldName === 'roles') {
