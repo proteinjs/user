@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.23.1](https://github.com/proteinjs/user/compare/@proteinjs/user@1.23.0...@proteinjs/user@1.23.1) (2026-10-03)
+
+
+### Performance Improvements
+
+* **user:** the shared-record insert guard proves a caller's grant once per scope per transaction ([6cc7079](https://github.com/proteinjs/user/commit/6cc7079c835370de6d404a0a8ac7ec1223127573))
+
+
+
+
+
 # [1.23.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.22.0...@proteinjs/user@1.23.0) (2026-10-02)
 
 
