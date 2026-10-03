@@ -1,5 +1,5 @@
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
-import Mail from 'nodemailer/lib/mailer';
+import { EmailSender } from '@proteinjs/email-server';
 import { Moment } from 'moment';
 
 /**
@@ -9,9 +9,16 @@ import { Moment } from 'moment';
  * PasswordUpdatedEmailConfig precedent) — an app implements the factory to override.
  */
 
+/**
+ * The message options a config may set — exactly what `EmailSender.sendEmail` accepts, named
+ * through that door so the public declarations lean on @proteinjs/email-server (a dependency)
+ * and never on the transport library's own types (a devDependency a registry copy never has).
+ * @see https://nodemailer.com/message/ for the options the sender's transport takes today
+ */
+export type AccountDeletionEmailOptions = Parameters<EmailSender['sendEmail']>[0];
+
 export interface AccountDeletionRequestedEmailConfig {
-  /** @see https://nodemailer.com/message/ for all available options */
-  options?: Mail.Options;
+  options?: AccountDeletionEmailOptions;
   /** @param purgeAfter when the grace window ends and the account is permanently erased */
   getEmailContent: (purgeAfter: Moment) => {
     text: string;
@@ -47,8 +54,7 @@ export const getDefaultAccountDeletionRequestedEmailConfigFactory =
   };
 
 export interface AccountDeletedEmailConfig {
-  /** @see https://nodemailer.com/message/ for all available options */
-  options?: Mail.Options;
+  options?: AccountDeletionEmailOptions;
   getEmailContent: () => {
     text: string;
     html?: string;
