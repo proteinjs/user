@@ -8,6 +8,7 @@ import {
   getColumnByName,
   getDb,
   getDbAsSystem,
+  getDefaultTransactionContextFactory,
   getTables,
   withRecordColumns,
   Reference,
@@ -56,13 +57,51 @@ async function callerHasWriteAccess(
   permissionSourceTableName: string,
   on: { table: string; operation: string }
 ): Promise<boolean> {
+  const principal = requirePrincipal(on.table, on.operation);
+  const memo = transactionGrantMemo();
+  const key = `${principal}|${permissionSourceTableName}|${permissionSourceId}`;
+  const proven = memo?.get(key);
+  if (proven !== undefined) {
+    return proven;
+  }
   const qb = new QueryBuilder(tables.AccessGrant.name);
-  qb.condition({ field: 'principal', operator: '=', value: requirePrincipal(on.table, on.operation) });
+  qb.condition({ field: 'principal', operator: '=', value: principal });
   qb.condition({ field: 'resource', operator: '=', value: permissionSourceId });
   qb.condition({ field: 'resourceTable', operator: '=', value: permissionSourceTableName });
   qb.condition({ field: 'accessLevel', operator: 'IN', value: WRITE_ACCESS_LEVELS });
   const grants = await getDbAsSystem<AccessGrant>().query(tables.AccessGrant, qb);
-  return grants.length > 0;
+  const held = grants.length > 0;
+  memo?.set(key, held);
+  return held;
+}
+
+/**
+ * THE GRANTS ONE TRANSACTION HAS ALREADY PROVEN: {@link callerHasWriteAccess} is answered once per
+ * (principal, permission source) inside a transaction and reused for every later row of the same
+ * transaction — a transaction that attaches many rows to one scope (a document's whole subtree
+ * written in one unit) asks the grant table once, not once per row. Inside a read-write transaction
+ * every ask is a serial round trip, so the row count was the trip count. Keyed by the transaction's
+ * own object, a memo lives exactly as long as its transaction and never crosses one (a WeakMap,
+ * released with it). Outside a transaction nothing is memoized — every lone insert asks, as it
+ * always has.
+ *
+ * The one window the memo opens: a grant revoked inside the same transaction, after it was proven,
+ * is not asked again — the transaction's own earlier proof stands until it commits or aborts.
+ */
+const grantsProvenInTransaction = new WeakMap<object, Map<string, boolean>>();
+
+/** The current transaction's memo, created on first use; undefined outside a transaction. */
+function transactionGrantMemo(): Map<string, boolean> | undefined {
+  const transaction = getDefaultTransactionContextFactory()?.getTransactionContext().currentTransaction;
+  if (!transaction || typeof transaction !== 'object') {
+    return undefined;
+  }
+  let memo = grantsProvenInTransaction.get(transaction);
+  if (!memo) {
+    memo = new Map();
+    grantsProvenInTransaction.set(transaction, memo);
+  }
+  return memo;
 }
 
 /**
