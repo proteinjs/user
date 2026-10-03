@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.24.2](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.24.1...@proteinjs/user-server@1.24.2) (2026-10-03)
+
+
+### Bug Fixes
+
+* **user-server:** the public declarations lean on no devDependency's types ([7326f0f](https://github.com/proteinjs/user/commit/7326f0f560e6962c4aad3e092d02d473c30393de))
+
+
+
+
+
 ## [1.24.1](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.24.0...@proteinjs/user-server@1.24.1) (2026-10-03)
 
 
