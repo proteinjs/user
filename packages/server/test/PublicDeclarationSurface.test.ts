@@ -21,6 +21,16 @@ type DeclarationImport = {
   file: string;
   /** How it is named: an import / export clause, an `import('x')` type, or a `/// <reference types>`. */
   via: 'import' | 'import()' | 'reference types';
+  /** False for a bindingless `import 'x'` — a side effect a consumer's compiler needs no declarations for. */
+  bindings: boolean;
+};
+
+/** The package whose declaration file answers a specifier in this tree, by TypeScript's own resolver. */
+type DeclarationProvider = {
+  /** `@types/name`, or the package itself when it ships its own declarations. */
+  packageName: string;
+  /** The declaration file resolved, relative to the package. */
+  file: string;
 };
 
 /**
@@ -48,11 +58,53 @@ class PublicDeclarationSurface {
     return Array.from(new Set(this.imports.map((entry) => entry.packageName))).sort();
   }
 
+  /**
+   * Where a specifier's declarations come from in this package's own tree — the resolution a
+   * consumer's compiler repeats from its own node_modules — or undefined when no declaration file
+   * answers it (a JavaScript-only package with no `@types` twin installed resolves to its `.js`).
+   */
+  providerOf(entry: DeclarationImport): DeclarationProvider | undefined {
+    const from = path.resolve(this.packageDir, entry.file);
+    const specifier = entry.via === 'reference types' ? `@types/${entry.specifier}` : entry.specifier;
+    const { resolvedModule } = ts.resolveModuleName(
+      specifier,
+      from,
+      { moduleResolution: ts.ModuleResolutionKind.Node10 },
+      ts.sys
+    );
+    if (!resolvedModule || !PublicDeclarationSurface.DECLARATION_EXTENSIONS.has(resolvedModule.extension)) {
+      return undefined;
+    }
+    const file = path.relative(this.packageDir, resolvedModule.resolvedFileName);
+    const packageName = resolvedModule.packageId?.name ?? PublicDeclarationSurface.packageUnderNodeModules(file);
+    return packageName ? { packageName, file } : undefined;
+  }
+
   /** `@scope/name/sub` -> `@scope/name`; `name/sub` -> `name`; `node:fs` -> `fs`. */
   static packageNameOf(specifier: string): string {
     const bare = specifier.startsWith('node:') ? specifier.slice('node:'.length) : specifier;
     const parts = bare.split('/');
     return bare.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+  }
+
+  private static readonly DECLARATION_EXTENSIONS = new Set<string>([
+    '.d.ts',
+    '.ts',
+    '.tsx',
+    '.d.mts',
+    '.mts',
+    '.d.cts',
+    '.cts',
+  ]);
+
+  /** The package a resolved file belongs to, read from its path's last `node_modules/` segment. */
+  private static packageUnderNodeModules(file: string): string | undefined {
+    const segments = file.split(path.sep);
+    const at = segments.lastIndexOf('node_modules');
+    if (at < 0 || at + 1 >= segments.length) {
+      return undefined;
+    }
+    return segments[at + 1].startsWith('@') ? segments.slice(at + 1, at + 3).join('/') : segments[at + 1];
   }
 
   private walk(file: string) {
@@ -69,7 +121,7 @@ class PublicDeclarationSurface {
       this.walk(this.declarationFileFor(file, reference.fileName));
     }
     for (const reference of source.typeReferenceDirectives) {
-      this.record(file, reference.fileName, 'reference types');
+      this.record(file, reference.fileName, 'reference types', true);
     }
     const visit = (node: ts.Node) => {
       const specifier = this.specifierOf(node);
@@ -77,7 +129,7 @@ class PublicDeclarationSurface {
         if (specifier.text.startsWith('.')) {
           this.walk(this.declarationFileFor(file, specifier.text));
         } else {
-          this.record(file, specifier.text, specifier.via);
+          this.record(file, specifier.text, specifier.via, specifier.bindings);
         }
       }
       ts.forEachChild(node, visit);
@@ -85,27 +137,31 @@ class PublicDeclarationSurface {
     visit(source);
   }
 
-  private specifierOf(node: ts.Node): { text: string; via: DeclarationImport['via'] } | undefined {
-    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
-      return ts.isStringLiteral(node.moduleSpecifier) ? { text: node.moduleSpecifier.text, via: 'import' } : undefined;
+  private specifierOf(node: ts.Node): { text: string; via: DeclarationImport['via']; bindings: boolean } | undefined {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      return { text: node.moduleSpecifier.text, via: 'import', bindings: node.importClause !== undefined };
+    }
+    if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      return { text: node.moduleSpecifier.text, via: 'import', bindings: true };
     }
     if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
       const { expression } = node.moduleReference;
-      return ts.isStringLiteral(expression) ? { text: expression.text, via: 'import' } : undefined;
+      return ts.isStringLiteral(expression) ? { text: expression.text, via: 'import', bindings: true } : undefined;
     }
     if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
       const { literal } = node.argument;
-      return ts.isStringLiteral(literal) ? { text: literal.text, via: 'import()' } : undefined;
+      return ts.isStringLiteral(literal) ? { text: literal.text, via: 'import()', bindings: true } : undefined;
     }
     return undefined;
   }
 
-  private record(file: string, specifier: string, via: DeclarationImport['via']) {
+  private record(file: string, specifier: string, via: DeclarationImport['via'], bindings: boolean) {
     this.imports.push({
       specifier,
       packageName: PublicDeclarationSurface.packageNameOf(specifier),
       file: path.relative(this.packageDir, file),
       via,
+      bindings,
     });
   }
 
@@ -132,6 +188,13 @@ class PublicDeclarationSurface {
  * same types whether its copy is installed from the registry (devDependencies absent) or linked
  * from a checkout (devDependencies present), and the same whether or not a transitive package
  * happens to hoist beside it.
+ *
+ * Two clauses, because a specifier and its declarations can come from different packages: the
+ * specifier's own package must be declared (the runtime import resolves for the consumer), AND the
+ * package whose declaration file answers it must be declared — a dependency that ships no
+ * declarations of its own (nodemailer) is typed by its `@types` twin, which is then part of the
+ * public surface and belongs beside it in `dependencies`, never in `devDependencies`. Node's
+ * builtins and the `node` types that declare them are the consumer's own environment.
  */
 describe('the public declaration surface resolves against the declared dependencies alone', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(PACKAGE_DIR, 'package.json'), 'utf8')) as PackageManifest;
@@ -161,6 +224,9 @@ describe('the public declaration surface resolves against the declared dependenc
     expect(surface.packageNames()).toEqual(
       expect.arrayContaining(['@proteinjs/reflection', '@proteinjs/user', 'moment'])
     );
+    // The resolver half of the control: a package that ships its own declarations answers for itself.
+    const reflection = surface.imports.find((entry) => entry.packageName === '@proteinjs/reflection');
+    expect(reflection && surface.providerOf(reflection)?.packageName).toBe('@proteinjs/reflection');
   });
 
   it('names no package outside dependencies / peerDependencies / node builtins', () => {
@@ -171,5 +237,24 @@ describe('the public declaration surface resolves against the declared dependenc
           `${entry.file} names '${entry.specifier}' (${entry.via}) — ${entry.packageName} is not in dependencies or peerDependencies`
       );
     expect(undeclared).toEqual([]);
+  });
+
+  it('resolves every declaration it names from a declared package (a dependency typed by its @types twin declares the twin too)', () => {
+    const untyped = surface.imports
+      .filter((entry) => !isBuiltin(entry) && entry.bindings)
+      .map((entry) => {
+        const provider = surface.providerOf(entry);
+        if (!provider) {
+          return [`${entry.file} names '${entry.specifier}' (${entry.via}) — no declaration file resolves for it`];
+        }
+        if (declared.has(provider.packageName)) {
+          return [];
+        }
+        return [
+          `${entry.file} names '${entry.specifier}' (${entry.via}) — its declarations come from ${provider.packageName} (${provider.file}), which is not in dependencies or peerDependencies`,
+        ];
+      })
+      .reduce((all, lines) => all.concat(lines), [] as string[]);
+    expect(untyped).toEqual([]);
   });
 });
