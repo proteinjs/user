@@ -1,0 +1,14 @@
+{
+  "branch": "fix/dev-login-existing-account-signs-in",
+  "packages": [
+    "server"
+  ],
+  "suites": [
+    "packages/server/test/DevLogin.test.ts",
+    "packages/server/test/DevLoginBootstrapAdmin.test.ts",
+    "packages/server/test/DevLoginBootstrapRoles.test.ts",
+    "packages/server/test/DevLoginStaleCookieFirstHit.test.ts",
+    "packages/server/test/SignupRoute.test.ts"
+  ],
+  "removes": []
+}

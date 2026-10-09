@@ -141,6 +141,46 @@ describe('devLogin route', () => {
     }
   });
 
+  it('establishes a session for a declared machine account whose row the boot sync made — the door creates nothing, the account signs in as it stands', async () => {
+    // The dev door exists so automated dev-loop testing can self-serve a session for any account of
+    // the build — a declared machine account's included, once the boot sync has created its row. The
+    // door never CREATES one (the case above); an existing row is signed in like any other account's.
+    class SyncedMachineAccount extends MachineAccount {
+      id = 'synced-machine';
+      email = 'synced.machine@test.local';
+      accountName = 'Synced machine';
+      roles = [];
+      secretName = 'synced-machine-secret';
+    }
+    const declaration = new SyncedMachineAccount();
+    const repo = SourceRepository.get() as unknown as { namedObjectCache: Record<string, unknown[]> };
+    repo.namedObjectCache['@proteinjs/db/SourceRecordLoader'] = [
+      {
+        qualifiedName: '@proteinjs/user-server-test/SyncedMachineAccount',
+        packageName: '@test/declarer',
+        object: declaration,
+      },
+    ];
+    // The row as the boot sync writes it from the declaration: sync-owned, the machine marker set, no password.
+    await getDbAsSystem().insert(tables.User, { ...declaration.record, isLoadedFromSource: true } as never);
+    try {
+      const outcome = await invokeDevLogin({ email: declaration.email });
+
+      expect(outcome.status).toBeUndefined();
+      expect(outcome.redirect).toBe('/');
+      expect(outcome.loggedInAs).toBe(declaration.email);
+      expect(outcome.sessionRegenerated).toBe(true);
+      expect(outcome.sessionSaved).toBe(true);
+      const row = await getUserRow(declaration.email);
+      expect(row?.machine).toBe(true);
+      expect(row?.isLoadedFromSource).toBe(true);
+      expect(row?.password ?? null).toBeNull();
+    } finally {
+      delete repo.namedObjectCache['@proteinjs/db/SourceRecordLoader'];
+      await getDbAsSystem().delete(tables.User, { email: declaration.email });
+    }
+  });
+
   it('rejects a malformed same-domain ?email with 400 — no session, no stray account', async () => {
     // The observed shape: an unencoded `+` in the query decodes to a space, so
     // `?email=brent+shareproof-a@...` arrived as `brent shareproof-a@...` and minted a stray

@@ -1,5 +1,7 @@
 import { Route } from '@proteinjs/server-api';
+import { getDbAsSystem } from '@proteinjs/db';
 import { Logger } from '@proteinjs/logger';
+import { tables } from '@proteinjs/user';
 import { RequestDigests } from '@proteinjs/util-node';
 import { emailRegex } from '@proteinjs/util';
 import { establishSession } from '../authentication/establishSession';
@@ -32,11 +34,15 @@ const emailDomain = (address: string) => address.slice(address.lastIndexOf('@') 
  * decodes to a SPACE, so the route minted a stray `brent lane-a@…` account. The 400 names the
  * remedy (`%2B`) because plus-addressing is the fan-out convention this door exists for.
  *
- * A missing account is created through the normal signup creation path (`Signup.createAccount`)
- * as a normal test user — password `test`, matching the seeded test-account convention, so
- * interactive login works for the same identity. Composes with userCache's missing-account→guest
- * seam: that covers sessions whose account was deleted AFTER minting; this ensures dev-minted
- * sessions reference a real account from the start.
+ * An existing account signs in as it stands — a person's row, or a machine account's row the boot
+ * sync made from its declaration (the machine's roles ride the session; its credential is never
+ * involved). A missing account is created through the normal signup creation path
+ * (`Signup.createAccount`) as a normal test user — password `test`, matching the seeded
+ * test-account convention, so interactive login works for the same identity — and never under an
+ * address a machine-account declaration owns (the creation path refuses it in words; the door
+ * answers 400 with them). Composes with userCache's missing-account→guest seam: that covers
+ * sessions whose account was deleted AFTER minting; this ensures dev-minted sessions reference a
+ * real account from the start.
  *
  * First-admin door (`DEV_BOOTSTRAP_ADMIN_EMAIL`): a dev server on a FRESH real database has no
  * privileged account and no sanctioned raw write to make one. Behind the same two gates, when
@@ -91,22 +97,30 @@ export const devLogin: Route = {
     email = email.toLowerCase();
     const digests = new RequestDigests();
 
+    // An EXISTING account signs in as it stands — a person's row, or a machine account's row the boot
+    // sync made from its declaration (this door exists so automated dev-loop testing can self-serve a
+    // session for any account of the build). The door CREATES only a missing account, and never one
+    // under an address a declaration owns: createAccount refuses that in words (a row the sync does
+    // not own would make it refuse the declaration), and the door answers the way its other refusals
+    // do — the words, no session, no row.
     let creation: 'created' | 'exists';
-    try {
-      creation = await new Signup().createAccount({
-        name: email.slice(0, email.indexOf('@')),
-        email,
-        password: 'test',
-        emailVerified: false, // same shape an inviteless signup produces
-        invitedBy: null,
-      });
-    } catch (error) {
-      // createAccount refuses in plain words (an address a machine-account declaration owns); the
-      // dev door answers the way its other refusals do — the words, no session, no row.
-      response
-        .status(400)
-        .send(`/dev/login: ${error instanceof Error ? error.message : 'the account could not be created'}`);
-      return;
+    if (await getDbAsSystem().get(tables.User, { email })) {
+      creation = 'exists';
+    } else {
+      try {
+        creation = await new Signup().createAccount({
+          name: email.slice(0, email.indexOf('@')),
+          email,
+          password: 'test',
+          emailVerified: false, // same shape an inviteless signup produces
+          invitedBy: null,
+        });
+      } catch (error) {
+        response
+          .status(400)
+          .send(`/dev/login: ${error instanceof Error ? error.message : 'the account could not be created'}`);
+        return;
+      }
     }
     if (creation === 'created') {
       logger.info({ message: 'Dev auto-login created missing test account', obj: { account: digests.account(email) } });
