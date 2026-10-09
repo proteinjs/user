@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.24.4](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.24.3...@proteinjs/user-server@1.24.4) (2026-10-09)
+
+
+### Bug Fixes
+
+* **dev-login:** an existing account signs in as it stands; the door creates only a missing one ([fbdd545](https://github.com/proteinjs/user/commit/fbdd545aaddc89d23aaf2a31cdcc3a916b6a3d74))
+
+
+
+
+
 ## [1.24.3](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.24.2...@proteinjs/user-server@1.24.3) (2026-10-03)
 
 
