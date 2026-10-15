@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.3.5](https://github.com/proteinjs/user/compare/@proteinjs/user-auth@1.3.4...@proteinjs/user-auth@1.3.5) (2026-10-15)
+
+
+### Bug Fixes
+
+* **auth:** isLoggedIn requires a session user with an email ([e95e5e2](https://github.com/proteinjs/user/commit/e95e5e2ce9d49dddad234bcb2856868b8ca2af44))
+
+
+
+
+
 ## [1.3.4](https://github.com/proteinjs/user/compare/@proteinjs/user-auth@1.3.3...@proteinjs/user-auth@1.3.4) (2026-09-20)
 
 **Note:** Version bump only for package @proteinjs/user-auth

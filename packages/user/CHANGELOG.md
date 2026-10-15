@@ -3,6 +3,14 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.23.2](https://github.com/proteinjs/user/compare/@proteinjs/user@1.23.1...@proteinjs/user@1.23.2) (2026-10-15)
+
+**Note:** Version bump only for package @proteinjs/user
+
+
+
+
+
 ## [1.23.1](https://github.com/proteinjs/user/compare/@proteinjs/user@1.23.0...@proteinjs/user@1.23.1) (2026-10-03)
 
 
