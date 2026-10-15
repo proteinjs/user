@@ -29,6 +29,11 @@ export class UserAuth {
   private static userRepo?: AuthenticatedUserRepo;
   private static permissionRolesMapping?: PermissionRolesMapping;
 
+  /**
+   * True only for a session user whose email is set and is not the guest's. A context the request
+   * middleware never seeded (a scheduled job, a boot-time task) has no user at all — the repo hands
+   * back an empty record, or nothing — and that is nobody, not "someone other than the guest".
+   */
   static isLoggedIn(): boolean {
     const userRepo = UserAuth.getUserRepo();
     if (!userRepo) {
@@ -36,7 +41,7 @@ export class UserAuth {
     }
 
     const user = userRepo.getUser();
-    return user.email != guestUser.email;
+    return !!user?.email && user.email !== guestUser.email;
   }
 
   /**

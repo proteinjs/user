@@ -1,5 +1,5 @@
 import { SourceRepository } from '@proteinjs/reflection';
-import { UserAuth, AuthenticatedUserRepo } from '../src/UserAuth';
+import { UserAuth, AuthenticatedUser, AuthenticatedUserRepo } from '../src/UserAuth';
 import { PermissionRolesMapping } from '../src/PermissionRolesMapping';
 
 /**
@@ -190,5 +190,34 @@ describe('UserAuth — NULL/absent roles tolerance (the account-menu white-scree
   it('a null-roles user still reads as logged in — role-less, never a crash (the menus render)', () => {
     setUserWithRawRoles(null);
     expect(UserAuth.isLoggedIn()).toBe(true);
+  });
+});
+
+describe('UserAuth.isLoggedIn — a registered repo with no session user denies', () => {
+  // An in-process caller (a scheduled job, a boot-time task) reaches the gate without the request
+  // middleware that seeds a session user, and the repo hands back whatever its session storage
+  // holds — a user with no email, or nothing at all. That is nobody, not "someone other than the
+  // guest": the pre-fix inequality against the guest email read it as logged in.
+  const setRawUser = (user: unknown) => {
+    (UserAuth as unknown as UserAuthInternals).userRepo = {
+      getUser: () => user as AuthenticatedUser,
+    };
+  };
+
+  beforeEach(() => {
+    clearUserRepo();
+  });
+
+  afterEach(() => {
+    clearUserRepo();
+  });
+
+  it.each([
+    ['no email field', { roles: [] }],
+    ['an empty email', { email: '', roles: [] }],
+    ['no user at all', undefined],
+  ])('denies when the repo hands back %s', (_shape, user) => {
+    setRawUser(user);
+    expect(UserAuth.isLoggedIn()).toBe(false);
   });
 });
