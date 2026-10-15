@@ -1,6 +1,0 @@
-{
-  "branch": "fix/is-logged-in-requires-session-user",
-  "packages": ["auth"],
-  "suites": ["packages/auth/test/UserAuth.test.ts"],
-  "removes": []
-}
