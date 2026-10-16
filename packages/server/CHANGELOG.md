@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.25.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.24.5...@proteinjs/user-server@1.25.0) (2026-10-16)
+
+
+### Features
+
+* **server:** the dev-loop doors open under their own switch, DEV_LOOP_DOORS, beside DEVELOPMENT ([b005e0b](https://github.com/proteinjs/user/commit/b005e0bf5b6822178c5571deaeced2ea9c507dbb))
+
+
+
+
+
 ## [1.24.5](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.24.4...@proteinjs/user-server@1.24.5) (2026-10-15)
 
 **Note:** Version bump only for package @proteinjs/user-server
