@@ -1,0 +1,6 @@
+{
+  "branch": "feat/dev-loop-doors",
+  "packages": ["server"],
+  "suites": ["packages/server/test/DevLogin.test.ts"],
+  "removes": []
+}

@@ -8,6 +8,7 @@ import { establishSession } from '../authentication/establishSession';
 import { Roles } from '../services/Roles';
 import { Signup } from '../services/Signup';
 import { DevBootstrapRoles } from './DevBootstrapRoles';
+import { devLoopDoorsOpen } from './devLoopDoorsOpen';
 
 const logger = new Logger({ name: 'devLogin' });
 
@@ -23,7 +24,9 @@ const emailDomain = (address: string) => address.slice(address.lastIndexOf('@') 
  * used as before.
  *
  * Double-gated, acts only when BOTH hold; otherwise the path answers 404 as if unregistered:
- * 1. `process.env.DEVELOPMENT` — the dev-server switch, never set in prod images.
+ * 1. A dev switch (`devLoopDoorsOpen`): `DEVELOPMENT` — the whole dev-server switch, never set in a
+ *    deployed image — OR `DEV_LOOP_DOORS`, the doors' own switch for a hosted development deployment,
+ *    which runs the production shape and so can never carry `DEVELOPMENT`; test and prod set neither.
  * 2. `DEV_AUTO_LOGIN_EMAIL` — explicit per-launch opt-in naming the default account.
  *
  * Domain rail: `?email` must share `DEV_AUTO_LOGIN_EMAIL`'s domain — even a dev server must not
@@ -70,7 +73,7 @@ export const devLogin: Route = {
   method: 'get',
   onRequest: async (request: any, response): Promise<void> => {
     const envEmail = (process.env.DEV_AUTO_LOGIN_EMAIL ?? '').trim();
-    if (!process.env.DEVELOPMENT || !envEmail) {
+    if (!devLoopDoorsOpen(process.env) || !envEmail) {
       response.status(404).send();
       return;
     }

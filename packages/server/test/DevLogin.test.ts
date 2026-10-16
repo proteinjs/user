@@ -12,7 +12,8 @@ const testEnv = new UserServerTestEnvironment();
  * `?email=` (absent → `DEV_AUTO_LOGIN_EMAIL`), auto-creating a missing account through the normal
  * signup creation path (`Signup.createAccount`) so parallel agent-driven verification can
  * self-serve distinct users. Two rails under test:
- * - Double gate: `DEVELOPMENT` AND `DEV_AUTO_LOGIN_EMAIL` both present, else 404 (unchanged).
+ * - Double gate: a dev switch (`DEVELOPMENT`, or `DEV_LOOP_DOORS` for a hosted development deployment
+ *   that cannot carry the whole dev-server switch) AND `DEV_AUTO_LOGIN_EMAIL` both present, else 404.
  * - Domain rail: a `?email=` param must share `DEV_AUTO_LOGIN_EMAIL`'s domain — even a dev server
  *   must not mint sessions (much less accounts) for arbitrary domains. Others 400.
  * The first-admin door (`DEV_BOOTSTRAP_ADMIN_EMAIL`) and the role-bootstrap door (`DEV_BOOTSTRAP_ROLES`)
@@ -27,6 +28,7 @@ const getUserRow = async (email: string) => await getDbAsSystem().get(tables.Use
 describe('devLogin route', () => {
   const originalEnv = {
     DEVELOPMENT: process.env.DEVELOPMENT,
+    DEV_LOOP_DOORS: process.env.DEV_LOOP_DOORS,
     DEV_AUTO_LOGIN_EMAIL: process.env.DEV_AUTO_LOGIN_EMAIL,
     DEV_BOOTSTRAP_ADMIN_EMAIL: process.env.DEV_BOOTSTRAP_ADMIN_EMAIL,
     DEV_BOOTSTRAP_ROLES: process.env.DEV_BOOTSTRAP_ROLES,
@@ -42,6 +44,7 @@ describe('devLogin route', () => {
 
   beforeEach(() => {
     process.env.DEVELOPMENT = 'true';
+    delete process.env.DEV_LOOP_DOORS;
     process.env.DEV_AUTO_LOGIN_EMAIL = ENV_EMAIL;
     delete process.env.DEV_BOOTSTRAP_ADMIN_EMAIL;
     delete process.env.DEV_BOOTSTRAP_ROLES;
@@ -207,7 +210,7 @@ describe('devLogin route', () => {
     expect(await getUserRow('agent6+lane-a@test.local')).toBeDefined();
   });
 
-  it('404s when DEVELOPMENT is unset, even with a ?email', async () => {
+  it('404s with neither switch (DEVELOPMENT and DEV_LOOP_DOORS unset), even with a ?email', async () => {
     delete process.env.DEVELOPMENT;
 
     const outcome = await invokeDevLogin({ email: 'agent4@test.local' });
@@ -215,6 +218,33 @@ describe('devLogin route', () => {
     expect(outcome.status).toBe(404);
     expect(outcome.loggedInAs).toBeUndefined();
     expect(await getUserRow('agent4@test.local')).toBeUndefined();
+  });
+
+  it('opens under the dev-loop switch alone (DEV_LOOP_DOORS=1, DEVELOPMENT unset — a hosted development deployment): a session for a same-domain ?email, redirect to /', async () => {
+    delete process.env.DEVELOPMENT;
+    process.env.DEV_LOOP_DOORS = '1';
+
+    const outcome = await invokeDevLogin({ email: 'agent7@test.local' });
+
+    expect(outcome.status).toBeUndefined();
+    expect(outcome.loggedInAs).toBe('agent7@test.local');
+    expect(outcome.sessionRegenerated).toBe(true);
+    expect(outcome.sessionSaved).toBe(true);
+    expect(outcome.redirect).toBe('/');
+    expect(await getUserRow('agent7@test.local')).toBeDefined();
+  });
+
+  it('404s under DEV_LOOP_DOORS=1 when DEV_AUTO_LOGIN_EMAIL is unset — the double gate holds under the new switch', async () => {
+    delete process.env.DEVELOPMENT;
+    process.env.DEV_LOOP_DOORS = '1';
+    delete process.env.DEV_AUTO_LOGIN_EMAIL;
+
+    const outcome = await invokeDevLogin({ email: 'agent8@test.local' });
+
+    expect(outcome.status).toBe(404);
+    expect(outcome.loggedInAs).toBeUndefined();
+    expect(outcome.sessionSaved).toBe(false);
+    expect(await getUserRow('agent8@test.local')).toBeUndefined();
   });
 
   it('404s when DEV_AUTO_LOGIN_EMAIL is unset, even with a ?email', async () => {
