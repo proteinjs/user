@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/user-server",
-  "version": "1.25.0",
+  "version": "1.26.0",
   "description": "User server components",
   "publishConfig": {
     "access": "public"
@@ -30,7 +30,7 @@
     "@proteinjs/server": "^3.8.5",
     "@proteinjs/server-api": "^3.0.11",
     "@proteinjs/service": "^1.5.1",
-    "@proteinjs/user": "^1.23.2",
+    "@proteinjs/user": "^1.24.0",
     "@proteinjs/util": "^1.6.1",
     "@proteinjs/util-node": "^1.11.1",
     "@types/express-session": "1.17.0",

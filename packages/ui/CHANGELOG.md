@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.12.6](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.12.5...@proteinjs/user-ui@1.12.6) (2026-10-16)
+
+
+### Bug Fixes
+
+* **server:** floor @proteinjs/db at ^1.55.0 (the row reader that seats by column name alone) and the Spanner driver at ^1.35.4 ([17daed9](https://github.com/proteinjs/user/commit/17daed9325d0638652be54e5ea3a48e65002d1f3))
+
+
+
+
+
 ## [1.12.5](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.12.4...@proteinjs/user-ui@1.12.5) (2026-10-15)
 
 **Note:** Version bump only for package @proteinjs/user-ui

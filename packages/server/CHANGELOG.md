@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.26.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.25.0...@proteinjs/user-server@1.26.0) (2026-10-16)
+
+
+### Bug Fixes
+
+* **server:** floor @proteinjs/db at ^1.55.0 (the row reader that seats by column name alone) and the Spanner driver at ^1.35.4 ([17daed9](https://github.com/proteinjs/user/commit/17daed9325d0638652be54e5ea3a48e65002d1f3))
+
+
+### Features
+
+* **server:** retire the legacy user.roles cells once role_list carries the roles; the comments replaced by the test that proves what the ORM reads ([13c6742](https://github.com/proteinjs/user/commit/13c674245caaec2e74e286090858c5e6a366d22b))
+
+
+
+
+
 # [1.25.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.24.5...@proteinjs/user-server@1.25.0) (2026-10-16)
 
 
