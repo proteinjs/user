@@ -4,18 +4,26 @@ import { SpannerEmulatorProvisioner, getDropTestTable } from '@proteinjs/db-driv
 import { SourceRepository } from '@proteinjs/reflection';
 import { tables } from '@proteinjs/user';
 import { BackfillUserRolesArray } from '../src/migrations/BackfillUserRolesArray';
+import { RetireLegacyUserRolesColumn } from '../src/migrations/RetireLegacyUserRolesColumn';
 
 /**
- * The user.roles cutover migration against a real Spanner emulator, simulating a deployed
+ * The user.roles cutover migrations against a real Spanner emulator, simulating a deployed
  * database: the user table carries the NEW schema (role_list, added by schema sync) PLUS the
  * legacy comma-string `roles` column with pre-cutover data — exactly the state a deployment is
- * in when the migration runs.
+ * in when the migrations run. Every read below goes through the ORM: what the row reader makes
+ * of a row holding BOTH cells — the legacy `roles` (a word, an empty string, NULL) and the typed
+ * `role_list` — is the law this suite proves, not a comment's claim.
  *
  * Pinned outcomes:
  * - legacy comma strings land in role_list as normalized arrays (trim, drop empties, dedupe)
- * - empty/NULL legacy values stay untouched (no roles then, no roles now)
- * - rows already carrying role_list are never clobbered (idempotence / post-cutover grants win)
- * - a database that never had the legacy column (fresh install) is a clean no-op
+ * - empty/NULL legacy values stay untouched by the backfill (no roles then, no roles now)
+ * - rows already carrying role_list are never clobbered (idempotence / post-cutover grants win),
+ *   and the ORM reads the array beside the stale legacy word
+ * - the retirement NULLs every legacy cell the typed column has absorbed — or that held nothing —
+ *   and never one the backfill has not consumed; the ORM reads the same arrays before and after
+ *   (a NULL legacy cell beside the array is the shape a row reader seating by property name
+ *   would blank)
+ * - a database that never had the legacy column (fresh install) is a clean no-op for both
  */
 
 const spannerDriver = new SpannerDriver({
@@ -33,6 +41,8 @@ class DbDriverFactory {
 const dropTable = getDropTestTable(spannerDriver);
 
 const runMigration = async () => await new BackfillUserRolesArray().record.run();
+const runRetirement = async () => await new RetireLegacyUserRolesColumn().record.run();
+const estimateRetirement = async () => await new RetireLegacyUserRolesColumn().record.estimate();
 
 const rawUserInsert = async (id: string, legacyRoles: string | null) => {
   const rolesValue = legacyRoles === null ? 'NULL' : `'${legacyRoles}'`;
@@ -50,6 +60,14 @@ const rawRoleList = async (id: string) =>
       sql: `SELECT role_list FROM ${tables.User.name} WHERE id = '${id}'`,
     }))) as unknown as Array<{ role_list: string | null }>
   )[0].role_list;
+
+/** The legacy cell as the database holds it. */
+const rawRoles = async (id: string) =>
+  (
+    (await spannerDriver.runQuery(() => ({
+      sql: `SELECT roles FROM ${tables.User.name} WHERE id = '${id}'`,
+    }))) as unknown as Array<{ roles: string | null }>
+  )[0].roles;
 
 describe('BackfillUserRolesArray — legacy comma-string roles → typed role_list', () => {
   beforeAll(async () => {
@@ -72,7 +90,63 @@ describe('BackfillUserRolesArray — legacy comma-string roles → typed role_li
 
   it('is a clean no-op on a database that never had the legacy roles column', async () => {
     expect(await runMigration()).toEqual({ backfilled: 0 });
+    expect(await runRetirement()).toEqual({ retired: 0 });
+    expect(await estimateRetirement()).toMatchObject({ units: 0, unit: 'rows' });
   }, 60000);
+
+  it('retires every legacy cell the typed column has absorbed, never one the backfill has not consumed; the ORM reads the same arrays before and after', async () => {
+    await spannerDriver.runUpdateSchema(`ALTER TABLE ${tables.User.name} ADD COLUMN roles STRING(255)`);
+    const db = getDbAsSystem();
+    try {
+      await rawUserInsert('retire-carried', 'admin');
+      await rawUserInsert('retire-empty', '');
+      await rawUserInsert('retire-null', null);
+      // A legacy value the backfill has not consumed yet: role_list NULL, legacy text present.
+      await rawUserInsert('retire-unconsumed', 'ops');
+      // A post-cutover grant beside a stale legacy word (the collision shape).
+      const granted = await db.insert(tables.User, {
+        name: 'Granted',
+        email: 'granted@test.local',
+        password: 'test',
+        emailVerified: false,
+        roles: ['ops', 'dev'],
+      });
+      await spannerDriver.runDml(() => ({
+        sql: `UPDATE ${tables.User.name} SET roles = 'admin' WHERE id = '${granted.id}'`,
+      }));
+      // Carry the one consumable legacy value over (as the backfill would); leave 'retire-unconsumed' as a later backfill's.
+      await db.update(tables.User, { id: 'retire-carried', roles: ['admin'] });
+
+      // Before: the ORM reads the arrays beside the legacy cells, whatever they hold.
+      expect((await db.get(tables.User, { id: 'retire-carried' })).roles).toEqual(['admin']);
+      expect((await db.get(tables.User, { id: granted.id })).roles).toEqual(['ops', 'dev']);
+
+      expect(await estimateRetirement()).toMatchObject({ units: 3, unit: 'rows' });
+      expect(await runRetirement()).toEqual({ retired: 3 });
+
+      // The retired cells are NULL; the unconsumed legacy value is untouched.
+      expect(await rawRoles('retire-carried')).toBeNull();
+      expect(await rawRoles('retire-empty')).toBeNull();
+      expect(await rawRoles('retire-null')).toBeNull();
+      expect(await rawRoles(granted.id)).toBeNull();
+      expect(await rawRoles('retire-unconsumed')).toBe('ops');
+      expect(await rawRoleList('retire-unconsumed')).toBeNull();
+
+      // After: a NULL legacy cell beside the array — the ORM still reads the array.
+      expect((await db.get(tables.User, { id: 'retire-carried' })).roles).toEqual(['admin']);
+      expect((await db.get(tables.User, { id: granted.id })).roles).toEqual(['ops', 'dev']);
+      const everyone = await db.query(tables.User, {});
+      expect(everyone.find((user) => user.id === granted.id)?.roles).toEqual(['ops', 'dev']);
+      expect(everyone.find((user) => user.id === 'retire-carried')?.roles).toEqual(['admin']);
+
+      // Re-run: nothing left to retire.
+      expect(await runRetirement()).toEqual({ retired: 0 });
+      expect(await estimateRetirement()).toMatchObject({ units: 0, unit: 'rows' });
+    } finally {
+      await dropTable(tables.User as Table<any>);
+      await spannerDriver.getTableManager().loadTable(tables.User);
+    }
+  }, 120000);
 
   it('backfills, normalizes, preserves, and re-runs clean on a deployed-shape database', async () => {
     // Simulate the deployed state: the legacy column exists beside the new schema.

@@ -142,8 +142,15 @@ export class UserTable extends Table<User> {
     emailVerified: new BooleanColumn('email_verified'),
     /**
      * Typed array in the `role_list` column. The legacy comma-string `roles` column (STRING(255))
-     * stays physically present but undeclared — Spanner cannot retype in place, so the cutover is
-     * new column + backfill (`@proteinjs/user-server` BackfillUserRolesArray) + this code cutover.
+     * is still physically present on databases that predate the cutover — Spanner cannot retype
+     * in place, so the cutover was new column + backfill (`@proteinjs/user-server`
+     * BackfillUserRolesArray) + this code cutover. Its cells are NOT invisible to the ORM: a
+     * row carries them under the stored key `roles`, which is also this property's name, and the
+     * row reader seats a cell by its declared column name alone (@proteinjs/db ≥ 1.55.0) — so
+     * the legacy cell is omitted and the array survives beside it, whatever it holds and
+     * whichever physical position it has (the stored-value contract suite in @proteinjs/db; the
+     * backfill suite in @proteinjs/user-server reads this very shape). The cells are retired by
+     * RetireLegacyUserRolesColumn once `role_list` carries the roles.
      */
     roles: new ArrayColumn<string>('role_list'),
     /**
