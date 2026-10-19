@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.26.1](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.26.0...@proteinjs/user-server@1.26.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **server:** a held role string is always revocable — Roles.changeRole checks the catalog for a GRANT only; a revoke takes any string the record holds (a role a consumer retired stays removable through the audited path, never only by a raw UPDATE), the audit row written as today; a revoke of an unheld unknown string stays the no-change no-op; the grant of an unknown role still refuses (pinned); the branch manifest ([6e5dba4](https://github.com/proteinjs/user/commit/6e5dba422d2efeb27c7173461caf9c42d1a3b1f9))
+
+
+
+
+
 # [1.26.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.25.0...@proteinjs/user-server@1.26.0) (2026-10-16)
 
 
