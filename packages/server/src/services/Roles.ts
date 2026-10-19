@@ -6,9 +6,10 @@ import { Service } from '@proteinjs/service';
 
 /**
  * The ONE write path for user roles (the `user.roles` column is service-protected — generic
- * record writes cannot touch it). Grants and revokes are validated against the roles catalog and
- * audited: the role update and its `role_grant_event` row (actor, target, role, action; `created`
- * is the timestamp) commit in one transaction, so the trail cannot diverge from the grants.
+ * record writes cannot touch it). A grant is validated against the roles catalog; a revoke takes any
+ * string the record holds (a retired role stays removable here, see `changeRole`). Both are audited:
+ * the role update and its `role_grant_event` row (actor, target, role, action; `created` is the
+ * timestamp) commit in one transaction, so the trail cannot diverge from the grants.
  *
  * Break-glass roles are never granted through the service door — see `changeRole`; revoking one
  * stays allowed. The ONE break-glass grant in code is `bootstrapAdmin`, the dev first-admin door
@@ -133,8 +134,13 @@ export class Roles implements RolesService {
 
   private async changeRole(userId: string, role: string, action: 'grant' | 'revoke'): Promise<void> {
     const logger = new Logger({ name: `Roles.${action}Role` });
+    // The catalog gates what may be GRANTED. A revoke takes any string the record holds: a role a
+    // consumer retired (its catalog entry gone, its holders' rows untouched) must stay removable
+    // through this audited path, never only by a raw UPDATE — so the catalog is not consulted for
+    // a revoke, and a revoke of a string the record does not hold is the no-change early return
+    // below, as for any role.
     const entry = RolesCatalog.getEntry(role);
-    if (!entry) {
+    if (!entry && action === 'grant') {
       throw new Error(`'${role}' is not a known role. Pick one from the roles catalog.`);
     }
 
@@ -143,7 +149,7 @@ export class Roles implements RolesService {
     // in Spanner Studio, by a human, on purpose (and, on a DEV server only, the first-admin door
     // `bootstrapAdmin`). Revoke stays open: de-escalation toward "held by nobody day-to-day"
     // should ride the audited path, not require database access.
-    if (entry.breakGlass && action === 'grant') {
+    if (entry?.breakGlass && action === 'grant') {
       throw new Error(
         `'${role}' is a break-glass role — this service refuses to grant it. The only path to ` +
           `break-glass is a manual UPDATE on the user row in Spanner Studio. (Revoking it here ` +
@@ -155,7 +161,7 @@ export class Roles implements RolesService {
     // 'roles' permission carries — only an admin may hand them out. Server-side and fail-closed:
     // the service door admits 'roles' holders, so this check is what keeps a user-admin from
     // granting such a role. Revoke stays open — the break-glass de-escalation precedent above.
-    if (entry.adminGrantOnly && action === 'grant' && !UserAuth.hasRole('admin')) {
+    if (entry?.adminGrantOnly && action === 'grant' && !UserAuth.hasRole('admin')) {
       throw new Error(
         `'${role}' can only be granted by an admin — the 'roles' grant does not cover it. ` +
           `(Revoking it here stays allowed.)`

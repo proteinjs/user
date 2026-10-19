@@ -4,7 +4,7 @@ import { SpannerDriver } from '@proteinjs/db-driver-spanner';
 import { SpannerEmulatorProvisioner, getDropTestTable } from '@proteinjs/db-driver-spanner/test';
 import { SourceRepository } from '@proteinjs/reflection';
 import { Session, SessionData, SessionDataStorage } from '@proteinjs/server-api';
-import { RoleCatalogEntry, USER_PERMISSIONS, UserRepo, tables } from '@proteinjs/user';
+import { RoleCatalogEntry, RolesCatalog, USER_PERMISSIONS, UserRepo, tables } from '@proteinjs/user';
 import { Roles } from '../src/services/Roles';
 
 /**
@@ -189,6 +189,47 @@ describe('Roles service — grant/revoke outcomes and audit trail', () => {
 
   it('refuses a grant to a user that does not exist', async () => {
     await expect(new Roles().grantRole('nobody-1', 'ops')).rejects.toThrow('No user found for id: nobody-1');
+    expect(await auditRows()).toHaveLength(0);
+  }, 60000);
+
+  /**
+   * A held role string is always revocable. The catalog gates what may be GRANTED; a record's roles
+   * column holds whatever was granted while the catalog knew the role — and a consumer retires roles
+   * (the app's skill-outings row left its mapping and catalog, fold 48). If revoke were catalog-checked
+   * too, every holder of a retired role would keep it forever, removable only by a raw UPDATE outside
+   * the audited path. So revoke accepts any string the record holds, audited like any revoke; the
+   * grant side stays catalog-checked (the test above).
+   */
+  it('revokes a held role the catalog no longer knows — the audited path stays open after a role retires', async () => {
+    const catalog = (SourceRepository.get() as any).objectCache[
+      '@proteinjs/user/RoleCatalogEntry'
+    ] as RoleCatalogEntry[];
+    const retired = { role: 'skill-outings', description: 'A role a consumer later retired' } as RoleCatalogEntry;
+    catalog.push(retired);
+    try {
+      await new Roles().grantRole(targetId, 'skill-outings');
+      expect(await targetRoles()).toEqual(['skill-outings']);
+    } finally {
+      catalog.splice(catalog.indexOf(retired), 1); // the role leaves the catalog; the record still holds it
+    }
+    expect(RolesCatalog.isKnownRole('skill-outings')).toBe(false);
+
+    await new Roles().revokeRole(targetId, 'skill-outings');
+
+    expect(await targetRoles()).toEqual([]);
+    const events = await auditRows();
+    expect(events.map((event) => event.action).sort()).toEqual(['grant', 'revoke']);
+    expect(events.find((event) => event.action === 'revoke')).toMatchObject({
+      actor: 'actor-1',
+      target: targetId,
+      role: 'skill-outings',
+    });
+  }, 60000);
+
+  it('revoking an unknown role the user does not hold stays a no-op — nothing written, nothing audited', async () => {
+    await new Roles().revokeRole(targetId, 'made-up');
+
+    expect(await targetRoles()).toEqual([]);
     expect(await auditRows()).toHaveLength(0);
   }, 60000);
 
