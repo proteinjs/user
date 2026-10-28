@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.27.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.26.1...@proteinjs/user-server@1.27.0) (2026-10-28)
+
+
+### Features
+
+* **server:** the sign-up guard seam — a DefaultSignupGuard Loadable the consumer registers (allow · refuse(sentence) · drop), consulted by the signup route on the no-invite road only with the submission's facts (the lowercased address, the form's honeypot and render token as sent, the coarse client-address hash, the user agent's presence); refuse answers { error: sentence }, drop answers exactly as success, neither writes an account or mints a session; the invite road unchanged (an invited address was chosen by an admin); the throwaway-mail domain list (DisposableEmailDomains, a subdomain refused with its domain) applied before the guard with one sentence; the facts and verdict types exported so a registration compiles against them; the test harness seeds the seam's no-registration default beside the throttle store's; the branch manifest ([6fe9202](https://github.com/proteinjs/user/commit/6fe92022272936877526d0ed1e3c546eaf795b39))
+
+
+
+
+
 ## [1.26.1](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.26.0...@proteinjs/user-server@1.26.1) (2026-10-19)
 
 
