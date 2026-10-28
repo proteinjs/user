@@ -53,6 +53,10 @@ export class UserServerTestEnvironment {
     // No shared window store registered: the counted throttle windows use the library's own
     // per-process store (the suites load src, never the generated source graph).
     objectCache['@proteinjs/user-server/DefaultThrottleWindowStoreFactory'] = [];
+    // No sign-up guard registered: the signup route's no-invite road allows every submission
+    // (the library's own default), as a deployment with no registration does — a suite that
+    // registers one seeds this key itself.
+    objectCache['@proteinjs/user-server/DefaultSignupGuard'] = [];
     Session.setData({
       sessionId: 'test-session',
       user: 'guest',

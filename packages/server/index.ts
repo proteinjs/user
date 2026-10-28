@@ -4,6 +4,16 @@ export * from './src/authentication/DbSessionStore';
 // (e.g. an invite-request resolution minting a real invite through sendInvite) — the same
 // single owner the RPC door dispatches to, never a parallel invite-write path.
 export { InviteConfig, DefaultInviteConfigFactory, Signup } from './src/services/Signup';
+// The seam a consumer's sign-up abuse posture plugs into (the signup route consults it on the
+// no-invite road), with the facts it is handed and the verdict it answers, so the registration
+// compiles against them; and the throwaway-mail list the route applies before it.
+export {
+  DefaultSignupGuard,
+  SignupGuardFacts,
+  SignupGuardVerdict,
+  getDefaultSignupGuard,
+} from './src/services/SignupGuard';
+export { DisposableEmailDomains } from './src/services/DisposableEmailDomains';
 export { AccessInvite } from './src/services/AccessInvite';
 export { AccountDeletion } from './src/services/AccountDeletion';
 export * from './src/emails/AccountDeletionEmailConfigs';
