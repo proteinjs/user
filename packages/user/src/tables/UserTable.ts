@@ -33,6 +33,14 @@ export type User = SourceRecord & {
   passwordResetToken?: string | null;
   passwordResetTokenExpiration?: Moment | null;
   emailVerified: boolean;
+  /**
+   * The email-verification token outstanding on an unverified account (its digest, never the
+   * token — the same posture as the reset pair) and when it lapses. Minted at a no-invite sign-up
+   * and by `SignupService.resendEmailVerification`; cleared by the verify-email route when the
+   * link is tapped. An account created from an invite never carries one.
+   */
+  emailVerificationToken?: string | null;
+  emailVerificationTokenExpiration?: Moment | null;
   /** Role names from the roles catalog (see `RolesCatalog`). Written ONLY by the Roles service. */
   roles: string[];
   /**
@@ -140,6 +148,11 @@ export class UserTable extends Table<User> {
     passwordResetToken: new StringColumn('password_reset_token', { ui: { hidden: true } }),
     passwordResetTokenExpiration: new DateTimeColumn('password_reset_token_expiration', { ui: { hidden: true } }),
     emailVerified: new BooleanColumn('email_verified'),
+    // The verification pair hides like the reset pair: auth-internal, server write paths only.
+    emailVerificationToken: new StringColumn('email_verification_token', { ui: { hidden: true } }),
+    emailVerificationTokenExpiration: new DateTimeColumn('email_verification_token_expiration', {
+      ui: { hidden: true },
+    }),
     /**
      * Typed array in the `role_list` column. The legacy comma-string `roles` column (STRING(255))
      * is still physically present on databases that predate the cutover — Spanner cannot retype

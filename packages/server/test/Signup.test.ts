@@ -1,4 +1,4 @@
-import { UserAuth } from '@proteinjs/user';
+import { guestUser, UserAuth } from '@proteinjs/user';
 import { Signup } from '../src/services/Signup';
 
 /**
@@ -67,5 +67,15 @@ describe('Signup service auth', () => {
     // in the same request (auto-login).
     setUser([]);
     expect(canAccess('initializeSignup')).toBe(true);
+  });
+
+  it(`admits resendEmailVerification for any signed-in account and refuses it to the guest (it mails the session's own account)`, () => {
+    setUser([]);
+    expect(canAccess('resendEmailVerification')).toBe(true);
+
+    (UserAuth as unknown as UserAuthInternals).userRepo = {
+      getUser: () => ({ email: guestUser.email, roles: [] }),
+    };
+    expect(canAccess('resendEmailVerification')).toBe(false);
   });
 });

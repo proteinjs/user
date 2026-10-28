@@ -1,0 +1,23 @@
+{
+  "branch": "feat/email-verification",
+  "packages": ["user", "server"],
+  "suites": [
+    "packages/server/test/EmailVerification.test.ts",
+    "packages/server/test/SignupRoute.test.ts",
+    "packages/server/test/Signup.test.ts",
+    "packages/server/test/SignupInvite.test.ts",
+    "packages/server/test/SignupRace.integration.test.ts",
+    "packages/server/test/SignupResendInvite.integration.test.ts",
+    "packages/server/test/ValidateResetToken.test.ts",
+    "packages/server/test/ExecutePasswordReset.test.ts",
+    "packages/server/test/InitiatePasswordReset.test.ts",
+    "packages/server/test/NoAddressesInLogs.integration.test.ts",
+    "packages/server/test/SharedThrottleWindows.integration.test.ts",
+    "packages/server/test/PasswordMigration.integration.test.ts",
+    "packages/server/test/PublicDeclarationSurface.test.ts",
+    "packages/user/test/tablesAuth.test.ts",
+    "packages/user/test/SharedRecordNoPrincipal.test.ts",
+    "packages/user/test/recordTableDeclarations.test.ts"
+  ],
+  "removes": []
+}
