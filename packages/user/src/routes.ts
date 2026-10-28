@@ -4,6 +4,14 @@ export const routes: { [name: string]: { path: string; method: 'get' | 'post' | 
   initiatePasswordReset: { path: '/user/initiate-password-reset', method: 'post' },
   executePasswordReset: { path: '/user/execute-password-reset', method: 'post' },
   validateResetToken: { path: '/user/validate-reset-token', method: 'get' },
+  /**
+   * Confirms an account's email address from the token in its mailed link (`?token=`), answering
+   * `{ state }` as JSON for the page that calls it (user-server src/routes/verifyEmail.ts):
+   * 'confirmed' (the address is now verified, the token spent), 'expired' (the link lapsed — ask
+   * for a new one from the account page), or 'invalid' (unknown, malformed, or already spent).
+   * The answer never names an address.
+   */
+  verifyEmail: { path: '/user/verify-email', method: 'get' },
   logout: { path: '/user/logout', method: 'get' },
 };
 
@@ -26,5 +34,12 @@ export const uiRoutes = {
     forgotPassword: 'login/forgot-password',
     passwordReset: 'login/password-reset',
     signup: 'signup',
+  },
+  account: {
+    /**
+     * The page a mailed verify-email link lands on, carrying `?token=`; it calls
+     * `routes.verifyEmail` with the token and shows the state the route answers.
+     */
+    verifyEmail: 'account/verify-email',
   },
 };

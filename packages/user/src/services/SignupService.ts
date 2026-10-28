@@ -16,6 +16,11 @@ export type InitializeSignupResponse = {
   invite?: Omit<Invite, 'token'>;
 };
 
+/** Whether a verification mail went out; `false` says nothing more (already verified, or too soon). */
+export type ResendEmailVerificationResponse = {
+  sent: boolean;
+};
+
 /** The signup route's request body (`routes.signup`). `email` is required if no token is provided. */
 export type UserSignup = Pick<User, 'name' | 'password'> & {
   email?: User['email'];
@@ -41,6 +46,13 @@ export interface SignupService extends Service {
   resendInvite(email: string): Promise<SendInviteResponse>;
   /** Deletes invite record associated with the email. */
   revokeInvite(email: string): Promise<void>;
+  /**
+   * Mails the signed-in account a fresh link that confirms its email address (the welcome mail's
+   * shape, through the same config): the earlier link stops working. `{ sent: false }` when the
+   * address is already verified, when a link was minted within the last few minutes, or when
+   * the mail could not be sent — the caller is the account's own page, so nothing more is said.
+   */
+  resendEmailVerification(): Promise<ResendEmailVerificationResponse>;
   /**
    * Initializes signup process, validating invite configuration and token if provided.
    * Invite configuration defaults to invite optional.

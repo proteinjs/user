@@ -1,6 +1,7 @@
 import { getDbAsSystem, Reference } from '@proteinjs/db';
 import {
   SendInviteResponse,
+  ResendEmailVerificationResponse,
   tables,
   UserAuth,
   uiRoutes,
@@ -22,8 +23,11 @@ import {
   getDefaultInviteEmailConfigFactory,
   getDefaultSignupConfirmationEmailConfigFactory,
   InviteEmailConfig,
+  SignupConfirmationEmailConfig,
+  SignupConfirmationEmailContext,
 } from '@proteinjs/email-server';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
+import { EmailVerificationToken } from '../authentication/EmailVerificationToken';
 import { PasswordHasher } from '../authentication/PasswordHasher';
 
 /**
@@ -32,6 +36,13 @@ import { PasswordHasher } from '../authentication/PasswordHasher';
  * Expiry stays non-infinite so a forgotten invite isn't a permanent credential sitting in a mailbox.
  */
 export const INVITE_TOKEN_TTL_DAYS = 90;
+
+/**
+ * The gap between two verification mails to one account — the password reset's five minutes:
+ * long enough that a double tap sends one mail, short enough that a mistyped-looking inbox wait
+ * ends soon.
+ */
+export const EMAIL_VERIFICATION_RESEND_GAP_MINUTES = 5;
 
 export interface InviteConfig {
   isInviteOnly: boolean;
@@ -82,6 +93,12 @@ export class Signup implements SignupService {
           return UserAuth.hasPermission(USER_PERMISSIONS.users);
         }
 
+        // The re-send is the signed-in account's own act: it reads the session's user and mails
+        // that account, nobody else's.
+        if (methodName === 'resendEmailVerification') {
+          return UserAuth.isLoggedIn();
+        }
+
         return true;
       },
     },
@@ -114,8 +131,7 @@ export class Signup implements SignupService {
       throw new Error('Email is required when there is no invite');
     }
 
-    const defaultEmailConfigFactory = getDefaultSignupConfirmationEmailConfigFactory();
-    const config = defaultEmailConfigFactory.getConfig();
+    const config = this.signupConfirmationEmailConfig();
     const emailSender = new EmailSender();
 
     const creation = await this.createAccount({
@@ -143,16 +159,64 @@ export class Signup implements SignupService {
       return { outcome: 'exists', email };
     }
 
-    const { text, html } = config.getNewUserEmailContent();
-    await emailSender.sendEmail({
-      to: email,
-      subject: config.newUserSubject || config.options?.subject || 'Welcome!',
-      text,
-      html,
-      ...config.options,
-    });
+    // An invited address was proved by the invite mail; a plain sign-up's welcome carries the
+    // link that confirms it (the account works meanwhile — nothing waits on the tap).
+    const verification = invite ? undefined : await this.mintEmailVerification(email);
+    try {
+      await this.emailWelcome(emailSender, email, config, verification && { verifyEmailLink: verification.link });
+    } catch (error) {
+      // The link never reached the account: withdraw the token, so the account page's re-send
+      // is not held by the gap between mails.
+      if (verification) {
+        await new EmailVerificationToken().revoke(verification.user, verification.token);
+      }
+      throw error;
+    }
     logger.info({ message: `Created user`, obj: { account: new RequestDigests().account(email) } });
     return { outcome: 'created', email };
+  }
+
+  /**
+   * The signed-in account's own re-send: a fresh token replaces the one outstanding (the earlier
+   * link stops working) and the welcome-shaped mail goes out again with the new link, through the
+   * same config as the sign-up's. Refused without a word — `{ sent: false }` — when the address is
+   * already verified, when the last mint is inside the gap, or when the mail fails to send (the
+   * token is withdrawn then, so the next tap is not held by the gap). The account is the
+   * session's, read fresh from its row: a verification completed on another device is seen here.
+   */
+  async resendEmailVerification(): Promise<ResendEmailVerificationResponse> {
+    const logger = new Logger({ name: 'Signup.resendEmailVerification' });
+    const digests = new RequestDigests();
+    const user = await getDbAsSystem().get(tables.User, { id: new UserRepo().getUser().id });
+    if (!user || user.emailVerified) {
+      return { sent: false };
+    }
+
+    const fields = { account: digests.account(user.email) };
+    const verification = new EmailVerificationToken();
+    const mintedAt = verification.mintedAt(user);
+    if (mintedAt && moment().diff(mintedAt, 'minutes') < EMAIL_VERIFICATION_RESEND_GAP_MINUTES) {
+      logger.info({ message: `Email verification re-send requested too soon`, obj: fields });
+      return { sent: false };
+    }
+
+    const token = await verification.mint(user);
+    try {
+      await this.emailWelcome(new EmailSender(), user.email, this.signupConfirmationEmailConfig(), {
+        verifyEmailLink: this.verifyEmailLink(token),
+      });
+    } catch (error: any) {
+      logger.error({
+        message: `Failed to send the email verification mail`,
+        obj: fields,
+        error: digests.redactError(error),
+      });
+      await verification.revoke(user, token);
+      return { sent: false };
+    }
+
+    logger.info({ message: `Email verification link mailed`, obj: fields });
+    return { sent: true };
   }
 
   async sendInvite(email: string): Promise<SendInviteResponse> {
@@ -416,5 +480,42 @@ export class Signup implements SignupService {
       html,
       ...config.options,
     });
+  }
+
+  /** The sign-up mails' content factory: the consumer's registration, or the library's default. */
+  private signupConfirmationEmailConfig(): SignupConfirmationEmailConfig {
+    return getDefaultSignupConfirmationEmailConfigFactory().getConfig();
+  }
+
+  /**
+   * The welcome mail — the new-user content from the config, handed the confirm link when the
+   * address is unverified (an invited account's welcome carries no context).
+   */
+  private async emailWelcome(
+    emailSender: EmailSender,
+    email: string,
+    config: SignupConfirmationEmailConfig,
+    context?: SignupConfirmationEmailContext
+  ): Promise<void> {
+    const { text, html } = config.getNewUserEmailContent(context);
+    await emailSender.sendEmail({
+      to: email,
+      subject: config.newUserSubject || config.options?.subject || 'Welcome!',
+      text,
+      html,
+      ...config.options,
+    });
+  }
+
+  /** A fresh verification token on the account's row, with the confirm link that carries it. */
+  private async mintEmailVerification(email: string): Promise<{ user: User; token: string; link: string }> {
+    const user = await getDbAsSystem().get(tables.User, { email });
+    const token = await new EmailVerificationToken().mint(user);
+    return { user, token, link: this.verifyEmailLink(token) };
+  }
+
+  /** The partial path a confirm link carries — the app's verify page with the token (not a full URL). */
+  private verifyEmailLink(token: string): string {
+    return `${uiRoutes.account.verifyEmail}?token=${token}`;
   }
 }
