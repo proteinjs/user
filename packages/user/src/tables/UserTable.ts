@@ -19,8 +19,10 @@ export type UserStatus = (typeof USER_STATUSES)[number];
 
 /**
  * A mixed-ownership source-record table: rows with `isLoadedFromSource = true` are CODE-DECLARED
- * MACHINE ACCOUNTS (see `MachineAccount`) whose declared fields are reverted to source on every
- * boot; human rows (flag null/false) are structurally untouchable by the boot sync. A machine
+ * MACHINE ACCOUNTS (see `MachineAccount`) whose declared fields are brought to the declaration on
+ * every boot while the row is as the sync left it (a declared column written at runtime makes the
+ * row the product's — @proteinjs/db's authorship precedence); human rows (flag null/false) are
+ * structurally untouchable by the boot sync. A machine
  * account removed from source is deactivated — never deleted — so rows it is referenced from
  * stay intact, and re-declaring it reactivates it. Whether a row IS a machine account is the
  * explicit `machine` column (founder ruling 2026-09-02) — `isLoadedFromSource` is the sync's
@@ -123,7 +125,8 @@ export class UserTable extends Table<User> {
   /**
    * Machine accounts sync by EMAIL, not id: accounts adopted from hand-made rows before
    * declarations existed keep their env-random ids, which other rows reference (declared fields
-   * reverted, runtime fields like `password` untouched). A row the sync does not own under a
+   * brought to the declaration while the row is as the sync left it, runtime fields like
+   * `password` untouched). A row the sync does not own under a
    * declared email — a person's signup, a hand-made row — is never taken over: the natural key
    * refuses the declaration (@proteinjs/db). Removal from source deactivates (the same status the
    * staff toggle and account deletion write — the UserStatusTableWatcher kills sessions on every

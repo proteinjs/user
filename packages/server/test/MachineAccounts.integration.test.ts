@@ -22,6 +22,12 @@ class OpsRole implements RoleCatalogEntry {
   description = 'Operational machinery';
 }
 
+/** A second catalog role, so a declaration can come to equal a runtime-edited roles column. */
+class AuditRole implements RoleCatalogEntry {
+  role = 'audit';
+  description = 'Audit reads';
+}
+
 class TestOpsMachineAccount extends MachineAccount {
   id = 'machine-test-ops';
   email = 'machine-ops@test.local';
@@ -69,10 +75,10 @@ describe('Machine accounts as source records', () => {
     }));
   };
 
-  /** One boot of Db.init's source-record leg with these MachineAccount declarations. */
+  /** One boot of Db.init's source-record leg with these MachineAccount declarations — what it did, per table. */
   const boot = async (declarations: MachineAccount[]) => {
     seedLoaders(declarations);
-    await new SourceRecordSyncRunner().load();
+    return await new SourceRecordSyncRunner().load();
   };
 
   const machineRow = async () => await getDbAsSystem().get(tables.User, { email: 'machine-ops@test.local' });
@@ -93,7 +99,7 @@ describe('Machine accounts as source records', () => {
     (SourceRepository.get() as unknown as SourceRepositoryInternals).objectCache[
       '@proteinjs/user-auth/AuthenticatedUserRepo'
     ] = [new UserRepo()];
-    objectCache()['@proteinjs/user/RoleCatalogEntry'] = [new OpsRole()];
+    objectCache()['@proteinjs/user/RoleCatalogEntry'] = [new OpsRole(), new AuditRole()];
     // The two session watchers a real server registers, rebuilt from the seeded cache — and no
     // socket server exists in this process: the shape of a boot's sync (and of a migration Job,
     // which never starts one), where deactivations delete sessions before the server is up.
@@ -289,12 +295,11 @@ describe('Machine accounts as source records', () => {
     // re-declare-after-removal under a changed natural key) must adopt the row by its stable
     // declared id instead of INSERTing into a PK collision.
     await boot([new TestOpsMachineAccount()]);
-    // Runtime-owned credential on the row, plus role drift the re-derivation must NOT resurrect.
-    await getDbAsSystem().update(tables.User, {
-      id: 'machine-test-ops',
-      password: sha256('cred').toString(),
-      roles: ['ops', 'stale-role'],
-    });
+    // The runtime-owned credential on the row: `password` is a column no declaration covers, so
+    // the write leaves the row the sync's. (A DECLARED column written at runtime makes the row
+    // the product's — @proteinjs/db's authorship precedence, pinned by the next test — and a
+    // declaration never adopts a row that is the product's.)
+    await getDbAsSystem().update(tables.User, { id: 'machine-test-ops', password: sha256('cred').toString() });
     await insertSession('machine-session', 'machine-ops@test.local');
 
     class RenamedOps extends TestOpsMachineAccount {
@@ -303,7 +308,7 @@ describe('Machine accounts as source records', () => {
     await boot([new RenamedOps()]);
 
     // One row, adopted in place: id kept (references + credential survive), email re-derived,
-    // reactivated, grants exactly the declaration's (no resurrection of stale grants).
+    // reactivated, grants exactly the declaration's.
     expect(await getDbAsSystem().query(tables.User, {})).toHaveLength(1);
     expect(await getDbAsSystem().get(tables.User, { email: 'machine-ops@test.local' })).toBeUndefined();
     const adopted = await getDbAsSystem().get(tables.User, { email: 'machine-ops-renamed@test.local' });
@@ -319,6 +324,41 @@ describe('Machine accounts as source records', () => {
     expect(await sessionEmails()).toEqual([]);
     // ...and the surviving credential logs in under the new email.
     expect(await authenticate('machine-ops-renamed@test.local', 'cred')).toBe(true);
+  });
+
+  it(`a declared column written at runtime makes the row the product's: the next boot leaves it as it is — never brought back, never a failed boot — and the declaration coming to equal it re-adopts it`, async () => {
+    // @proteinjs/db's authorship precedence: the sync stamps the declared columns it writes, and
+    // a row whose declared columns moved since is the product's until the declaration equals it
+    // again. The Roles service refuses machine targets, so the one road to a machine row's roles
+    // at runtime is a hand edit — the system write here.
+    await boot([new TestOpsMachineAccount()]);
+    await getDbAsSystem().update(tables.User, { id: 'machine-test-ops', roles: ['ops', 'audit'] });
+    const edited = await machineRow();
+
+    // The declaration stands still: the row is kept exactly as it is, nothing written.
+    expect((await boot([new TestOpsMachineAccount()]))[tables.User.name]).toMatchObject({
+      kept: 1,
+      updates: 0,
+      inserts: 0,
+    });
+    const kept = await machineRow();
+    expect(kept).toMatchObject({
+      id: 'machine-test-ops',
+      roles: ['ops', 'audit'],
+      status: 'active',
+      isLoadedFromSource: true,
+    });
+    expect(kept.updated.valueOf()).toBe(edited.updated.valueOf());
+
+    // The declaration comes to equal the row: re-adopted (its stamp written, nothing else)...
+    class OpsAndAudit extends TestOpsMachineAccount {
+      roles = ['ops', 'audit'];
+    }
+    expect((await boot([new OpsAndAudit()]))[tables.User.name]).toMatchObject({ adopted: 1, kept: 0 });
+    expect((await machineRow()).roles).toEqual(['ops', 'audit']);
+    // ...and from there the declaration moving again lands as before.
+    expect((await boot([new TestOpsMachineAccount()]))[tables.User.name]).toMatchObject({ updates: 1, kept: 0 });
+    expect((await machineRow()).roles).toEqual(['ops']);
   });
 
   it(`the staff toggle rides the same watcher: SetUserStatus deactivation kills the target's sessions`, async () => {
