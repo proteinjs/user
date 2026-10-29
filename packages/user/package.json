@@ -1,6 +1,6 @@
 {
   "name": "@proteinjs/user",
-  "version": "1.24.0",
+  "version": "1.25.0",
   "description": "User management",
   "publishConfig": {
     "access": "public"

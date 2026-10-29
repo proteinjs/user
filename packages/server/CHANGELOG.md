@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.28.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.27.0...@proteinjs/user-server@1.28.0) (2026-10-29)
+
+
+### Features
+
+* **server:** email verification after sign-up — a plain sign-up's account works at once and its welcome mail carries the link that confirms the address: the emailVerificationToken pair on the user row (the digest and a week's expiry, hidden like the reset pair), minted on the no-invite road only and handed to the config as SignupConfirmationEmailContext.verifyEmailLink (@proteinjs/email-server's widened contract; an invited account carries none); GET /user/verify-email?token= answers { state: confirmed | expired | invalid } as JSON for the app's verify page (uiRoutes.account.verifyEmail), spending the link once in one conditional update and naming no address; SignupService.resendEmailVerification for the signed-in account — a fresh pair, the earlier link dead, one mail; { sent: false } when verified, inside the five-minute gap, or when the mail fails (the token withdrawn then); the reset and verification tokens' shared mechanism as one MailedToken owner (PasswordResetToken's surface unchanged); red-first suite with three bites; the branch manifest ([20bc4a5](https://github.com/proteinjs/user/commit/20bc4a5bc9eff0ba214b483d76f7421011904cb4))
+
+
+
+
+
 # [1.27.0](https://github.com/proteinjs/user/compare/@proteinjs/user-server@1.26.1...@proteinjs/user-server@1.27.0) (2026-10-28)
 
 
