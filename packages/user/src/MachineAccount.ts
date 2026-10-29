@@ -24,14 +24,21 @@ export const getMachineAccounts = (): MachineAccount[] =>
  * Extend this (server-side — declarations name real operational emails and grants) to declare a
  * machine account into the `user` table. The boot sync inserts it on the first boot that
  * carries the declaration, matches it by email on every boot after (an account an earlier build
- * adopted keeps its environment's own id — rows the account filed reference it), reverts the
- * declared fields on every boot (a runtime grant/revoke on a machine account is drift), and
+ * adopted keeps its environment's own id — rows the account filed reference it), brings the
+ * declared fields to the declaration on every boot while the row is as the sync left it, and
  * deactivates the account — sessions killed, never deleted — when the declaration is removed.
+ * The sync stamps the declared columns it writes (@proteinjs/db's authorship precedence): a
+ * declared column written at runtime since — a hand edit of the roles, say; the Roles service
+ * refuses machine targets — makes the row the product's, left exactly as it is on every boot
+ * after (never brought back, never deactivated on removal, never a failed boot) until the
+ * declaration comes to equal it, which re-adopts it. Runtime-owned columns no declaration
+ * covers (the minted credential) never move a row's authorship.
  * Re-declaring a removed account reactivates it, even under a renamed email: the user table
  * soft-removes (keeps rows), so the sync re-adopts the kept row by its stable declared id and
- * re-derives its state from the declaration (id and minted credential survive; no stale grants
- * resurrect). Git history of the declaration is the machine-grant audit trail; the Roles service
- * refuses machine targets.
+ * re-derives its state from the declaration (id and minted credential survive) — a kept row
+ * edited since on a declared column is the product's, and the renamed declaration a divergence
+ * that loads nothing. Git history of the declaration is the machine-grant audit trail; the Roles
+ * service refuses machine targets.
  *
  * A declared address held by a row the sync does not own — a person who registered it, or a row
  * made by hand — is NEVER taken over: the boot refuses the declaration (the row untouched, the
@@ -52,9 +59,10 @@ export abstract class MachineAccount implements SourceRecordLoader<User> {
   /** Display name shown wherever the account's actions surface. */
   abstract accountName: string;
   /**
-   * The account's role grants, declared — reverted to exactly this set on every boot. Each must
-   * be a catalog-known role; break-glass roles are refused (a machine account holding 'admin' is
-   * unrepresentable).
+   * The account's role grants, declared — brought to exactly this set on every boot while the
+   * row is as the sync left it (a runtime edit makes the row the product's: the class doc). Each
+   * must be a catalog-known role; break-glass roles are refused (a machine account holding
+   * 'admin' is unrepresentable).
    */
   abstract roles: string[];
   /**
@@ -74,7 +82,7 @@ export abstract class MachineAccount implements SourceRecordLoader<User> {
       email: this.email,
       name: this.accountName,
       roles: [...this.roles],
-      // No mailbox ceremony for machines; forced so runtime flips get reverted.
+      // No mailbox ceremony for machines; the declaration owns the flag.
       emailVerified: true,
       // The explicit machine marker (founder ruling 2026-09-02): the declaration IS the
       // stamp — inserts are born with it, and existing source-loaded accounts converge on the

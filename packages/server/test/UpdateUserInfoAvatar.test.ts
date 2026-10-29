@@ -80,9 +80,14 @@ describe('UpdateUserInfo avatar mutations', () => {
     expect(second.avatarFileId).not.toBe(first.avatarFileId);
 
     // The prior file is gone — row and bytes (the byte store checked directly through the
-    // driver: the gated service read now refuses ids with no readable row by design).
+    // driver: the gated service read refuses ids with no readable row by design, and the driver's
+    // one answer for bytes that are not there is its not-found error — @proteinjs/db-file's
+    // FileStorageError, read by shape).
     expect(await getFileRow(first.avatarFileId!)).toBeFalsy();
-    expect(await FileStorage.getDriver().getFileData(first.avatarFileId!)).toBe('');
+    await expect(FileStorage.getDriver().getFileData(first.avatarFileId!)).rejects.toMatchObject({
+      name: 'FileStorageError',
+      code: 'not-found',
+    });
     // The new one is intact.
     expect(await getFileRow(second.avatarFileId!)).toBeTruthy();
   });
