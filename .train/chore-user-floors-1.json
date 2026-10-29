@@ -1,0 +1,11 @@
+{
+  "branch": "chore/user-floors-1",
+  "packages": [
+    "auth",
+    "server",
+    "ui",
+    "user"
+  ],
+  "suites": [],
+  "removes": []
+}
