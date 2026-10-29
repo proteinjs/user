@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.25.1](https://github.com/proteinjs/user/compare/@proteinjs/user@1.25.0...@proteinjs/user@1.25.1) (2026-10-29)
+
+
+### Bug Fixes
+
+* **server:** the machine-account suite speaks db 1.59's authorship precedence — a declared column written at runtime (the roles, by hand; the Roles service refuses machine targets) makes the row the product's: kept exactly as it is on every boot after, never brought back, never a failed boot, re-adopted when the declaration comes to equal it; the rename re-adoption keeps its drift on the runtime-owned credential alone (a kept row edited on a declared column is the product's, and the renamed declaration a divergence that loads nothing); the MachineAccount and UserTable contracts say the same (declared fields brought to the declaration while the row is as the sync left it, never reverted); the avatar suite reads db-file 1.11's driver contract — the bytes of a deleted file are the not-found FileStorageError, never an empty string; the branch manifest ([aa7c8f6](https://github.com/proteinjs/user/commit/aa7c8f6e5513f2bacde5e7911f69ebe8d968b10e))
+
+
+
+
+
 # [1.25.0](https://github.com/proteinjs/user/compare/@proteinjs/user@1.24.0...@proteinjs/user@1.25.0) (2026-10-29)
 
 
