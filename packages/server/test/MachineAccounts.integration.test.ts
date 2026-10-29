@@ -1,5 +1,6 @@
 import sha256 from 'crypto-js/sha256';
-import { SourceRecordSyncRunner, getDbAsSystem } from '@proteinjs/db';
+import { getDbAsSystem } from '@proteinjs/db';
+import { SourceRecordSyncRunner } from '@proteinjs/db/source';
 import { SourceRepository } from '@proteinjs/reflection';
 // Deep import (test-only): ServiceAuth is the real RPC door but is not index-exported by
 // @proteinjs/service — the door test below runs the actual gate rather than pinning metadata.

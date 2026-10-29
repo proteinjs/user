@@ -1,0 +1,11 @@
+{
+  "branch": "fix/source-runner-import",
+  "packages": [
+    "server"
+  ],
+  "suites": [
+    "packages/server/test/MachineAccounts.integration.test.ts",
+    "packages/server/test/NoAddressesInLogs.integration.test.ts"
+  ],
+  "removes": []
+}

@@ -1,6 +1,7 @@
 import moment from 'moment';
 import sha256 from 'crypto-js/sha256';
-import { SourceRecordSyncRunner, getDbAsSystem } from '@proteinjs/db';
+import { getDbAsSystem } from '@proteinjs/db';
+import { SourceRecordSyncRunner } from '@proteinjs/db/source';
 import { EmailSender, MailSink } from '@proteinjs/email-server';
 import { SourceRepository } from '@proteinjs/reflection';
 import { MachineAccount, RoleCatalogEntry, UserRepo, tables } from '@proteinjs/user';
