@@ -1,0 +1,16 @@
+{
+  "branch": "fix/casa-dependency-floors",
+  "packages": [
+    "server",
+    "ui"
+  ],
+  "suites": [
+    "packages/server/test/AvatarPhotoFidelity.test.ts",
+    "packages/server/test/UpdateUserInfoAvatar.test.ts",
+    "packages/server/test/UpdateUserInfoClearAvatarByAdmin.test.ts",
+    "packages/server/test/UpdateUserInfoRefresh.test.ts",
+    "packages/server/test/UpdateUserInfoSessionRefresh.test.ts",
+    "packages/server/test/avatarRoute.test.ts"
+  ],
+  "removes": []
+}

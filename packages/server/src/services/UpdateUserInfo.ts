@@ -1,4 +1,4 @@
-import sharp from 'sharp';
+import sharp, { type Sharp } from 'sharp';
 import heicDecode from 'heic-decode';
 import { getDbAsSystem } from '@proteinjs/db';
 import { File, FileStorage, tables as fileTables } from '@proteinjs/db-file';
@@ -258,7 +258,7 @@ export class UpdateUserInfo implements UpdateUserInfoService {
    * client framed its crop in, and the space `.rotate()` makes `.extract` operate in.
    * Orientations 5-8 transpose the encoded axes.
    */
-  private async orientedDimensions(pipeline: sharp.Sharp): Promise<{ width: number; height: number }> {
+  private async orientedDimensions(pipeline: Sharp): Promise<{ width: number; height: number }> {
     const metadata = await pipeline.metadata();
     if (!metadata.width || !metadata.height) {
       throw new Error(`Could not read avatar image dimensions`);
@@ -295,7 +295,7 @@ export class UpdateUserInfo implements UpdateUserInfoService {
     return { left: clampOffset(crop.sx, width - size), top: clampOffset(crop.sy, height - size), size };
   }
 
-  private async decodeHeic(imageBytes: Buffer): Promise<sharp.Sharp> {
+  private async decodeHeic(imageBytes: Buffer): Promise<Sharp> {
     const { width, height, data } = await heicDecode({ buffer: imageBytes });
     return sharp(Buffer.from(data.buffer, data.byteOffset, data.byteLength), {
       raw: { width, height, channels: 4 },

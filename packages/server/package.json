@@ -39,7 +39,7 @@
     "express-session": "1.17.1",
     "heic-decode": "^2.1.0",
     "moment": "2.29.4",
-    "sharp": "0.33.4"
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@proteinjs/db-driver-spanner": "^1.36.5",
