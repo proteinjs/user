@@ -50,9 +50,11 @@ export const signup: Route = {
   method: routes.signup.method,
   onRequest: async (request: any, response): Promise<void> => {
     const body: SignupSubmission = request.body ?? {};
-    // Text or nothing: a value of another type (a JSON number as a password) is refused in the same
-    // words, never handed to the rules or the hasher (executePasswordReset guards its password so).
-    if (typeof body.name !== 'string' || !body.name || typeof body.password !== 'string' || !body.password) {
+    // Text or nothing: a value of another type (a JSON number as a name or a password) is refused in
+    // the same words, never handed to the rules or the hasher. The password is held to the rules' own
+    // test (`PasswordRules.isGiven`, the one every road's check makes first); sign-up answers it in
+    // the one sentence that names both of its fields.
+    if (typeof body.name !== 'string' || !body.name || !PasswordRules.isGiven(body.password)) {
       response.send({ error: 'Name and password cannot be blank' });
       return;
     }

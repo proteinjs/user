@@ -94,6 +94,7 @@ export class AuthApi {
       method: routes.validateResetToken.method,
       credentials: 'same-origin',
     });
+    this.refuseIfLimited(response);
     const body = await response.json();
     if (!body.isValid) {
       return { valid: false, message: body.message || 'Invalid or expired token' };
@@ -114,12 +115,17 @@ export class AuthApi {
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
     });
+    this.refuseIfLimited(response);
     if (response.status !== 200) {
       throw new Error(await this.reason(response, 'Failed to reset password'));
     }
   }
 
-  /** A 429 is a per-address limit in front of the door: say so in the throttle's words. */
+  /**
+   * A 429 is a per-address limit in front of the door: say so in the throttle's words. Every door
+   * reads the status here first, before any body: the limit's answer is the load balancer's page,
+   * never the door's JSON.
+   */
   private refuseIfLimited(response: { status: number }): void {
     if (response.status === 429) {
       throw new Error(AuthApi.TOO_MANY_ATTEMPTS);

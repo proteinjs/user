@@ -33,9 +33,14 @@ describe('AuthApi.login', () => {
     );
   });
 
-  it('throws on a non-200 response', async () => {
+  it("a refused sign-in throws the door's own line, whatever its status — the generic words only when the body carries none", async () => {
+    mockFetch({ status: 401, statusText: 'Unauthorized', body: { error: 'Incorrect email or password' } });
+    await expect(new AuthApi().login('ada@example.com', 'nope')).rejects.toThrow('Incorrect email or password');
+
     mockFetch({ status: 401, statusText: 'Unauthorized' });
-    await expect(new AuthApi().login('ada@example.com', 'nope')).rejects.toThrow('Unauthorized');
+    await expect(new AuthApi().login('ada@example.com', 'nope')).rejects.toThrow(
+      'Failed to log in, error: Unauthorized'
+    );
   });
 
   it('throws the server-provided error from a 200 response body', async () => {
@@ -183,5 +188,17 @@ describe('AuthApi — a 429 from in front of the door reads as the throttle answ
   it('the password reset request', async () => {
     mockFetch({ status: 429, statusText: '' });
     await expect(new AuthApi().initiatePasswordReset('ada@example.com')).rejects.toThrow(TOO_MANY);
+  });
+
+  // The ban's answer is the load balancer's page, not the door's JSON — the reset link's two doors
+  // read the status before any body, as the others do.
+  it('the reset link check', async () => {
+    mockFetch({ status: 429, statusText: '', notJson: true });
+    await expect(new AuthApi().validateResetToken('tok')).rejects.toThrow(TOO_MANY);
+  });
+
+  it('the password reset', async () => {
+    mockFetch({ status: 429, statusText: '', notJson: true });
+    await expect(new AuthApi().executePasswordReset('tok', 'a fresh password')).rejects.toThrow(TOO_MANY);
   });
 });

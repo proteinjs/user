@@ -54,9 +54,9 @@ export class UpdateUserInfo implements UpdateUserInfoService {
   }
 
   /**
-   * The new password is judged by the server's rules before anything else (`PasswordRules`: the
-   * shared minimum length, then the common-passwords list) — the refusal's sentence is the one
-   * the form shows. After the write, every OTHER session of the account ends (`AccountSessions`):
+   * The new password is judged by the server's rules before anything else (`PasswordRules`: blank
+   * or no text at all, then the shared minimum length, then the common-passwords list) — the
+   * refusal's sentence is the one the form shows. After the write, every OTHER session of the account ends (`AccountSessions`):
    * a device holding a session opened under the old password signs out; the device that made the
    * change keeps its session.
    */

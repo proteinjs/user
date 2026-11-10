@@ -60,8 +60,8 @@ describe('UpdateUserInfo.updateName — persists AND refreshes the server sessio
 
   /**
    * The signed-in change: the new password is held to the server's rules before anything else
-   * (the shared minimum length, then the common-passwords list — the refusal in the policy's own
-   * words, which the form shows), and a change that lands ends every OTHER session of the
+   * (blank or no text at all, the shared minimum length, then the common-passwords list — the
+   * refusal in the policy's own words, which the form shows), and a change that lands ends every OTHER session of the
    * account — the device holding a session opened under the old password signs out; the device
    * that made the change (this request's session, `test-session` in the environment) keeps its.
    */
@@ -94,6 +94,23 @@ describe('UpdateUserInfo.updateName — persists AND refreshes the server sessio
       expect(common).toEqual({ updated: false, error: PasswordPolicy.TOO_COMMON });
 
       expect((await getDbAsSystem().get(tables.User, { id: user.id })).password).toBe(before);
+      expect(sendEmail).not.toHaveBeenCalled();
+    });
+
+    it(`a new password that is no text at all (a JSON number) is refused as blank — nothing written, no session ended`, async () => {
+      const user = await withCurrentPassword('not-text@test.local', 'current-password-3');
+      const db = getDbAsSystem();
+      await db.insert(tables.Session, sessionRow('not-text-phone', user));
+      const before = (await db.get(tables.User, { id: user.id })).password;
+
+      // The service's signature says text; the wire carries whatever the caller sent.
+      const outcome = await new UpdateUserInfo().updatePassword('current-password-3', 12345678 as unknown as string);
+
+      expect(outcome).toEqual({ updated: false, error: 'New password cannot be blank' });
+      expect((await db.get(tables.User, { id: user.id })).password).toBe(before);
+      expect((await db.query(tables.Session, { userEmail: user.email })).map((row) => row.sessionId)).toEqual([
+        'not-text-phone',
+      ]);
       expect(sendEmail).not.toHaveBeenCalled();
     });
 

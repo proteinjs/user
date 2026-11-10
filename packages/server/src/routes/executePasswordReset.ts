@@ -15,9 +15,9 @@ import { signInThrottle } from '../throttle/SignInThrottle';
  * well-formed token before any lookup — checks its expiry, and redeems it: the new password is
  * written and the token cleared in one conditional update, so a token resets a password once.
  * The token itself never reaches the log. A request that carries no body at all is refused like
- * one that carries a blank password, and so is a password the server's rules refuse
- * (`PasswordRules`: the shared minimum length, the common-passwords list) — before the token is
- * resolved, so a refused password consumes nothing.
+ * one that carries a blank password (or one that is no text), and so is a password the server's
+ * rules refuse (`PasswordRules`: blank first, then the shared minimum length, the common-passwords
+ * list) — before the token is resolved, so a refused password consumes nothing.
  *
  * A redeemed link also opens the account's sign-in window again (`SignInThrottle`): the person
  * just proved the mailbox, so a reset made while wrong guesses held the door shut lets the new
@@ -35,11 +35,7 @@ export const executePasswordReset: Route = {
     const logger = new Logger({ name: 'executePasswordReset' });
     const digests = new RequestDigests();
     const { token, newPassword } = request.body ?? {};
-    if (typeof newPassword !== 'string' || newPassword.length === 0) {
-      response.status(400).send({ error: 'New password cannot be blank' });
-      return;
-    }
-
+    // Blank, no text at all, too short, too common: one check, refused before the token is resolved.
     const passwordRefusal = new PasswordRules().check(newPassword);
     if (passwordRefusal) {
       response.status(400).send({ error: passwordRefusal });

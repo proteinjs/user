@@ -22,7 +22,8 @@ const testEnv = new UserServerTestEnvironment();
  *   on every later touch alike. The column is the key every by-account session end matches; a touch
  *   re-derives it from the blob, so a row an earlier release's login door bound as typed (brought
  *   over once by NormalizeSessionAddresses, the blob left as bound) would otherwise revert on the
- *   person's next request and outlive the next reset. The blob itself stays as bound (it is
+ *   person's next request and outlive the next reset — and a row an earlier release's pod re-typed
+ *   during the rollout heals on its next touch here. The blob itself stays as bound (it is
  *   passport's; the user cache lowercases on every read).
  */
 
@@ -97,22 +98,23 @@ describe(`DbSessionStore writes the address in the account row's form — the on
     expect(JSON.parse(row.session).passport.user).toBe(asTyped);
   });
 
-  it(`touch: a row brought over by NormalizeSessionAddresses (the address lowercased, the blob still as typed) keeps the lowercased address through the touch that rewrites it`, async () => {
+  it(`touch: a row whose address is still as typed — what an earlier release's pod leaves when it touches a row during the rollout — is lowercased by the touch that rewrites it`, async () => {
     const db = getDbAsSystem();
     const seededExpiry = moment().add(1, 'hour').toDate();
     await db.insert(tables.Session, {
       sessionId: 'typed-touch',
       session: sessionBlob(asTyped),
       expires: seededExpiry,
-      userEmail: account,
+      userEmail: asTyped,
     });
 
-    // The person's next request: express-session touches the row with the blob it loaded — the
-    // address in it as the old door bound it. The store's first touch of an id is never throttled.
+    // The person's next request, now on this release: express-session touches the row with the blob
+    // it loaded — the address in it as the old door bound it. The store's first touch of an id is
+    // never throttled.
     await write('touch', 'typed-touch', boundSession(asTyped, moment().add(1, 'day').toDate()));
 
     const row = await db.get(tables.Session, { sessionId: 'typed-touch' });
-    // The touch did rewrite the row (its expiry moved a day out) — and left the address where the kills find it.
+    // The touch did rewrite the row (its expiry moved a day out) — and moved the address to where the kills find it.
     expect(moment(row.expires).isAfter(moment(seededExpiry).add(1, 'minute'))).toBe(true);
     expect(row.userEmail).toBe(account);
   });

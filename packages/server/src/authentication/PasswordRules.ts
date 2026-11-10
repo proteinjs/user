@@ -7,10 +7,31 @@ import { CommonPasswords } from './CommonPasswords';
  * and the signed-in change (`UpdateUserInfo.updatePassword`). The length rule is
  * `PasswordPolicy`'s (shared with the forms, which mirror its sentence); the common-passwords
  * check is the server's alone — the forms show its sentence as it comes back.
+ *
+ * What arrives is whatever the request carried, so the check takes it untyped: a value that is no
+ * text at all (a JSON number, an object, nothing) is refused here as blank, before any rule reads
+ * it — on every road that hands this check a password, present or future, never a failure inside
+ * the rules.
  */
 export class PasswordRules {
-  /** The refusal `password` earns, or undefined when it may be set: too short first, then too common. */
-  check(password: string): string | undefined {
+  /** What a new password that is blank, or no text at all, is told. */
+  static readonly BLANK = 'New password cannot be blank';
+
+  /** The refusal `password` earns, or undefined when it may be set: blank (or not text) first, then too short, then too common. */
+  check(password: unknown): string | undefined {
+    if (!PasswordRules.isGiven(password)) {
+      return PasswordRules.BLANK;
+    }
+
     return PasswordPolicy.tooShort(password) ?? (CommonPasswords.has(password) ? PasswordPolicy.TOO_COMMON : undefined);
+  }
+
+  /**
+   * Whether `password` is text with something in it — the test `check` holds every road to first.
+   * A door that answers a blank field in its own sentence (sign-up names both of its fields in
+   * one) reads this rather than repeating it.
+   */
+  static isGiven(password: unknown): password is string {
+    return typeof password === 'string' && password.length > 0;
   }
 }
