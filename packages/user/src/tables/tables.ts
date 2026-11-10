@@ -8,6 +8,7 @@ import { AccessInvite, AccessInviteTable } from './AccessInviteTable';
 import { RoleGrantEvent, RoleGrantEventTable } from './RoleGrantEventTable';
 import { UserStatusEvent, UserStatusEventTable } from './UserStatusEventTable';
 import { UserActivity, UserActivityTable } from './UserActivityTable';
+import { UserAccountEvent, UserAccountEventTable } from './UserAccountEventTable';
 
 export const tables = {
   AccessGrant: new AccessGrantTable() as Table<AccessGrant>,
@@ -16,6 +17,7 @@ export const tables = {
   Invite: new InviteTable() as Table<Invite>,
   RoleGrantEvent: new RoleGrantEventTable() as Table<RoleGrantEvent>,
   User: new UserTable() as Table<User>,
+  UserAccountEvent: new UserAccountEventTable() as Table<UserAccountEvent>,
   UserActivity: new UserActivityTable() as Table<UserActivity>,
   UserStatusEvent: new UserStatusEventTable() as Table<UserStatusEvent>,
   Session: new SessionTable() as Table<Session>,

@@ -2,13 +2,15 @@ import { QueryBuilder, Table, TableWatcher, getDbAsSystem } from '@proteinjs/db'
 import { User, tables } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
 import { RequestDigests } from '@proteinjs/util-node';
+import { AccountSessions } from './AccountSessions';
 
 /**
  * The one owner of "deactivated ⇒ sessions die": any user-table update writing
- * `status: 'deactivated'` deletes the account's session rows (SocketIOSessionWatcher kicks the
- * live sockets on that delete). Because the writers all go through `Db.update` — the staff
- * toggle (SetUserStatus), account deletion, and the boot sync deactivating machine accounts
- * removed from source — this fires for every present and future deactivation path.
+ * `status: 'deactivated'` ends the account's sessions through `AccountSessions` (the one owner of
+ * the by-account session end; SocketIOSessionWatcher kicks the live sockets on its delete).
+ * Because the writers all go through `Db.update` — the staff toggle (SetUserStatus), account
+ * deletion, and the boot sync deactivating machine accounts removed from source — this fires for
+ * every present and future deactivation path.
  *
  * The delete runs post-commit (`runAfterCommit`): a transactional status flip that rolls back
  * must not have killed sessions, and socket kicks must observe committed truth.
@@ -45,7 +47,7 @@ export class UserStatusTableWatcher implements TableWatcher<User> {
         return; // row deleted since the flip — nothing to resolve sessions against
       }
 
-      const deletedSessions = await db.delete(tables.Session, { userEmail: user.email });
+      const deletedSessions = await new AccountSessions().endAll(user.email);
       if (deletedSessions > 0) {
         this.logger.info({
           message: `Deactivation killed sessions`,

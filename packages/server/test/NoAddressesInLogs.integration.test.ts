@@ -1,5 +1,5 @@
 import moment from 'moment';
-import sha256 from 'crypto-js/sha256';
+import { sha256Hex } from './sha256Hex';
 import { getDbAsSystem } from '@proteinjs/db';
 import { SourceRecordSyncRunner } from '@proteinjs/db/source';
 import { EmailSender, MailSink } from '@proteinjs/email-server';
@@ -339,7 +339,7 @@ describe('no e-mail address reaches the server log', () => {
     await getDbAsSystem().insert(tables.User, {
       name: 'Deactivated',
       email: 'logs-deactivated@test.local',
-      password: sha256('correct-password').toString(),
+      password: sha256Hex('correct-password'),
       emailVerified: true,
       roles: [],
       status: 'deactivated',

@@ -1,4 +1,4 @@
-import sha256 from 'crypto-js/sha256';
+import { sha256Hex } from './sha256Hex';
 import { getDbAsSystem } from '@proteinjs/db';
 import { SourceRecordSyncRunner } from '@proteinjs/db/source';
 import { SourceRepository } from '@proteinjs/reflection';
@@ -276,7 +276,7 @@ describe('Machine accounts as source records', () => {
     // The categorical watcher killed the machine sessions; the human session is untouched.
     expect(await sessionEmails()).toEqual([human.email]);
     // The one login door refuses a deactivated account even with matching credentials.
-    await getDbAsSystem().update(tables.User, { id: removed.id, password: sha256('bridge-pw').toString() });
+    await getDbAsSystem().update(tables.User, { id: removed.id, password: sha256Hex('bridge-pw') });
     expect(await authenticate('machine-ops@test.local', 'bridge-pw')).toBe('This account has been deactivated');
 
     // Decommission is reversible in code: re-declaring reverts status via drift reversion.
@@ -299,7 +299,7 @@ describe('Machine accounts as source records', () => {
     // the write leaves the row the sync's. (A DECLARED column written at runtime makes the row
     // the product's — @proteinjs/db's authorship precedence, pinned by the next test — and a
     // declaration never adopts a row that is the product's.)
-    await getDbAsSystem().update(tables.User, { id: 'machine-test-ops', password: sha256('cred').toString() });
+    await getDbAsSystem().update(tables.User, { id: 'machine-test-ops', password: sha256Hex('cred') });
     await insertSession('machine-session', 'machine-ops@test.local');
 
     class RenamedOps extends TestOpsMachineAccount {
@@ -319,7 +319,7 @@ describe('Machine accounts as source records', () => {
       status: 'active',
       isLoadedFromSource: true,
     });
-    expect(adopted.password).toBe(sha256('cred').toString());
+    expect(adopted.password).toBe(sha256Hex('cred'));
     // The rename transited the removal patch: the categorical watcher killed the old sessions...
     expect(await sessionEmails()).toEqual([]);
     // ...and the surviving credential logs in under the new email.
@@ -428,7 +428,7 @@ describe('Machine accounts as source records', () => {
 
       // Only the hash is stored, and it is the hash of the returned plaintext.
       const row = await machineRow();
-      expect(row.password).toBe(sha256(minted.password).toString());
+      expect(row.password).toBe(sha256Hex(minted.password));
       // The old credential's sessions died with the rotation...
       expect(await sessionEmails()).toEqual([]);
       // ...and the minted credential is immediately loggable.

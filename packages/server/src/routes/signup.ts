@@ -6,6 +6,7 @@ import { establishSession } from '../authentication/establishSession';
 import { DisposableEmailDomains } from '../services/DisposableEmailDomains';
 import { Signup } from '../services/Signup';
 import { getDefaultSignupGuard, SignupGuardFacts } from '../services/SignupGuard';
+import { PasswordRules } from '../authentication/PasswordRules';
 import { ClientAddress } from '../throttle/ClientAddress';
 
 const logger = new Logger({ name: 'signup' });
@@ -49,8 +50,18 @@ export const signup: Route = {
   method: routes.signup.method,
   onRequest: async (request: any, response): Promise<void> => {
     const body: SignupSubmission = request.body ?? {};
-    if (!body.name || !body.password) {
+    // Text or nothing: a value of another type (a JSON number as a password) is refused in the same
+    // words, never handed to the rules or the hasher (executePasswordReset guards its password so).
+    if (typeof body.name !== 'string' || !body.name || typeof body.password !== 'string' || !body.password) {
       response.send({ error: 'Name and password cannot be blank' });
+      return;
+    }
+
+    // The server's password rules (the shared minimum length, the common-passwords list), judged
+    // before any door is knocked on: the refusal's sentence is the form's own.
+    const passwordRefusal = new PasswordRules().check(body.password);
+    if (passwordRefusal) {
+      response.send({ error: passwordRefusal });
       return;
     }
 

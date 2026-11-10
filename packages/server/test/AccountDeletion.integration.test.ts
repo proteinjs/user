@@ -1,4 +1,4 @@
-import sha256 from 'crypto-js/sha256';
+import { sha256Hex } from './sha256Hex';
 import moment from 'moment';
 import { Reference, getDbAsSystem } from '@proteinjs/db';
 import { SourceRepository } from '@proteinjs/reflection';
@@ -73,7 +73,7 @@ describe('AccountDeletion — deactivation, manifest, resume, cancel-by-login', 
     return await getDbAsSystem().insert(tables.User, {
       name: 'Deletion test user',
       email,
-      password: sha256(password).toString(),
+      password: sha256Hex(password),
       emailVerified: true,
       roles: [],
     });

@@ -12,7 +12,12 @@ import moment from 'moment';
  * - invited signup: email resolved from the invite, invite consumed, session established;
  * - already-registered email: response body indistinguishable from success, but NO session —
  *   auto-login must never hand out a session for an account the caller didn't just create;
- * - invalid token / invite-only violations: honest error, no session, no account row.
+ * - invalid token / invite-only violations: honest error, no session, no account row;
+ * - an invite row the previous release minted holds the token ITSELF: once DigestStandingInviteTokens
+ *   has run, the link mailed back then still redeems it (nothing dies at the deploy);
+ * - the invite row holds the mailed token's DIGEST, never the token: the link's token redeems it,
+ *   the digest presented as a token does not;
+ * - a password the server's rules refuse (too short, too common) is refused before any write.
  *
  * The email transport is stubbed at the module boundary (SignupInvite.test.ts pattern); the db
  * stays real.
@@ -35,10 +40,18 @@ jest.mock('@proteinjs/email-server', () => ({
 
 import { getDbAsSystem, Reference } from '@proteinjs/db';
 import { SourceRepository } from '@proteinjs/reflection';
-import { MachineAccount, tables } from '@proteinjs/user';
+import { MachineAccount, PasswordPolicy, tables } from '@proteinjs/user';
+import { MailedTokenValue } from '../src/authentication/MailedTokenValue';
 import { signup } from '../src/routes/signup';
 import { createPassportRequest } from './passportSessionHarness';
+import { sha256Hex } from './sha256Hex';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
+import { DigestStandingInviteTokens } from '../src/migrations/DigestStandingInviteTokens';
+
+/** A well-formed invite token (what the mailed link carries) and the digest its row holds — computed here, independently of the owner. */
+const INVITE_TOKEN = 'a1'.repeat(32);
+const INVITE_TOKEN_DIGEST = sha256Hex(INVITE_TOKEN);
+const DECLARED_INVITE_TOKEN = 'b2'.repeat(32);
 
 const testEnv = new UserServerTestEnvironment();
 
@@ -160,7 +173,7 @@ describe('signup route — auto-login after signup', () => {
     const db = getDbAsSystem();
     await db.insert(tables.Invite, {
       email: 'invited@test.local',
-      token: 'invite-token-1',
+      token: INVITE_TOKEN_DIGEST,
       tokenExpiresAt: moment().add(1, 'day'),
       invitedBy: new Reference(tables.User.name, 'inviter-1'),
     });
@@ -168,7 +181,7 @@ describe('signup route — auto-login after signup', () => {
     const outcome = await invokeSignup({
       name: 'Invited Signup',
       password: 'pw-invited-1',
-      token: 'invite-token-1',
+      token: INVITE_TOKEN,
     });
 
     expect(outcome.body).toEqual({});
@@ -182,7 +195,77 @@ describe('signup route — auto-login after signup', () => {
     // bytes stay the raw id, so it reads back as a reference to the same id.
     expect(created!.invitedBy?._table).toBe(tables.User.name);
     expect(created!.invitedBy?._id).toBe('inviter-1');
-    expect(await db.get(tables.Invite, { token: 'invite-token-1' })).toBeUndefined();
+    expect(await db.get(tables.Invite, { token: INVITE_TOKEN_DIGEST })).toBeUndefined();
+  });
+
+  it(`an invite row minted before the digest-at-rest change holds the token in clear: after DigestStandingInviteTokens runs, the link mailed back then still redeems it`, async () => {
+    const db = getDbAsSystem();
+    // The row as the previous release stored it — the mailed token itself — beside a row already at rest as a digest.
+    await db.insert(tables.Invite, {
+      email: 'standing.invited@test.local',
+      token: INVITE_TOKEN,
+      tokenExpiresAt: moment().add(20, 'days'),
+      invitedBy: new Reference(tables.User.name, 'inviter-1'),
+    });
+    const alreadyDigested = 'c3'.repeat(32);
+    await db.insert(tables.Invite, {
+      email: 'fresh.invited@test.local',
+      token: sha256Hex(alreadyDigested),
+      tokenExpiresAt: moment().add(20, 'days'),
+      invitedBy: new Reference(tables.User.name, 'inviter-1'),
+    });
+
+    // Every standing row is digested in place, in one pass; the row count and expiries stand.
+    expect(await new DigestStandingInviteTokens().record.run()).toEqual({ digested: 2 });
+    expect((await db.get(tables.Invite, { email: 'standing.invited@test.local' })).token).toBe(INVITE_TOKEN_DIGEST);
+    expect((await db.query(tables.Invite, {})).length).toBe(2);
+
+    const outcome = await invokeSignup({ name: 'Standing Invitee', password: 'pw-standing-1', token: INVITE_TOKEN });
+
+    expect(outcome.body).toEqual({});
+    expect(outcome.loggedInAs).toBe('standing.invited@test.local');
+    expect((await getUserRow('standing.invited@test.local'))!.emailVerified).toBe(true);
+    expect(await db.get(tables.Invite, { email: 'standing.invited@test.local' })).toBeUndefined(); // consumed
+  });
+
+  it('the invite row holds the digest, never the token: the stored digest presented as a token redeems nothing', async () => {
+    const db = getDbAsSystem();
+    await db.insert(tables.Invite, {
+      email: 'digest.invited@test.local',
+      token: INVITE_TOKEN_DIGEST,
+      tokenExpiresAt: moment().add(1, 'day'),
+      invitedBy: new Reference(tables.User.name, 'inviter-1'),
+    });
+    // The stored value is what the owner stores for this token, and it is not the token.
+    expect(MailedTokenValue.digest(INVITE_TOKEN)).toBe(INVITE_TOKEN_DIGEST);
+    expect(INVITE_TOKEN_DIGEST).not.toBe(INVITE_TOKEN);
+
+    const outcome = await invokeSignup({ name: 'Digest Reader', password: 'pw-digest-1', token: INVITE_TOKEN_DIGEST });
+
+    expect(outcome.body?.error).toMatch(/no longer valid/i);
+    expect(outcome.loggedInAs).toBeUndefined();
+    expect(outcome.sessionEvents).toEqual([]);
+    expect(await getUserRow('digest.invited@test.local')).toBeUndefined();
+    expect(await db.get(tables.Invite, { token: INVITE_TOKEN_DIGEST })).toBeDefined(); // untouched
+  });
+
+  it(`a password under the minimum, or on the common-passwords list, is refused in the policy's words before any write — no account, no session`, async () => {
+    const short = await invokeSignup({
+      name: 'Short',
+      email: 'short@test.local',
+      password: 'a'.repeat(PasswordPolicy.MIN_LENGTH - 1),
+    });
+    expect(short.body).toEqual({ error: PasswordPolicy.TOO_SHORT });
+    expect(short.loggedInAs).toBeUndefined();
+    expect(short.sessionEvents).toEqual([]);
+
+    const common = await invokeSignup({ name: 'Common', email: 'common@test.local', password: 'Password1' });
+    expect(common.body).toEqual({ error: PasswordPolicy.TOO_COMMON });
+    expect(common.loggedInAs).toBeUndefined();
+    expect(common.sessionEvents).toEqual([]);
+
+    expect((await getDbAsSystem().query(tables.User, {})).length).toBe(0);
+    expect(sendEmail).not.toHaveBeenCalled();
   });
 
   it('an already-registered email answers indistinguishably but mints NO session', async () => {
@@ -221,11 +304,11 @@ describe('signup route — auto-login after signup', () => {
 
     await getDbAsSystem().insert(tables.Invite, {
       email: 'declared.machine@test.local',
-      token: 'invite-token-declared',
+      token: sha256Hex(DECLARED_INVITE_TOKEN),
       tokenExpiresAt: moment().add(1, 'day'),
       invitedBy: new Reference(tables.User.name, 'inviter-1'),
     });
-    const invited = await invokeSignup({ name: 'Squatter', password: 'pw-squat-2', token: 'invite-token-declared' });
+    const invited = await invokeSignup({ name: 'Squatter', password: 'pw-squat-2', token: DECLARED_INVITE_TOKEN });
     expect(invited.body).toEqual({ error: "This address can't be registered." });
     expect(invited.loggedInAs).toBeUndefined();
 
@@ -237,7 +320,7 @@ describe('signup route — auto-login after signup', () => {
     const outcome = await invokeSignup({
       name: 'Token Guess',
       password: 'pw-guess-1',
-      token: 'never-existed',
+      token: 'c3'.repeat(32), // well formed, never issued
     });
 
     expect(outcome.body?.error).toMatch(/no longer valid/i);
@@ -261,7 +344,7 @@ describe('signup route — auto-login after signup', () => {
     expect(await getUserRow('no.invite@test.local')).toBeUndefined();
   });
 
-  it('a blank name or password is refused before any write', async () => {
+  it('a blank name or password — or one that is not text — is refused in plain words before any write', async () => {
     const missingName = await invokeSignup({ email: 'blank@test.local', password: 'pw-blank-1' });
     expect(missingName.body?.error).toBeTruthy();
     expect(missingName.sessionEvents).toEqual([]);
@@ -269,6 +352,15 @@ describe('signup route — auto-login after signup', () => {
     const missingPassword = await invokeSignup({ name: 'Blank', email: 'blank@test.local' });
     expect(missingPassword.body?.error).toBeTruthy();
     expect(missingPassword.sessionEvents).toEqual([]);
+
+    // A JSON number where the password goes: the same refusal, not a failure inside the rules.
+    const numberPassword = await invokeSignup({ name: 'Blank', email: 'blank@test.local', password: 12345678 });
+    expect(numberPassword.body?.error).toBe('Name and password cannot be blank');
+    expect(numberPassword.sessionEvents).toEqual([]);
+
+    const numberName = await invokeSignup({ name: 42, email: 'blank@test.local', password: 'pw-blank-1' });
+    expect(numberName.body?.error).toBe('Name and password cannot be blank');
+    expect(numberName.sessionEvents).toEqual([]);
 
     expect(await getUserRow('blank@test.local')).toBeUndefined();
   });

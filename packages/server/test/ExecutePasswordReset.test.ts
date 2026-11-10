@@ -1,10 +1,12 @@
 import { createHash } from 'crypto';
 import moment, { Moment } from 'moment';
 import { getDbAsSystem } from '@proteinjs/db';
-import { tables, User } from '@proteinjs/user';
+import { PasswordPolicy, tables, User } from '@proteinjs/user';
 import { executePasswordReset } from '../src/routes/executePasswordReset';
+import { DbSessionStore } from '../src/authentication/DbSessionStore';
 import { PasswordHasher } from '../src/authentication/PasswordHasher';
 import { PasswordResetToken } from '../src/authentication/PasswordResetToken';
+import { NormalizeSessionAddresses } from '../src/migrations/NormalizeSessionAddresses';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 import { DbTraffic } from './DbTraffic';
 import { LogCapture } from './LogCapture';
@@ -32,7 +34,15 @@ const testEnv = new UserServerTestEnvironment();
  * - two simultaneous presentations of one token: exactly one 200, and the row verifies only the
  *   winner's password;
  * - an expired token, or a token whose row carries no expiry, is refused;
- * - a blank new password is refused without consuming the token;
+ * - a blank new password is refused without consuming the token, and so is one the server's
+ *   rules refuse (under the minimum length, on the common-passwords list) — in the policy's words;
+ * - a redeemed link ends EVERY session of the account (the old password may be in other hands);
+ *   another account's sessions stay — a session row bound as typed by the login door of an earlier
+ *   release (a capitalized address) included, once NormalizeSessionAddresses has brought it to the
+ *   account row's form AND the person has used that session since (express-session's touch
+ *   rewrites the row from the blob, which still carries the address as typed; the store keeps the
+ *   column in the account row's form);
+ * - the link lives FIFTEEN minutes — the literal, so moving the constant is a deliberate act;
  * - no token, no leading characters of a token and no full digest reach the log, on any path
  *   through the route;
  * - the token owner's own contract: mint shape and what it stores, the shape refusal, the
@@ -68,6 +78,20 @@ const sha256Hex = (value: string) => createHash('sha256').update(value).digest('
 
 /** A well-formed token that was never issued to anyone. */
 const unissuedToken = () => sha256Hex(`never issued ${Math.random()}`);
+
+/**
+ * A session-store touch, as express-session fires one at the end of a request that left the session
+ * unmodified (rolling expiry): the store rewrites the row from the blob it was handed. The store's
+ * twelve-hour sweep timer is not the subject — faked away at construction, as DbSessionStore's own suite does.
+ */
+const touchThroughStore = async (sessionId: string, session: Express.SessionData): Promise<void> => {
+  jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
+  const store = new DbSessionStore();
+  jest.useRealTimers();
+  await new Promise<void>((resolve, reject) =>
+    store.touch(sessionId, session, (error) => (error ? reject(error) : resolve()))
+  );
+};
 
 /** A user with a token minted by the owner; `expiration` (when given) replaces the expiry the mint stored. */
 const armResetToken = async (email: string, expiration?: Moment | null): Promise<{ user: User; token: string }> => {
@@ -309,6 +333,93 @@ describe('executePasswordReset route', () => {
     expect(row.passwordResetToken).toBe(sha256Hex(token));
   });
 
+  it(`a password under the minimum, or on the common-passwords list, is refused in the policy's words without consuming the token`, async () => {
+    const { user, token } = await armResetToken('reset-rules@test.local');
+    const before = await resetStateByEmail();
+
+    const short = await invokeExecute({ token, newPassword: 'a'.repeat(PasswordPolicy.MIN_LENGTH - 1) });
+    expect(short.status).toBe(400);
+    expect(short.body).toEqual({ error: PasswordPolicy.TOO_SHORT });
+
+    const common = await invokeExecute({ token, newPassword: 'Password1' });
+    expect(common.status).toBe(400);
+    expect(common.body).toEqual({ error: PasswordPolicy.TOO_COMMON });
+
+    expect(await resetStateByEmail()).toEqual(before);
+    // The token was consumed by neither: it still resets the password.
+    const accepted = await invokeExecute({ token, newPassword: 'a long enough password' });
+    expect(accepted.status).toBe(200);
+    await expect(
+      new PasswordHasher().verify((await userRow(user.id)).password, 'a long enough password')
+    ).resolves.toBe(true);
+  });
+
+  it(`a redeemed link ends every session of the account — and none of another account's`, async () => {
+    const { user, token } = await armResetToken('reset-sessions@test.local');
+    const bystander = await testEnv.createUser({ name: 'Bystander', email: 'reset-bystander@test.local' });
+    const sessionRow = (sessionId: string, owner: User) => ({
+      sessionId,
+      session: JSON.stringify({ cookie: {}, passport: { user: owner.email } }),
+      expires: moment().add(1, 'day').toDate(),
+      userEmail: owner.email,
+    });
+    const db = getDbAsSystem();
+    await db.insert(tables.Session, sessionRow('reset-phone', user));
+    await db.insert(tables.Session, sessionRow('reset-laptop', user));
+    await db.insert(tables.Session, sessionRow('bystander-phone', bystander));
+
+    const outcome = await invokeExecute({ token, newPassword: 'a fresh password' });
+
+    expect(outcome.status).toBe(200);
+    expect(await db.query(tables.Session, { userEmail: user.email })).toEqual([]);
+    expect((await db.query(tables.Session, { userEmail: bystander.email })).map((row) => row.sessionId)).toEqual([
+      'bystander-phone',
+    ]);
+  });
+
+  it(`a session row bound as typed by an earlier release's login door ends on a reset too, once NormalizeSessionAddresses has run and the person has used it since — a bystander's row is untouched by all three`, async () => {
+    const { user, token } = await armResetToken('mixed.case.reset@test.local');
+    const bystander = await testEnv.createUser({ name: 'Bystander', email: 'mixed.bystander@test.local' });
+    const db = getDbAsSystem();
+    // The row as the previous release minted it: the address exactly as the person typed it.
+    const asTyped = 'Mixed.Case.Reset@Test.local';
+    const minted = (userEmail: string, sessionId: string) => ({
+      sessionId,
+      session: JSON.stringify({ cookie: {}, passport: { user: userEmail } }),
+      expires: moment().add(1, 'day').toDate(),
+      userEmail,
+    });
+    await db.insert(tables.Session, minted(asTyped, 'typed-phone'));
+    await db.insert(tables.Session, minted(user.email, 'lowercase-laptop'));
+    await db.insert(tables.Session, minted(bystander.email, 'mixed-bystander-phone'));
+
+    expect(await new NormalizeSessionAddresses().record.run()).toEqual({ normalized: 1 });
+    expect((await db.get(tables.Session, { sessionId: 'typed-phone' })).userEmail).toBe(user.email);
+    expect(await db.query(tables.Session, { userEmail: asTyped })).toEqual([]);
+    // Nothing left to bring over: the second pass is a no-op.
+    expect(await new NormalizeSessionAddresses().record.run()).toEqual({ normalized: 0 });
+
+    // The person uses that phone before the reset: the store rewrites the row from the blob the
+    // old door bound (the address as typed) — and keeps the column in the account row's form.
+    const typedRow = await db.get(tables.Session, { sessionId: 'typed-phone' });
+    await touchThroughStore('typed-phone', {
+      ...JSON.parse(typedRow.session),
+      cookie: { expires: moment().add(2, 'days').toDate() },
+    });
+    const touched = await db.get(tables.Session, { sessionId: 'typed-phone' });
+    expect(moment(touched.expires).isAfter(moment(typedRow.expires).add(1, 'hour'))).toBe(true);
+    expect(touched.userEmail).toBe(user.email);
+
+    const outcome = await invokeExecute({ token, newPassword: 'a fresh password' });
+
+    expect(outcome.status).toBe(200);
+    expect(await db.query(tables.Session, { userEmail: user.email })).toEqual([]);
+    expect(await db.get(tables.Session, { sessionId: 'typed-phone' })).toBeUndefined();
+    expect((await db.query(tables.Session, { userEmail: bystander.email })).map((row) => row.sessionId)).toEqual([
+      'mixed-bystander-phone',
+    ]);
+  });
+
   it('no token, no leading characters of one and no full digest reach the log — every path through the route', async () => {
     const { token: live } = await armResetToken('reset-log-live@test.local');
     const { token: expired } = await armResetToken('reset-log-expired@test.local', moment().subtract(1, 'minute'));
@@ -337,7 +448,7 @@ describe('executePasswordReset route', () => {
   describe('PasswordResetToken', () => {
     const internals = new PasswordResetToken() as unknown as TokenInternals;
 
-    it('mints 64 lowercase hex characters, fresh each time, and stores the digest with an expiry an hour out', async () => {
+    it('mints 64 lowercase hex characters, fresh each time, and stores the digest with an expiry the lifetime out', async () => {
       const user = await testEnv.createUser({ name: 'Reset User', email: 'reset-mint@test.local' });
 
       const first = await new PasswordResetToken().mint(user);
@@ -351,8 +462,10 @@ describe('executePasswordReset route', () => {
       expect(afterFirst.passwordResetToken).toBe(sha256Hex(first));
       expect(afterSecond.passwordResetToken).toBe(sha256Hex(second));
       const minutesOut = moment(afterSecond.passwordResetTokenExpiration).diff(moment(), 'minutes', true);
-      expect(minutesOut).toBeGreaterThan(59);
-      expect(minutesOut).toBeLessThanOrEqual(60);
+      // The literal fifteen, not the constant read back: a recovery link's life, moved only on purpose.
+      expect(PasswordResetToken.LIFETIME_MINUTES).toBe(15);
+      expect(minutesOut).toBeGreaterThan(14);
+      expect(minutesOut).toBeLessThanOrEqual(15);
     });
 
     it.each(MalformedResetTokens.CASES)(

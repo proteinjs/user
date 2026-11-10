@@ -42,7 +42,12 @@ import { tables } from '@proteinjs/user';
 import { RequestDigests } from '@proteinjs/util-node';
 import { signup } from '../src/routes/signup';
 import { createPassportRequest } from './passportSessionHarness';
+import { sha256Hex } from './sha256Hex';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
+
+/** Well-formed invite tokens (what a mailed link carries); the rows hold their digests. */
+const GUARDED_INVITE_TOKEN = 'e5'.repeat(32);
+const THROWAWAY_INVITE_TOKEN = 'f6'.repeat(32);
 
 const testEnv = new UserServerTestEnvironment();
 
@@ -111,10 +116,11 @@ const invokeSignup = async (
 const getUserRow = async (email: string) => await getDbAsSystem().get(tables.User, { email });
 const userRowCount = async () => (await getDbAsSystem().query(tables.User, {})).length;
 
+/** An invite row for `email`, holding the DIGEST of the token its link carries (the stored form). */
 const seedInvite = async (email: string, token: string) => {
   await getDbAsSystem().insert(tables.Invite, {
     email,
-    token,
+    token: sha256Hex(token),
     tokenExpiresAt: moment().add(1, 'day'),
     invitedBy: new Reference(tables.User.name, 'inviter-1'),
   });
@@ -195,9 +201,9 @@ describe('signup route — the guard seam on the no-invite road', () => {
   it('the invite road never consults the guard: a refusing guard, an invited signup, the account is created', async () => {
     const guard = guardAnswering({ verdict: 'refuse', sentence: 'Never shown on the invite road.' });
     setGuard([guard]);
-    await seedInvite('invited@test.local', 'invite-token-guarded');
+    await seedInvite('invited@test.local', GUARDED_INVITE_TOKEN);
 
-    const outcome = await invokeSignup({ name: 'Invited', password: 'pw-invited-1', token: 'invite-token-guarded' });
+    const outcome = await invokeSignup({ name: 'Invited', password: 'pw-invited-1', token: GUARDED_INVITE_TOKEN });
 
     expect(outcome.body).toEqual({});
     expect(outcome.loggedInAs).toBe('invited@test.local');
@@ -205,7 +211,7 @@ describe('signup route — the guard seam on the no-invite road', () => {
     const created = await getUserRow('invited@test.local');
     expect(created).toBeDefined();
     expect(created!.emailVerified).toBe(true);
-    expect(await getDbAsSystem().get(tables.Invite, { token: 'invite-token-guarded' })).toBeUndefined();
+    expect(await getDbAsSystem().get(tables.Invite, { token: sha256Hex(GUARDED_INVITE_TOKEN) })).toBeUndefined();
     expect(guard.received).toEqual([]);
   });
 
@@ -288,9 +294,9 @@ describe('signup route — the guard seam on the no-invite road', () => {
   });
 
   it('an invited throwaway address is not refused by the list: the invite road is unchanged', async () => {
-    await seedInvite('someone@mailinator.com', 'invite-token-throwaway');
+    await seedInvite('someone@mailinator.com', THROWAWAY_INVITE_TOKEN);
 
-    const outcome = await invokeSignup({ name: 'Invited', password: 'pw-invited-2', token: 'invite-token-throwaway' });
+    const outcome = await invokeSignup({ name: 'Invited', password: 'pw-invited-2', token: THROWAWAY_INVITE_TOKEN });
 
     expect(outcome.body).toEqual({});
     expect(outcome.loggedInAs).toBe('someone@mailinator.com');

@@ -1,8 +1,9 @@
+import { routes } from '@proteinjs/user';
 import { logout } from '../src/routes/logout';
 import { createPassportRequest } from './passportSessionHarness';
 
 /**
- * `GET /user/logout` — logout through passport's own `request.logout` (functional for
+ * `POST /user/logout` — logout through passport's own `request.logout` (functional for
  * store-backed sessions since passport 0.6, which added the callback form): clear the user and
  * SAVE (a replayed old session id is logged out even before the id rotates), then REGENERATE
  * the session id (fixation hygiene on the privilege change, mirroring login's rotation; the
@@ -11,6 +12,11 @@ import { createPassportRequest } from './passportSessionHarness';
  * no user, the id was rotated, the request's user is cleared, and the client lands on /login.
  */
 describe('logout route', () => {
+  it('is a POST — a GET reachable from any page by a link or an image tag could sign a person out (a cross-site request)', () => {
+    expect(logout.method).toBe('post');
+    expect(logout.path).toBe(routes.logout.path);
+  });
+
   it('clears the user, saves, regenerates the session id, and redirects to /login', async () => {
     const { request, events } = await createPassportRequest();
     await new Promise<void>((resolve, reject) =>

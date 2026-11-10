@@ -12,6 +12,7 @@ import {
   tables,
 } from '@proteinjs/user';
 import { DefaultAdminCredentials } from '../authentication/DefaultAdminCredentials';
+import { AccountSessions } from '../authentication/AccountSessions';
 import { PasswordHasher } from '../authentication/PasswordHasher';
 import { AccountDeletionEmails } from '../emails/AccountDeletionEmails';
 import { SetUserStatus } from './SetUserStatus';
@@ -88,9 +89,9 @@ export class AccountDeletion implements AccountDeletionService {
       });
     }
 
-    // 6. Kill sessions last — SocketIOSessionWatcher disconnects every live socket, including
-    // the caller's own.
-    await db.delete(tables.Session, { userEmail: user.email });
+    // 6. End the sessions last (AccountSessions, the one owner) — SocketIOSessionWatcher
+    // disconnects every live socket on its delete, including the caller's own.
+    await new AccountSessions().endAll(user.email);
 
     // 7. The UI's confirmation copy renders from this.
     return { purgeAfter: deletion.purgeAfter };

@@ -1,4 +1,5 @@
 import { emailRegex } from '@proteinjs/util';
+import { PasswordPolicy } from '@proteinjs/user';
 
 /** A user-readable message per invalid field, keyed by the field's form name. */
 export type AuthFieldErrors<F extends string> = { [K in F]?: string };
@@ -6,7 +7,9 @@ export type AuthFieldErrors<F extends string> = { [K in F]?: string };
 /**
  * Client-side validation for the auth flows. Each method returns the invalid fields with a
  * user-readable message each (the page marks those fields), or undefined when the input is
- * valid. A blank field is refused here, in the page, so a real form never sends one.
+ * valid. A blank field is refused here, in the page, so a real form never sends one; a new
+ * password is held to `PasswordPolicy`'s length in the same words the server refuses it with
+ * (the server's common-passwords check answers through the form's error line).
  */
 export class AuthValidation {
   static login(fields: { email: string; password: string }): AuthFieldErrors<'email' | 'password'> | undefined {
@@ -51,6 +54,8 @@ export class AuthValidation {
 
     if (!fields.password) {
       errors.password = 'Enter a password';
+    } else if (PasswordPolicy.tooShort(fields.password)) {
+      errors.password = PasswordPolicy.tooShort(fields.password);
     } else if (fields.password !== fields.confirmPassword) {
       errors.confirmPassword = 'Passwords do not match';
     }
@@ -65,6 +70,8 @@ export class AuthValidation {
     const errors: AuthFieldErrors<'newPassword' | 'confirmPassword'> = {};
     if (!fields.newPassword) {
       errors.newPassword = 'Enter a new password';
+    } else if (PasswordPolicy.tooShort(fields.newPassword)) {
+      errors.newPassword = PasswordPolicy.tooShort(fields.newPassword);
     } else if (fields.newPassword !== fields.confirmPassword) {
       errors.confirmPassword = 'Passwords do not match';
     }

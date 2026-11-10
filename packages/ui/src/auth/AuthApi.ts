@@ -2,7 +2,10 @@ import { UserSignup, routes } from '@proteinjs/user';
 
 /**
  * The auth flows' server calls, in one place so the pages hold presentation only.
- * Methods resolve on success and throw an `Error` whose message is user-readable.
+ * Methods resolve on success and throw an `Error` whose message is user-readable: the door's own
+ * line when its answer carries one (`{ error }`, whatever the status — a refusal of the new
+ * password by the server's rules, a reset token no longer live), the generic words only when it
+ * carries none.
  */
 export class AuthApi {
   /**
@@ -28,7 +31,7 @@ export class AuthApi {
     });
     this.refuseIfLimited(response);
     if (response.status != 200) {
-      throw new Error(`Failed to sign up, error: ${response.statusText}`);
+      throw new Error(await this.reason(response, `Failed to sign up, error: ${response.statusText}`));
     }
 
     const body = await response.json();
@@ -47,7 +50,7 @@ export class AuthApi {
     });
     this.refuseIfLimited(response);
     if (response.status != 200) {
-      throw new Error(`Failed to log in, error: ${response.statusText}`);
+      throw new Error(await this.reason(response, `Failed to log in, error: ${response.statusText}`));
     }
 
     const body = await response.json();
@@ -99,6 +102,11 @@ export class AuthApi {
     return { valid: true, email: body.email };
   }
 
+  /**
+   * Resolves on a reset; throws the door's own line otherwise — the route answers every refusal as
+   * a 400 `{ error }` (a password the server's rules refuse, a link no longer live), and that line
+   * is what the person needs to act on.
+   */
   async executePasswordReset(token: string, newPassword: string): Promise<void> {
     const response = await fetch(routes.executePasswordReset.path, {
       method: routes.executePasswordReset.method,
@@ -107,7 +115,7 @@ export class AuthApi {
       headers: { 'Content-Type': 'application/json' },
     });
     if (response.status !== 200) {
-      throw new Error('Failed to reset password');
+      throw new Error(await this.reason(response, 'Failed to reset password'));
     }
   }
 
@@ -115,6 +123,20 @@ export class AuthApi {
   private refuseIfLimited(response: { status: number }): void {
     if (response.status === 429) {
       throw new Error(AuthApi.TOO_MANY_ATTEMPTS);
+    }
+  }
+
+  /**
+   * The line a refused request is told: the door's own `error` when the answer's body carries one
+   * (a route refuses in user-readable words, on a 400 as on a 200), else `generic` — a body that is
+   * no JSON (a proxy's error page) or carries no line.
+   */
+  private async reason(response: { json(): Promise<any> }, generic: string): Promise<string> {
+    try {
+      const error = (await response.json())?.error;
+      return typeof error === 'string' && error.trim() ? error : generic;
+    } catch {
+      return generic;
     }
   }
 }

@@ -1,7 +1,8 @@
-import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+import { timingSafeEqual } from 'crypto';
 import moment, { Moment } from 'moment';
 import { getDbAsSystem } from '@proteinjs/db';
 import { tables, User } from '@proteinjs/user';
+import { MailedTokenValue } from './MailedTokenValue';
 
 export type MailedTokenResolution =
   | { status: 'malformed' }
@@ -25,25 +26,17 @@ export type MailedTokenLifetime = { amount: number; unit: 'minutes' | 'days' };
  * reset, the email verification) names its two cells on the user row, its lifetime, and what
  * spending it writes.
  *
- * A token is 32 bytes from the platform CSPRNG, hex-encoded (64 lowercase hex characters). The
- * token itself exists only in the link mailed to the account: the user row stores its SHA-256
- * digest (hex) beside the expiry, never the token, so a read of the table yields nothing that
- * can be presented. A digest is not a token — presenting one is hashed again and matches no row.
- * A fast unsalted hash is enough here because the input is 256 bits of CSPRNG output, not a
- * human-chosen secret.
+ * The token's value — its shape, its mint, its digest at rest — is `MailedTokenValue`'s (shared
+ * with the invite token, which lives on its own row): the user row stores the digest beside the
+ * expiry, never the token, so a read of the table yields nothing that can be presented.
  *
- * Resolution refuses anything that is not a value of the token's shape BEFORE any lookup. A
- * query filter built from a request value that is not a token does not compare the way a token
- * does: `null` renders as `IS NULL` and would match every account with no pending token, an
- * empty string matches an emptied column, and other types reach the driver. The presented token
- * is then hashed, the row is looked up by that digest, and the row the lookup returns is
- * re-checked in code — its stored digest must be a string equal to the presented token's digest
- * (compared in constant time) and its expiry a real timestamp still in the future — so the
- * outcome never rests on how the storage compares.
+ * Resolution refuses anything that is not a value of the token's shape BEFORE any lookup
+ * (`MailedTokenValue.parse`). The presented token is then hashed, the row is looked up by that
+ * digest, and the row the lookup returns is re-checked in code — its stored digest must be a
+ * string equal to the presented token's digest (compared in constant time) and its expiry a real
+ * timestamp still in the future — so the outcome never rests on how the storage compares.
  */
 export abstract class MailedToken {
-  private static readonly SHAPE = /^[0-9a-f]{64}$/;
-
   protected constructor(
     private readonly cells: MailedTokenCells,
     private readonly lifetime: MailedTokenLifetime
@@ -54,7 +47,7 @@ export abstract class MailedToken {
    * outstanding, and return the token — the only time it exists outside the mailed link.
    */
   async mint(user: User): Promise<string> {
-    const token = randomBytes(32).toString('hex');
+    const token = MailedTokenValue.mint();
     await getDbAsSystem().update(tables.User, {
       id: user.id,
       ...this.cellsWrite(this.digest(token), moment().add(this.lifetime.amount, this.lifetime.unit)),
@@ -134,12 +127,12 @@ export abstract class MailedToken {
   }
 
   private parse(presented: unknown): string | undefined {
-    return typeof presented === 'string' && MailedToken.SHAPE.test(presented) ? presented : undefined;
+    return MailedTokenValue.parse(presented);
   }
 
   /** What the row stores in place of a token: its SHA-256, hex-encoded. */
   private digest(token: string): string {
-    return createHash('sha256').update(token).digest('hex');
+    return MailedTokenValue.digest(token);
   }
 
   private matches(storedDigest: string | null | undefined, presentedDigest: string): boolean {

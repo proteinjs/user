@@ -1,3 +1,4 @@
+import { PasswordPolicy } from '@proteinjs/user';
 import { AuthValidation } from '../src/auth/AuthValidation';
 
 const validSignup = {
@@ -68,11 +69,29 @@ describe('AuthValidation.signup', () => {
       confirmPassword: 'Passwords do not match',
     });
   });
+
+  it(`marks a password under the policy's minimum in the server's own words, before the match is judged`, () => {
+    const short = 'a'.repeat(PasswordPolicy.MIN_LENGTH - 1);
+    expect(AuthValidation.signup({ ...validSignup, password: short, confirmPassword: 'other' }, false)).toEqual({
+      password: PasswordPolicy.TOO_SHORT,
+    });
+    const minimum = 'a'.repeat(PasswordPolicy.MIN_LENGTH);
+    expect(
+      AuthValidation.signup({ ...validSignup, password: minimum, confirmPassword: minimum }, false)
+    ).toBeUndefined();
+  });
 });
 
 describe('AuthValidation.passwordReset', () => {
   it('accepts matching passwords', () => {
     expect(AuthValidation.passwordReset({ newPassword: 'hunter22', confirmPassword: 'hunter22' })).toBeUndefined();
+  });
+
+  it(`marks a new password under the policy's minimum in the server's own words`, () => {
+    const short = 'a'.repeat(PasswordPolicy.MIN_LENGTH - 1);
+    expect(AuthValidation.passwordReset({ newPassword: short, confirmPassword: short })).toEqual({
+      newPassword: PasswordPolicy.TOO_SHORT,
+    });
   });
 
   it('requires a new password', () => {

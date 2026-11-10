@@ -12,7 +12,13 @@ export const routes: { [name: string]: { path: string; method: 'get' | 'post' | 
    * The answer never names an address.
    */
   verifyEmail: { path: '/user/verify-email', method: 'get' },
-  logout: { path: '/user/logout', method: 'get' },
+  /**
+   * Ends the session: a POST, never a GET. A GET that signs a person out is reachable from any
+   * page by a link or an image tag (a cross-site request forgery that logs the person out); the
+   * app's own fetch posts with the same-origin cookie (user-ui AuthenticatedPageContainer reads
+   * this method). No GET is registered at the path — it answers as any unknown path does.
+   */
+  logout: { path: '/user/logout', method: 'post' },
 };
 
 /**

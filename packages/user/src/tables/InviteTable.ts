@@ -13,6 +13,12 @@ import { User, UserTable } from './UserTable';
 
 export type Invite = Record & {
   email: string;
+  /**
+   * The DIGEST of the mailed token (SHA-256, hex), never the token: the token exists only in the
+   * signup link the invite mail carries, and a presented link is hashed and looked up by this
+   * cell (user-server `Signup`, the `MailedTokenValue` posture every mailed token shares). A read
+   * of the row yields nothing that can be presented.
+   */
   token: string | null;
   tokenExpiresAt: Moment | null;
   invitedBy: Reference<User>;
@@ -45,9 +51,10 @@ export class InviteTable extends Table<Invite> {
     },
   };
   /**
-   * The row scan: who's invited, by whom, until when. The redeemable `token` is auth material
-   * with no business in a row scan (founder admin review, v1.22 — also a hygiene win); it stays
-   * on the record form for the odd support case. The list actions: the create act, for 'users'
+   * The row scan: who's invited, by whom, until when. The `token` cell (the mailed token's
+   * digest) has no business in a row scan (founder admin review, v1.22 — also a hygiene win); it
+   * stays on the record form, where it tells a standing invite from a revoked one and redeems
+   * nothing. The list actions: the create act, for 'users'
    * holders, named for what it is — an invite is sent, never "created" (the form's button says
    * the same); the delete act stays derived from the delete doors.
    */

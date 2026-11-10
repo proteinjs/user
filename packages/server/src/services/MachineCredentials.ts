@@ -13,6 +13,7 @@ import {
 import { Logger } from '@proteinjs/logger';
 import { RequestDigests } from '@proteinjs/util-node';
 import { Service } from '@proteinjs/service';
+import { AccountSessions } from '../authentication/AccountSessions';
 import { PasswordHasher } from '../authentication/PasswordHasher';
 
 /**
@@ -95,9 +96,9 @@ export class MachineCredentials implements MachineCredentialsService {
     // 256 bits of entropy; standard API-key UX — generated, shown once, hash-only at rest.
     const password = randomBytes(32).toString('hex');
     await db.update(tables.User, { id: user.id, password: await new PasswordHasher().hash(password, 'machine') });
-    // Rotation kills the old credential's sessions immediately (the bridge logs in fresh per
-    // poll, so this is cheap for it — the mechanism is the categorical one).
-    await db.delete(tables.Session, { userEmail: normalizedEmail });
+    // Rotation ends the old credential's sessions at once (the bridge logs in fresh per poll, so
+    // this is cheap for it), through AccountSessions — the one owner of the by-account session end.
+    await new AccountSessions().endAll(normalizedEmail);
     logger.info({
       message: `Minted machine credential`,
       obj: { account: new RequestDigests().account(normalizedEmail), secretName: declaration.secretName },

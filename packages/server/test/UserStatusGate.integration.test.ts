@@ -1,4 +1,4 @@
-import sha256 from 'crypto-js/sha256';
+import { sha256Hex } from './sha256Hex';
 import { getDbAsSystem } from '@proteinjs/db';
 import { tables } from '@proteinjs/user';
 import { authenticate } from '../src/authentication/authenticate';
@@ -27,7 +27,7 @@ describe('user status gate — login refusal and session resolution', () => {
     return await getDbAsSystem().insert(tables.User, {
       name: 'Gate test user',
       email,
-      password: sha256(password).toString(),
+      password: sha256Hex(password),
       emailVerified: true,
       roles: [],
       ...(status ? { status } : {}),

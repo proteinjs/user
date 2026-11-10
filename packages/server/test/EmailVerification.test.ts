@@ -165,17 +165,16 @@ describe('email verification after sign-up', () => {
   it('an invited sign-up stores no pair and the config is handed no context (the invite proved the address)', async () => {
     const inviter = await testEnv.createUser({ name: 'Inviter', email: 'inviter@test.local' });
     const email = 'invited@test.local';
+    // The row holds the mailed token's digest; the link carries the token (a well-formed one).
+    const inviteToken = 'd4'.repeat(32);
     await getDbAsSystem().insert(tables.Invite, {
       email,
-      token: 'invite-token-verify-1',
+      token: sha256Hex(inviteToken),
       tokenExpiresAt: moment().add(1, 'day'),
       invitedBy: new Reference(tables.User.name, inviter.id),
     });
 
-    const result = await new Signup().createUser(
-      { name: 'Invited Signup', password: 'a password' },
-      'invite-token-verify-1'
-    );
+    const result = await new Signup().createUser({ name: 'Invited Signup', password: 'a password' }, inviteToken);
 
     expect(result.outcome).toBe('created');
     const row = await userRow(email);

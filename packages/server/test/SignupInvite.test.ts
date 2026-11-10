@@ -3,9 +3,10 @@ import moment from 'moment';
 /**
  * Covers invite token lifetime and the expired-token user experience.
  *
- * Two things are asserted here:
+ * Three things are asserted here:
  * 1. `sendInvite` stamps `tokenExpiresAt` from the `INVITE_TOKEN_TTL_DAYS` knob (not a literal),
- *    on both the create and the refresh path.
+ *    on both the create and the refresh path, and the row holds the mailed token's DIGEST — the
+ *    token exists only in the link (the one mailed token that was held in clear, 2026-11).
  * 2. An expired token produces an honest, actionable message at `initializeSignup` — the surface
  *    the signup page reads — and is distinguishable from a token that never existed / was revoked.
  *    Previously both collapsed into "not found or has expired", and outside invite-only mode an
@@ -34,7 +35,13 @@ jest.mock('@proteinjs/db', () => ({
 jest.mock('@proteinjs/email-server', () => ({
   EmailSender: jest.fn().mockImplementation(() => ({ sendEmail })),
   getDefaultInviteEmailConfigFactory: () => ({
-    getConfig: () => ({ getEmailContent: () => ({ text: 'invite', html: '<p>invite</p>' }) }),
+    // Echoes the signup path so the mailed token can be read back from the link.
+    getConfig: () => ({
+      getEmailContent: (signupPathWithToken: string) => ({
+        text: `Accept: /${signupPathWithToken}`,
+        html: `<a href="/${signupPathWithToken}">Accept</a>`,
+      }),
+    }),
   }),
   getDefaultSignupConfirmationEmailConfigFactory: () => ({
     getConfig: () => ({ getNewUserEmailContent: () => ({ text: 'welcome', html: '<p>welcome</p>' }) }),
@@ -53,8 +60,23 @@ jest.mock('@proteinjs/reflection', () => ({
 
 import { UserRepo } from '@proteinjs/user';
 import { INVITE_TOKEN_TTL_DAYS, Signup } from '../src/services/Signup';
+import { sha256Hex } from './sha256Hex';
 
-const EXPECTED_TTL_DAYS = 90;
+/** Thirty days: the invite link is the account's activation code (signing up through it verifies the address), bounded like one. */
+const EXPECTED_TTL_DAYS = 30;
+
+/** The token a mailed link carries: 32 CSPRNG bytes as 64 lowercase hex characters. */
+const TOKEN_SHAPE = /^[0-9a-f]{64}$/;
+
+/** The token the invite mail carried — read from the link in the mail, the only place the token exists. */
+const mailedToken = (): string => {
+  const [[message]] = sendEmail.mock.calls as [[{ text: string }]];
+  const match = /signup\?token=([0-9a-f]+)/.exec(message.text);
+  if (!match) {
+    throw new Error('the invite mail carries no token');
+  }
+  return match[1];
+};
 
 /** Tolerance for the clock advancing between the service stamping the token and the assertion. */
 const CLOCK_SKEW_TOLERANCE_SECONDS = 60;
@@ -88,6 +110,11 @@ describe('invite token lifetime', () => {
     expect(response.sent).toBe(true);
     expect(dbInsert).toHaveBeenCalledTimes(1);
     const [, inserted] = dbInsert.mock.calls[0];
+    // The row holds the digest of the mailed token, never the token; the mail holds the token alone.
+    const token = mailedToken();
+    expect(token).toMatch(TOKEN_SHAPE);
+    expect(inserted.token).toBe(sha256Hex(token));
+    expect(inserted.token).not.toBe(token);
     expect(inserted.email).toBe('invitee@test.local');
     // The inviter is stamped as a REFERENCE to the user record (the id string rides inside it).
     expect(inserted.invitedBy?._table).toBe('user');
@@ -111,6 +138,7 @@ describe('invite token lifetime', () => {
     expect(dbUpdate).toHaveBeenCalledTimes(1);
     const [, updated] = dbUpdate.mock.calls[0];
     expect(updated.token).not.toBe('old-token');
+    expect(updated.token).toBe(sha256Hex(mailedToken()));
     expect(secondsFromExpectedTtl(updated.tokenExpiresAt, INVITE_TOKEN_TTL_DAYS)).toBeLessThan(
       CLOCK_SKEW_TOLERANCE_SECONDS
     );
@@ -122,15 +150,18 @@ describe('expired invite user experience', () => {
     jest.clearAllMocks();
   });
 
+  const EXPIRED_TOKEN = 'e1'.repeat(32);
+  const GOOD_TOKEN = 'a9'.repeat(32);
+
   it('tells the user the invite expired, and what to do about it', async () => {
     dbGet.mockResolvedValue({
       id: 'invite-1',
       email: 'invitee@test.local',
-      token: 'expired-token',
+      token: sha256Hex(EXPIRED_TOKEN),
       tokenExpiresAt: moment().subtract(1, 'day'),
     });
 
-    const response = await new Signup().initializeSignup('expired-token');
+    const response = await new Signup().initializeSignup(EXPIRED_TOKEN);
 
     expect(response.isReady).toBe(false);
     expect(response.error).toMatch(/expired/i);
@@ -144,27 +175,38 @@ describe('expired invite user experience', () => {
   it('reports an unknown or revoked token distinctly from an expired one', async () => {
     dbGet.mockResolvedValue(undefined);
 
-    const response = await new Signup().initializeSignup('unknown-token');
+    const response = await new Signup().initializeSignup('c3'.repeat(32));
 
     expect(response.isReady).toBe(false);
     expect(response.error).toMatch(/no longer valid/i);
     expect(response.error).not.toMatch(/expired/i);
   });
 
+  it('a value without a token\'s shape is "no longer valid" before any lookup — no filter is built from it', async () => {
+    for (const presented of ['unknown-token', sha256Hex(GOOD_TOKEN).toUpperCase(), 'a9'.repeat(31), 'A9'.repeat(32)]) {
+      const response = await new Signup().initializeSignup(presented);
+      expect(response.isReady).toBe(false);
+      expect(response.error).toMatch(/no longer valid/i);
+    }
+    expect(dbGet).not.toHaveBeenCalled();
+  });
+
   it('accepts a token that has not expired yet', async () => {
     const invite = {
       id: 'invite-1',
       email: 'invitee@test.local',
-      token: 'good-token',
+      token: sha256Hex(GOOD_TOKEN),
       tokenExpiresAt: moment().add(1, 'day'),
     };
     dbGet.mockResolvedValue(invite);
 
-    const response = await new Signup().initializeSignup('good-token');
+    const response = await new Signup().initializeSignup(GOOD_TOKEN);
 
     expect(response.isReady).toBe(true);
     expect(response.error).toBeUndefined();
     expect(response.invite?.email).toBe('invitee@test.local');
+    // The row is found by the token's digest — the lookup never carries the token itself.
+    expect(dbGet).toHaveBeenCalledWith(expect.anything(), { token: sha256Hex(GOOD_TOKEN) });
   });
 
   it('still blocks tokenless signup when invite-only, without an expiry message', async () => {

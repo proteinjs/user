@@ -1,4 +1,5 @@
 import { Store } from 'express-session';
+import moment from 'moment';
 import { getDbAsSystem, QueryBuilderFactory } from '@proteinjs/db';
 import { tables } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
@@ -24,10 +25,18 @@ export class DbSessionStore extends Store {
     );
   }
 
+  /**
+   * A row past its `expires` is no session: refused here, at the read, not left to the sweep.
+   * Honoring the expiry at the read is what lets a deployment say a session ends when its idle
+   * window does. express-session never checks the cookie's expiry when it loads a session (only its own
+   * MemoryStore does), so a cookie a non-browser client replays after the idle window would keep
+   * working for up to twelve hours — until the sweep's next pass deleted the row. The expiry is
+   * honored the moment it passes; the sweep stays the row's undertaker.
+   */
   get = (sessionId: string, cb: (error: any, session?: Express.SessionData | null) => void) => {
     (async () => {
       const result = await getDbAsSystem().get(tables.Session, { sessionId });
-      if (!result) {
+      if (!result || DbSessionStore.hasExpired(result.expires)) {
         cb(null);
         return;
       }
@@ -87,6 +96,16 @@ export class DbSessionStore extends Store {
     });
   };
 
+  /** Whether a row's `expires` has passed. A row with no expiry (a session cookie with no max age) never expires here. */
+  private static hasExpired(expires: unknown): boolean {
+    if (!expires) {
+      return false;
+    }
+
+    const expiresAt = moment(expires as Date);
+    return expiresAt.isValid() && !expiresAt.isAfter(moment());
+  }
+
   /** Spanner ABORTED / wounded-transaction shape (transient by definition). */
   private static isTransactionAbort(error: any): boolean {
     const text = `${error?.message ?? ''} ${error?.details ?? ''} ${error?.errorDetails ?? ''}`;
@@ -111,6 +130,16 @@ export class DbSessionStore extends Store {
     });
   };
 
+  /**
+   * The ONE writer of the row's `userEmail`, on the insert and on every later set or touch alike —
+   * so the column's form is decided here: the account row's, lowercased, whatever case the blob's
+   * `passport.user` carries. The blob is passport's and stays as bound; the column is the key every
+   * by-account session end (`AccountSessions`) matches, and a touch re-derives it from the blob, so
+   * a row an earlier release's login door bound as typed (brought over once by
+   * NormalizeSessionAddresses) would otherwise revert on the person's next request, and a door that
+   * bypasses `establishSession` would mint a row no kill finds. `establishSession` lowercasing the
+   * address it binds is the belt; this is the form.
+   */
   private async insertOrUpdate(
     sessionId: string,
     session: Express.SessionData,
@@ -125,12 +154,13 @@ export class DbSessionStore extends Store {
       return;
     }
 
+    const userEmail = DbSessionStore.addressOf(session);
     const sessionRecord = await getDbAsSystem().get(tables.Session, { sessionId });
     if (sessionRecord) {
       try {
         sessionRecord.session = JSON.stringify(session);
         sessionRecord.expires = <Date>session.cookie.expires;
-        sessionRecord.userEmail = session.passport?.user;
+        sessionRecord.userEmail = userEmail;
         await getDbAsSystem().update(tables.Session, sessionRecord, { sessionId });
       } catch (error: any) {
         this.logger.error({ message: 'Failed to update session', error });
@@ -141,7 +171,7 @@ export class DbSessionStore extends Store {
           sessionId,
           session: JSON.stringify(session),
           expires: <Date>session.cookie.expires,
-          userEmail: session.passport?.user,
+          userEmail,
         });
       } catch (error: any) {
         // race condition on insert
@@ -152,6 +182,11 @@ export class DbSessionStore extends Store {
     if (cb) {
       cb();
     }
+  }
+
+  /** The address a session row is keyed by: the blob's bound user in the account row's form (lowercased). */
+  private static addressOf(session: Express.SessionData): string {
+    return String(session.passport?.user).toLowerCase();
   }
 
   private async sweep(): Promise<void> {

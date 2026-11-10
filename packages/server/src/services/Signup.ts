@@ -15,7 +15,6 @@ import {
   getMachineAccounts,
 } from '@proteinjs/user';
 import moment from 'moment';
-import { lib } from 'crypto-js';
 import { Logger } from '@proteinjs/logger';
 import { RequestDigests } from '@proteinjs/util-node';
 import {
@@ -28,14 +27,16 @@ import {
 } from '@proteinjs/email-server';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import { EmailVerificationToken } from '../authentication/EmailVerificationToken';
+import { MailedTokenValue } from '../authentication/MailedTokenValue';
 import { PasswordHasher } from '../authentication/PasswordHasher';
 
 /**
- * How long an invite link stays usable. Deliberately generous: a legitimate invite that gets
- * clicked late should still work, and revocation (surfaced in the admin UI) is the real control.
- * Expiry stays non-infinite so a forgotten invite isn't a permanent credential sitting in a mailbox.
+ * How long an invite link stays usable: thirty days. The invite link is the account's activation
+ * code (signing up through it marks the address verified), so its life is bounded like one; a
+ * month leaves room for an invite read late, and revocation (surfaced in the admin UI) and the
+ * re-send stay the controls for the rest. Single-use: signing up through a link deletes its row.
  */
-export const INVITE_TOKEN_TTL_DAYS = 90;
+export const INVITE_TOKEN_TTL_DAYS = 30;
 
 /**
  * The gap between two verification mails to one account — the password reset's five minutes:
@@ -123,7 +124,8 @@ export class Signup implements SignupService {
     // than re-resolving the token here (two lookups meant two chances to disagree).
     const invite = initSignupResponse.invite ?? null;
     if (token) {
-      await db.delete(tables.Invite, { token });
+      // Single-use: the row is found by the digest it holds (the mailed token itself is never stored).
+      await db.delete(tables.Invite, { token: MailedTokenValue.digest(token) });
     }
 
     const email = (invite ? invite.email : user.email)?.toLowerCase();
@@ -230,12 +232,12 @@ export class Signup implements SignupService {
       }
 
       const config = this.inviteEmailConfig();
-      const { token, tokenExpiresAt } = this.mintInviteToken();
+      const { token, digest, tokenExpiresAt } = this.mintInviteToken();
       let invite = await db.get(tables.Invite, { email: caseInsensitiveEmail });
       if (invite) {
         invite = {
           ...invite,
-          token,
+          token: digest,
           tokenExpiresAt,
         };
         await db.update(tables.Invite, invite);
@@ -243,7 +245,7 @@ export class Signup implements SignupService {
         const userId = new UserRepo().getUser().id;
         invite = await db.insert(tables.Invite, {
           email: caseInsensitiveEmail,
-          token,
+          token: digest,
           tokenExpiresAt,
           invitedBy: new Reference(tables.User.name, userId),
         });
@@ -289,8 +291,8 @@ export class Signup implements SignupService {
       }
 
       const config = this.inviteEmailConfig();
-      const { token, tokenExpiresAt } = this.mintInviteToken();
-      await db.update(tables.Invite, { ...invite, token, tokenExpiresAt });
+      const { token, digest, tokenExpiresAt } = this.mintInviteToken();
+      await db.update(tables.Invite, { ...invite, token: digest, tokenExpiresAt });
       await this.emailInvite(caseInsensitiveEmail, token, config);
       return { sent: true };
     } catch (error: any) {
@@ -435,10 +437,19 @@ export class Signup implements SignupService {
     return Boolean(await getDbAsSystem().get(tables.User, { email }));
   }
 
-  /** Resolves an invite token, distinguishing "expired" from "never existed / already revoked". */
-  private async lookupInvite(token: string): Promise<InviteLookup> {
+  /**
+   * Resolves an invite token, distinguishing "expired" from "never existed / already revoked".
+   * Anything without a token's shape is "not found" before any lookup, and a well-formed token is
+   * looked up by its digest — the row never holds the token itself (`MailedTokenValue`).
+   */
+  private async lookupInvite(presented: string): Promise<InviteLookup> {
+    const token = MailedTokenValue.parse(presented);
+    if (token === undefined) {
+      return { status: 'notFound' };
+    }
+
     const db = getDbAsSystem();
-    const invite = await db.get(tables.Invite, { token });
+    const invite = await db.get(tables.Invite, { token: MailedTokenValue.digest(token) });
 
     if (!invite) {
       return { status: 'notFound' };
@@ -462,10 +473,16 @@ export class Signup implements SignupService {
     return defaultConfigFactory.getConfig();
   }
 
-  /** A fresh redeemable token with its expiry from the TTL knob — the one minting path for send and re-send. */
-  private mintInviteToken(): { token: string; tokenExpiresAt: moment.Moment } {
+  /**
+   * A fresh redeemable token with its digest (what the row stores) and its expiry from the TTL
+   * knob — the one minting path for send and re-send. The token itself goes into the mailed link
+   * and nowhere else.
+   */
+  private mintInviteToken(): { token: string; digest: string; tokenExpiresAt: moment.Moment } {
+    const token = MailedTokenValue.mint();
     return {
-      token: lib.WordArray.random(32).toString(),
+      token,
+      digest: MailedTokenValue.digest(token),
       tokenExpiresAt: moment().add(INVITE_TOKEN_TTL_DAYS, 'days'),
     };
   }

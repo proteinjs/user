@@ -92,35 +92,55 @@ export type User = SourceRecord & {
 export class UserTable extends Table<User> {
   name = 'user';
   /**
-   * The 'users' permission covers viewing and managing user records — EXCEPT roles. The roles
-   * column is service-protected: the ONLY write path is the Roles service (permission 'roles'),
-   * which also writes the role_grant_event audit row per change. The db doors mirror the
-   * service doors: `DbService`'s inner `Db` re-checks the db api as the calling user, so a
-   * service-only shape leaves the record surfaces admin-locked (server code proper still uses
-   * system paths, which bypass TableAuth).
+   * The 'users' permission READS user records. The table has NO generic write door on either
+   * api: a declared block's undeclared operations stay closed to everyone (`TableAuth`), so every
+   * `DbService` insert, update and delete on this table is refused whoever asks — admins
+   * included. Every write from a client is a named, audited service: a person's own name,
+   * password and avatar through UpdateUserInfo; another account's name, email and email-verified
+   * flag through UserAccountAdmin (permission 'users', a `user_account_event` row per change);
+   * roles through Roles ('roles', a `role_grant_event` row); standing through SetUserStatus
+   * (admin, a `user_status_event` row). The service-only shape is what keeps a 'users' holder from
+   * writing another account's password cell raw through the generic RPC — a hash-shaped value
+   * written there verified as a legacy credential.
+   *
+   * The db api has no write door either — the session and audit tables' shape: server code
+   * writes this table through the system path (which bypasses TableAuth), never as the calling
+   * user, so a db-api write door would be a standing grant with nothing behind it and no belt
+   * (`serviceProtectedColumns` is enforced at the RPC gate alone). Closed on both apis, the
+   * doors cannot be reached by any caller, through any door, admin included.
    */
   auth: Table<User>['auth'] = {
     db: {
       query: { permission: USER_PERMISSIONS.users },
-      insert: { permission: USER_PERMISSIONS.users },
-      update: { permission: USER_PERMISSIONS.users },
-      delete: { permission: USER_PERMISSIONS.users },
     },
     service: {
       query: { permission: USER_PERMISSIONS.users },
-      insert: { permission: USER_PERMISSIONS.users },
-      update: { permission: USER_PERMISSIONS.users },
-      delete: { permission: USER_PERMISSIONS.users },
     },
     /**
-     * `roles` is written only by the Roles service; `status` only by the SetUserStatus service
-     * (both audited per change — a generic RPC write would let the stored state diverge from its
-     * audit trail). `deleteRequestedAt`/`purgeAfter` drive the account purge machinery and are
-     * written only by the server-side deletion flow — never through the generic RPC path.
-     * `isLoadedFromSource` is machine-account ownership — written only by the boot sync; an RPC
-     * write could hand a human row to source ownership (or unhook a machine row from it).
+     * The belt under the closed doors: were a write door ever declared again, these cells would
+     * still refuse the generic RPC. `roles` is written only by the Roles service; `status` only by
+     * the SetUserStatus service (both audited per change — a generic RPC write would let the stored
+     * state diverge from its audit trail). `deleteRequestedAt`/`purgeAfter` drive the account
+     * purge machinery and are written only by the server-side deletion flow. `isLoadedFromSource`
+     * is machine-account ownership — written only by the boot sync; an RPC write could hand a
+     * human row to source ownership (or unhook a machine row from it). The credential cells —
+     * `password` (PasswordHasher is its one writer), the reset and verification token pairs
+     * (MailedToken's) — and `email` (the session's key and the sign-in identity; changed only
+     * through UserAccountAdmin, which un-verifies it) are auth material no RPC may set.
      */
-    serviceProtectedColumns: ['roles', 'status', 'deleteRequestedAt', 'purgeAfter', 'isLoadedFromSource'],
+    serviceProtectedColumns: [
+      'roles',
+      'status',
+      'deleteRequestedAt',
+      'purgeAfter',
+      'isLoadedFromSource',
+      'password',
+      'passwordResetToken',
+      'passwordResetTokenExpiration',
+      'emailVerificationToken',
+      'emailVerificationTokenExpiration',
+      'email',
+    ],
   };
   /**
    * Machine accounts sync by EMAIL, not id: accounts adopted from hand-made rows before

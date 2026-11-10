@@ -65,14 +65,21 @@ afterEach(async () => {
   delete (global as any).fetch;
 });
 
+type Answer = { status: number; body: unknown };
+
 /**
  * Records every POST body; answers each route the way the page needs to stay put (the login and
- * signup answers carry an error so the page never navigates away inside jsdom).
+ * signup answers carry an error so the page never navigates away inside jsdom). `refusals` replaces
+ * a route's answer with the status and body a door refuses with.
  */
-function mockServer() {
+function mockServer(refusals: Record<string, Answer> = {}) {
   (global as any).fetch = jest.fn(async (path: string, init?: { method?: string; body?: string }) => {
     if (init?.method === 'post') {
       posts.push({ path, body: JSON.parse(init.body ?? '{}') });
+    }
+    const refusal = refusals[path];
+    if (refusal) {
+      return { status: refusal.status, statusText: 'Bad Request', json: async () => refusal.body };
     }
     const body = path.startsWith(routes.validateResetToken.path)
       ? { isValid: true, email: EMAIL }
@@ -83,6 +90,11 @@ function mockServer() {
           : {};
     return { status: 200, statusText: 'OK', json: async () => body };
   });
+}
+
+/** The form-level error line (the page renders it as the one alert between the fields and the action). */
+function formError(): string | null {
+  return container.querySelector('[role="alert"]')?.textContent ?? null;
 }
 
 async function renderPage(Component: React.ComponentType<any>, url: string) {
@@ -294,6 +306,20 @@ describe('password-reset form', () => {
     expect(posts).toEqual([]);
     expect(fieldError(field('New password'))).toBeNull();
     expect(fieldError(field('Confirm new password'))).toBe('Passwords do not match');
+  });
+
+  it(`the door's refusal reaches the form's error line in the door's own words — a password the server's rules refuse answers 400 with the rule`, async () => {
+    mockServer({ [routes.executePasswordReset.path]: { status: 400, body: { error: 'That password is too common' } } });
+    await renderPage(passwordResetPage.component, '/login/password-reset?token=reset-token-1');
+
+    fillSilently(field('New password'), 'password1');
+    fillSilently(field('Confirm new password'), 'password1');
+    await submit();
+
+    expect(posts).toEqual([
+      { path: routes.executePasswordReset.path, body: { token: 'reset-token-1', newPassword: 'password1' } },
+    ]);
+    expect(formError()).toBe('That password is too common');
   });
 });
 

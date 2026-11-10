@@ -16,6 +16,10 @@ const logger = new Logger({ name: 'userCache' });
  * socket's room re-joins on every reconnect, the reload a deploy pushes onto every open tab —
  * transport, not a person. Presence is written from the page's human-input report alone
  * (UserPresence.recordPresence).
+ *
+ * Its lines name the account by digest and never carry the session id: the consumer's log writer
+ * places every line written inside a request by the session's digest already, and a raw session
+ * id in a line is a session token in a log.
  */
 export const userCache: SessionDataCache<User> = {
   key: USER_SESSION_CACHE_KEY,
@@ -43,7 +47,7 @@ export const userCache: SessionDataCache<User> = {
           // account is deactivated — every request runs as the unauthenticated guest.
           logger.warn({
             message: `Session references a deactivated account; resolving as unauthenticated`,
-            obj: { sessionId, account: new RequestDigests().account(userEmail) },
+            obj: { account: new RequestDigests().account(userEmail) },
           });
         } else if (accountUser) {
           delete (accountUser as any)['password'];
@@ -55,7 +59,7 @@ export const userCache: SessionDataCache<User> = {
           // build as an unhandled rejection and downs the process.
           logger.warn({
             message: `Session references an account that does not exist; resolving as unauthenticated`,
-            obj: { sessionId, account: new RequestDigests().account(userEmail) },
+            obj: { account: new RequestDigests().account(userEmail) },
           });
         }
       }

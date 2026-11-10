@@ -3,9 +3,9 @@ import { TableAuth, TableServiceAuth } from '@proteinjs/db';
 import { tables } from '../src/tables/tables';
 
 /**
- * The audit trails keep their rows (`Table.durable`): no caller deletes a role grant or a status
- * change — break-glass admin included — and the refusal is the 403 that names the table. The
- * record surfaces read the same verdict (no delete act, no Delete on the form).
+ * The audit trails keep their rows (`Table.durable`): no caller deletes a role grant, a status
+ * change or an account-cell change — break-glass admin included — and the refusal is the 403 that
+ * names the table. The record surfaces read the same verdict (no delete act, no Delete on the form).
  */
 
 type UserAuthInternals = { userRepo?: { getUser: () => { email: string; roles: string[] } } };
@@ -30,7 +30,7 @@ describe('the audit trails are durable', () => {
     (UserAuth as unknown as UserAuthInternals).userRepo = undefined;
   });
 
-  for (const table of [tables.RoleGrantEvent, tables.UserStatusEvent]) {
+  for (const table of [tables.RoleGrantEvent, tables.UserStatusEvent, tables.UserAccountEvent]) {
     it(`${table.name}: every caller's delete is refused on both doors, admin included`, () => {
       for (const api of ['db', 'service'] as const) {
         expect(refusalOf(() => new TableAuth().canDelete(table, api))).toEqual({

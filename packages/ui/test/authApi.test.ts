@@ -1,11 +1,16 @@
 import { AuthApi } from '../src/auth/AuthApi';
 import { routes } from '@proteinjs/user';
 
-function mockFetch(response: { status?: number; statusText?: string; body?: any }) {
+function mockFetch(response: { status?: number; statusText?: string; body?: any; notJson?: boolean }) {
   const fetchMock = jest.fn().mockResolvedValue({
     status: response.status ?? 200,
     statusText: response.statusText ?? 'OK',
-    json: async () => response.body ?? {},
+    json: async () => {
+      if (response.notJson) {
+        throw new SyntaxError('Unexpected token < in JSON');
+      }
+      return response.body ?? {};
+    },
   });
   (global as any).fetch = fetchMock;
   return fetchMock;
@@ -36,6 +41,48 @@ describe('AuthApi.login', () => {
   it('throws the server-provided error from a 200 response body', async () => {
     mockFetch({ body: { error: 'Incorrect email or password' } });
     await expect(new AuthApi().login('ada@example.com', 'nope')).rejects.toThrow('Incorrect email or password');
+  });
+});
+
+/**
+ * The door's own line reaches the person on every password road. A route refuses in user-readable
+ * words — `{ error }` on a 400 as on a 200 (the reset's redeem answers 400 for a password the
+ * server's rules refuse: "That password is too common", and for a link no longer live) — and the
+ * api throws THAT line; the generic words stand only for an answer with no line in it.
+ */
+describe("AuthApi — a refusal's own line is what the form is told", () => {
+  it("sign-up: a refused answer's line, whatever its status", async () => {
+    mockFetch({ status: 400, statusText: 'Bad Request', body: { error: 'Use at least 8 characters' } });
+    await expect(new AuthApi().signup({ name: 'Ada', email: 'ada@example.com', password: 'short' })).rejects.toThrow(
+      'Use at least 8 characters'
+    );
+  });
+
+  it("the password reset: the route's 400 carries the server's rule — the person reads the rule, not a generic failure", async () => {
+    mockFetch({ status: 400, statusText: 'Bad Request', body: { error: 'That password is too common' } });
+    await expect(new AuthApi().executePasswordReset('tok', 'password1')).rejects.toThrow('That password is too common');
+  });
+
+  it('the password reset: a link no longer live reads as the route says it', async () => {
+    mockFetch({ status: 400, body: { error: 'Reset token has expired' } });
+    await expect(new AuthApi().executePasswordReset('tok', 'a fresh password')).rejects.toThrow(
+      'Reset token has expired'
+    );
+  });
+
+  it('an answer with no line in it falls back to the generic words — an empty body, or one that is no JSON at all', async () => {
+    mockFetch({ status: 502, statusText: 'Bad Gateway', body: {} });
+    await expect(new AuthApi().executePasswordReset('tok', 'a fresh password')).rejects.toThrow(
+      'Failed to reset password'
+    );
+    mockFetch({ status: 502, statusText: 'Bad Gateway', notJson: true });
+    await expect(new AuthApi().executePasswordReset('tok', 'a fresh password')).rejects.toThrow(
+      'Failed to reset password'
+    );
+    mockFetch({ status: 502, statusText: 'Bad Gateway', notJson: true });
+    await expect(
+      new AuthApi().signup({ name: 'Ada', email: 'ada@example.com', password: 'hunter22x' })
+    ).rejects.toThrow('Failed to sign up, error: Bad Gateway');
   });
 });
 
@@ -106,7 +153,7 @@ describe('AuthApi.executePasswordReset', () => {
     );
   });
 
-  it('throws on a non-200 response', async () => {
+  it('throws the generic words on a non-200 response that carries no line', async () => {
     mockFetch({ status: 400 });
     await expect(new AuthApi().executePasswordReset('tok', 'hunter22')).rejects.toThrow('Failed to reset password');
   });

@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync, statSync } from 'fs';
+import { join, relative } from 'path';
 import { establishSession } from '../src/authentication/establishSession';
 import { createPassportRequest } from './passportSessionHarness';
 
@@ -40,6 +42,14 @@ describe('establishSession runtime contract', () => {
     expect(events).toEqual(['regenerate', 'login', 'save']);
   });
 
+  it(`binds the address lowercased, as the account row holds it — the session row's userEmail is what every by-account session kill matches`, async () => {
+    const { request } = await createPassportRequest();
+
+    await establishSession(request, 'Mixed.Case@Test.local');
+
+    expect(request.session.passport.user).toBe('mixed.case@test.local');
+  });
+
   it('still surfaces a login failure as a rejection (never as the contract error)', async () => {
     const loginError = new Error('serialize blew up');
     const request = {
@@ -50,5 +60,28 @@ describe('establishSession runtime contract', () => {
     };
 
     await expect(establishSession(request, 'dev@test.local')).rejects.toThrow('serialize blew up');
+  });
+});
+
+/**
+ * The session's other edge has one owner too: every by-account session end in this package rides
+ * `AccountSessions` (a password reset or change, an address change, a deactivation, a machine
+ * credential's rotation), so the one matching rule — the account row's address, exact — lives in
+ * one place. Three sites once carried their own copy of the delete; a rule applied in four places
+ * is a rule missed in one. A source fact, read off src as text.
+ */
+describe('the by-account session end has one owner', () => {
+  const sourceFiles = (dir: string): string[] =>
+    readdirSync(dir).reduce<string[]>((files, name) => {
+      const path = join(dir, name);
+      return files.concat(statSync(path).isDirectory() ? sourceFiles(path) : path.endsWith('.ts') ? [path] : []);
+    }, []);
+
+  it('every delete of session rows by address in src is AccountSessions’ own', () => {
+    const src = join(__dirname, '..', 'src');
+    const byAddress = sourceFiles(src).filter((file) =>
+      /delete\(\s*tables\.Session\s*,\s*\{\s*userEmail/.test(readFileSync(file, 'utf8'))
+    );
+    expect(byAddress.map((file) => relative(src, file))).toEqual(['authentication/AccountSessions.ts']);
   });
 });

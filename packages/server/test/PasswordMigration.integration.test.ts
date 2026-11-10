@@ -1,4 +1,4 @@
-import sha256 from 'crypto-js/sha256';
+import { sha256Hex } from './sha256Hex';
 import * as argon2 from 'argon2';
 import moment from 'moment';
 import { getDbAsSystem } from '@proteinjs/db';
@@ -43,7 +43,7 @@ describe('Password KDF migration', () => {
   const userRow = async (email: string) => await getDbAsSystem().get(tables.User, { email });
 
   it('legacy sha256 row: login succeeds and the row is upgraded in place to argon2id', async () => {
-    const legacyHash = sha256('hunter2 was fine in 2004').toString();
+    const legacyHash = sha256Hex('hunter2 was fine in 2004');
     await insertUser({ email: 'legacy@test.local', password: legacyHash });
 
     expect(await authenticate('legacy@test.local', 'hunter2 was fine in 2004')).toBe(true);
@@ -69,7 +69,7 @@ describe('Password KDF migration', () => {
   });
 
   it('wrong password fails for both stored formats, and never mutates the row', async () => {
-    const legacyHash = sha256('right password').toString();
+    const legacyHash = sha256Hex('right password');
     await insertUser({ email: 'legacy@test.local', password: legacyHash });
     await insertUser({ email: 'modern@test.local', password: await new PasswordHasher().hash('right password') });
 
@@ -95,13 +95,13 @@ describe('Password KDF migration', () => {
 
     const row = await userRow('new@test.local');
     expect(row.password.startsWith(ARGON2ID_PREFIX)).toBe(true);
-    expect(row.password).not.toBe(sha256('first password').toString());
+    expect(row.password).not.toBe(sha256Hex('first password'));
     expect(await authenticate('new@test.local', 'first password')).toBe(true);
   });
 
   it('deactivated and pending-deletion gates are unchanged across both formats', async () => {
     // Staff-deactivated account: correct credentials are still refused a session.
-    await insertUser({ email: 'off@test.local', password: sha256('pw').toString(), status: 'deactivated' });
+    await insertUser({ email: 'off@test.local', password: sha256Hex('pw'), status: 'deactivated' });
     expect(await authenticate('off@test.local', 'pw')).toBe('This account has been deactivated');
 
     // Pending-deletion account (deactivated + deleteRequestedAt): login IS the cancel signal —
@@ -120,7 +120,7 @@ describe('Password KDF migration', () => {
     // random 256-bit secret buys nothing, and the bridge logs in fresh per poll — see
     // PasswordHasher's machine mode).
     const secret = '9f'.repeat(32);
-    const machineHash = sha256(secret).toString();
+    const machineHash = sha256Hex(secret);
     await insertUser({ email: 'machine@test.local', password: machineHash, isLoadedFromSource: true });
 
     expect(await authenticate('machine@test.local', secret)).toBe(true);

@@ -5,6 +5,7 @@ import moment from 'moment';
  * and on the transport fake, never call counts alone:
  *
  *  - the token in the earlier email stops resolving, the fresh one resolves to the SAME invite;
+ *  - the row holds the mailed token's DIGEST, never the token — the mail is the only place it exists;
  *  - the row count for the address stays one, its expiry re-stamped from the TTL knob, its inviter kept;
  *  - exactly one email goes out for the re-send, to the address, carrying the fresh signup link;
  *  - an address with no standing invite is refused: nothing written, nothing sent;
@@ -37,6 +38,7 @@ import { getDbAsSystem } from '@proteinjs/db';
 import { SourceRepository } from '@proteinjs/reflection';
 import { tables, UserAuth, USER_PERMISSIONS, type Invite, type User } from '@proteinjs/user';
 import { INVITE_TOKEN_TTL_DAYS, Signup } from '../src/services/Signup';
+import { sha256Hex } from './sha256Hex';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 
 const TIMEOUT = 60_000;
@@ -50,6 +52,15 @@ const inviteRows = async (email: string): Promise<Invite[]> =>
 /** The re-send's own transport call: the one addressed to `email` after the earlier `before` calls. */
 const emailsTo = (email: string) =>
   sendEmail.mock.calls.map(([message]) => message).filter((message) => message.to === email);
+
+/** The token a mail's signup link carries — the only place the token exists (the row holds its digest). */
+const tokenIn = (message: { text: string }): string => {
+  const match = /signup\?token=([0-9a-f]{64})/.exec(message.text);
+  if (!match) {
+    throw new Error('the invite mail carries no well-formed token');
+  }
+  return match[1];
+};
 
 describe('SignupService.resendInvite — against the emulator', () => {
   const env = new UserServerTestEnvironment();
@@ -82,9 +93,12 @@ describe('SignupService.resendInvite — against the emulator', () => {
       const sent = await new Signup().sendInvite(email);
       expect(sent).toEqual({ sent: true });
       const [standing] = await inviteRows(email);
-      const earlierToken = standing.token as string;
       const earlierExpiry = moment(standing.tokenExpiresAt);
       expect(emailsTo(email)).toHaveLength(1);
+      const earlierToken = tokenIn(emailsTo(email)[0]);
+      // The row holds the digest of what the mail carries — the token itself is in the mail alone.
+      expect(standing.token).toBe(sha256Hex(earlierToken));
+      expect(standing.token).not.toBe(earlierToken);
 
       const resent = await new Signup().resendInvite('Guest@Example.com');
       expect(resent).toEqual({ sent: true });
@@ -94,7 +108,7 @@ describe('SignupService.resendInvite — against the emulator', () => {
       expect(rows).toHaveLength(1);
       const [refreshed] = rows;
       expect(refreshed.id).toBe(standing.id);
-      expect(refreshed.token).not.toBe(earlierToken);
+      expect(refreshed.token).not.toBe(standing.token);
       expect(refreshed.invitedBy?._id).toBe(inviter.id);
       // The expiry is re-stamped from the knob (fresh window), never left at the earlier stamp.
       expect(moment(refreshed.tokenExpiresAt).isSameOrAfter(earlierExpiry)).toBe(true);
@@ -102,22 +116,26 @@ describe('SignupService.resendInvite — against the emulator', () => {
         Math.abs(moment(refreshed.tokenExpiresAt).diff(moment().add(INVITE_TOKEN_TTL_DAYS, 'days'), 'seconds'))
       ).toBeLessThan(CLOCK_SKEW_TOLERANCE_SECONDS);
 
-      // The earlier link is dead; the fresh one opens signup for this invite.
-      const earlier = await new Signup().initializeSignup(earlierToken);
-      expect(earlier.isReady).toBe(false);
-      expect(earlier.error).toMatch(/no longer valid/i);
-      const fresh = await new Signup().initializeSignup(refreshed.token as string);
-      expect(fresh.isReady).toBe(true);
-      expect(fresh.invite?.email).toBe(email);
-
-      // Exactly one more email, to the address, carrying the fresh token and none of the earlier one.
+      // Exactly one more email, to the address, carrying the fresh token and none of the earlier one;
+      // the row holds the fresh token's digest.
       const messages = emailsTo(email);
       expect(messages).toHaveLength(2);
       const resend = messages[1];
+      const freshToken = tokenIn(resend);
       expect(resend.subject).toBe('Your invite');
-      expect(resend.text).toContain(`signup?token=${refreshed.token}`);
-      expect(resend.html).toContain(`signup?token=${refreshed.token}`);
+      expect(resend.html).toContain(`signup?token=${freshToken}`);
       expect(resend.text).not.toContain(earlierToken);
+      expect(refreshed.token).toBe(sha256Hex(freshToken));
+
+      // The earlier link is dead; the fresh one opens signup for this invite; the stored digest opens nothing.
+      const earlier = await new Signup().initializeSignup(earlierToken);
+      expect(earlier.isReady).toBe(false);
+      expect(earlier.error).toMatch(/no longer valid/i);
+      const fresh = await new Signup().initializeSignup(freshToken);
+      expect(fresh.isReady).toBe(true);
+      expect(fresh.invite?.email).toBe(email);
+      const digestPresented = await new Signup().initializeSignup(refreshed.token as string);
+      expect(digestPresented.isReady).toBe(false);
     },
     TIMEOUT
   );

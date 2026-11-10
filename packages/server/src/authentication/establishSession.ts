@@ -32,11 +32,16 @@
  * `request` is typed loosely because passport augments the express request at runtime; the
  * routes in this package share that convention. A login failure (regenerate/serialize/save
  * error) rejects — a door must never answer success for a session that did not commit.
+ *
+ * The address is bound LOWERCASED, as the account row holds it: the session row's `userEmail`
+ * is what every by-account session kill matches on (`AccountSessions`, the deactivation watcher),
+ * and a mixed-case sign-in bound as typed left sessions those kills could not find. The session
+ * cache lowercases on every read regardless (userCache), so the bound value changes nothing else.
  */
 export async function establishSession(request: any, email: string): Promise<void> {
   const preLoginSession = request.session;
   await new Promise<void>((resolve, reject) =>
-    request.login(email, (error: unknown) => (error ? reject(error) : resolve()))
+    request.login(email.toLowerCase(), (error: unknown) => (error ? reject(error) : resolve()))
   );
   if (request.session === preLoginSession) {
     throw new Error(

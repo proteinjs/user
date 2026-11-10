@@ -15,7 +15,10 @@ import {
   getScopedDbAsSystem,
 } from '@proteinjs/user';
 import { EmailSender, getDefaultPasswordUpdatedEmailConfigFactory } from '@proteinjs/email-server';
+import { Session } from '@proteinjs/server-api';
+import { AccountSessions } from '../authentication/AccountSessions';
 import { PasswordHasher } from '../authentication/PasswordHasher';
+import { PasswordRules } from '../authentication/PasswordRules';
 
 export class UpdateUserInfo implements UpdateUserInfoService {
   /**
@@ -50,7 +53,19 @@ export class UpdateUserInfo implements UpdateUserInfoService {
     return await this.saveUserInfo({ name });
   }
 
+  /**
+   * The new password is judged by the server's rules before anything else (`PasswordRules`: the
+   * shared minimum length, then the common-passwords list) — the refusal's sentence is the one
+   * the form shows. After the write, every OTHER session of the account ends (`AccountSessions`):
+   * a device holding a session opened under the old password signs out; the device that made the
+   * change keeps its session.
+   */
   async updatePassword(currentPassword: string, newPassword: string): Promise<UpdatePasswordResponse> {
+    const refusal = new PasswordRules().check(newPassword);
+    if (refusal) {
+      return { updated: false, error: refusal };
+    }
+
     const db = getDbAsSystem();
     const userId = new UserRepo().getUser().id;
 
@@ -94,6 +109,10 @@ export class UpdateUserInfo implements UpdateUserInfoService {
         error: `Password db update failed`,
       };
     }
+
+    // The credential the other sessions were opened with is gone; so are they. This request's
+    // own session (the express session id the request rides) stays.
+    await new AccountSessions().endOthers(user.email, Session.getData()?.sessionId);
 
     return {
       updated: true,

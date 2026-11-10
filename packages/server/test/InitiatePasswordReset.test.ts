@@ -19,7 +19,7 @@ const testEnv = new UserServerTestEnvironment();
  * `POST /user/initiate-password-reset`, end to end against the Spanner emulator and the mail
  * sink — outcomes only (the mail recorded, the row written):
  * - the token travels in the mailed link and nowhere else: the row stores its SHA-256 digest and
- *   an expiry an hour out, never the token, and the link's token then resets the password;
+ *   an expiry the token's lifetime out, never the token, and the link's token then resets the password;
  * - a send that fails withdraws the token, so asking again straight away mails a link;
  * - a second request inside five minutes is throttled: no new mail, the row unchanged;
  * - an unknown address gets the same response and no mail;
@@ -93,12 +93,12 @@ const mailedToken = (): string => tokenInLink(MailSink.get().list(1)[0]?.text);
 
 type SourceRepositoryInternals = { objectCache: Record<string, unknown[]> };
 
-/** Moves an account's last mint back past the five-minute gap, so only the windows can refuse. */
+/** Moves an account's last mint back past the five-minute gap (six minutes ago, read off the lifetime), so only the windows can refuse. */
 const ageLastMint = async (email: string) => {
   const armed = await userRow(email);
   await getDbAsSystem().update(tables.User, {
     id: armed.id,
-    passwordResetTokenExpiration: moment().add(54, 'minutes'),
+    passwordResetTokenExpiration: moment().add(PasswordResetToken.LIFETIME_MINUTES - 6, 'minutes'), // minted six minutes ago
   });
 };
 
@@ -153,7 +153,7 @@ describe('initiatePasswordReset route', () => {
     await testEnv.afterAll();
   });
 
-  it("the token travels only in the mailed link: the row stores its digest and an hour's expiry, and the link's token resets the password", async () => {
+  it("the token travels only in the mailed link: the row stores its digest and the lifetime's expiry, and the link's token resets the password", async () => {
     await testEnv.createUser({ name: 'Reset User', email: 'initiate-live@test.local' });
 
     const outcome = await invoke(initiatePasswordReset, { body: { email: 'Initiate-Live@test.local' } });
@@ -166,8 +166,10 @@ describe('initiatePasswordReset route', () => {
     expect(armed.passwordResetToken).toBe(sha256Hex(token));
     expect(JSON.stringify(armed)).not.toContain(token);
     const minutesOut = moment(armed.passwordResetTokenExpiration).diff(moment(), 'minutes', true);
-    expect(minutesOut).toBeGreaterThan(59);
-    expect(minutesOut).toBeLessThanOrEqual(60);
+    // The literal fifteen, not the constant read back: a recovery link's life, moved only on purpose.
+    expect(PasswordResetToken.LIFETIME_MINUTES).toBe(15);
+    expect(minutesOut).toBeGreaterThan(14);
+    expect(minutesOut).toBeLessThanOrEqual(15);
 
     const reset = await invoke(executePasswordReset, { body: { token, newPassword: 'a new password' } });
 
@@ -219,7 +221,7 @@ describe('initiatePasswordReset route', () => {
     const armed = await userRow('initiate-replaced@test.local');
     await getDbAsSystem().update(tables.User, {
       id: armed.id,
-      passwordResetTokenExpiration: moment().add(54, 'minutes'),
+      passwordResetTokenExpiration: moment().add(PasswordResetToken.LIFETIME_MINUTES - 6, 'minutes'), // minted six minutes ago
     });
 
     await invoke(initiatePasswordReset, { body: { email: 'initiate-replaced@test.local' } });
