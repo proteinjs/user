@@ -999,7 +999,7 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       ).toEqual([]);
     });
 
-    it('a session holds at most one open step per act: twenty begins leave one, and only the last confirms; a step that cannot be written leaves the open one standing; a begin that will be refused — a reset’s by a person who may not reset among them — leaves none', async () => {
+    it('a session holds at most one open step per act: twenty begins leave one, and only the last confirms; a step that cannot be written leaves the open one standing; a begin that will be refused — a reset’s by a person who may not reset among them, who is told the same words whether or not the id names an account — leaves none', async () => {
       const owner = await person('passkey.bound.owner', ['admin']);
       const first = await addFirst();
       const [row] = await passkeyRows(owner);
@@ -1045,10 +1045,23 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       await expect(passkeys().beginAdd()).rejects.toThrow();
       expect(await openSteps(ordinary)).toEqual([]);
       // Nor does a reset's confirmation begun by a person who may not reset — one who has a passkey
-      // to answer it with, and not the admin role: the right is asked before the step is written.
+      // to answer it with, and not the admin role: the right is asked before the step is written,
+      // and before any account is read — the refusal's words are the same for an id that names
+      // nobody, so they say nothing of whether an id names an account.
       const desk = await person('passkey.bound.desk', ['roles-desk']);
       await addFirst();
-      await expect(passkeys().beginConfirmation({ act: 'reset', userId: bare.id })).rejects.toThrow();
+      const refusedInTheWords = (userId: string) =>
+        passkeys()
+          .beginConfirmation({ act: 'reset', userId })
+          .then(
+            () => {
+              throw new Error('a reset’s confirmation was begun by a person who may not reset');
+            },
+            (refusal: Error) => refusal.message
+          );
+      const told = await refusedInTheWords(bare.id);
+      expect(told).toBeTruthy();
+      expect(await refusedInTheWords('an-id-that-names-nobody')).toBe(told);
       expect(await openSteps(desk)).toEqual([]);
       testEnv.actAs(owner);
       await getDbAsSystem().update(tables.User, { id: owner.id, roles: [] });
