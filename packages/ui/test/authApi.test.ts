@@ -37,10 +37,19 @@ describe('AuthApi.login', () => {
     mockFetch({ status: 401, statusText: 'Unauthorized', body: { error: 'Incorrect email or password' } });
     await expect(new AuthApi().login('ada@example.com', 'nope')).rejects.toThrow('Incorrect email or password');
 
-    mockFetch({ status: 401, statusText: 'Unauthorized' });
-    await expect(new AuthApi().login('ada@example.com', 'nope')).rejects.toThrow(
-      'Failed to log in, error: Unauthorized'
-    );
+    // No line in the body: the client's one generic line, on a refusal's status as on a 200 — never
+    // the status text (this assertion replaces "Failed to log in, error: <status text>").
+    for (const noLine of [
+      { status: 401, statusText: 'Unauthorized' },
+      { status: 502, statusText: '', notJson: true },
+    ]) {
+      mockFetch(noLine);
+      const told = await new AuthApi().login('ada@example.com', 'nope').then(
+        () => 'an open session',
+        (failure: Error) => failure.message
+      );
+      expect(told).toBe(AuthApi.LOGIN_FAILED);
+    }
   });
 
   it('throws the server-provided error from a 200 response body', async () => {
@@ -99,6 +108,9 @@ describe('AuthApi — the passkey step of a sign-in', () => {
     await expect(new AuthApi().login('ada@example.com', 'hunter22')).resolves.toEqual(ADD);
     mockFetch({ body: {} });
     await expect(new AuthApi().login('ada@example.com', 'hunter22')).resolves.toBeUndefined();
+    // A step with a line beside it is still the step at the password step.
+    mockFetch({ body: { secondStep: STEP, error: 'a line beside the step' } });
+    await expect(new AuthApi().login('ada@example.com', 'hunter22')).resolves.toEqual(STEP);
   });
 
   // This case replaces the assertion "a step in no shape the page can run is no step": that one
@@ -124,6 +136,13 @@ describe('AuthApi — the passkey step of a sign-in', () => {
 
     doorAnswers({});
     await expect(new AuthApi().login('ada@example.com', 'hunter22')).resolves.toBeUndefined();
+
+    // An answer that is not a 200 is neither, whatever its body — a step it carries is not run, at
+    // the password step or at the passkey step.
+    mockFetch({ status: 502, statusText: 'Bad Gateway', body: { secondStep: STEP } });
+    expect(await signIn()).toEqual({ told: expect.any(String) });
+    mockFetch({ status: 502, statusText: 'Bad Gateway', body: { secondStep: STEP } });
+    expect((await new AuthApi().answerPasskey(assertion)).status).toBe('restart');
   });
 
   it("the passkey's response and the registration post to the sign-in door itself, each under its own name, and an open session resolves done", async () => {

@@ -55,9 +55,11 @@ export class AuthApi {
   static readonly TOO_MANY_ATTEMPTS = 'Too many attempts. Try again in a few minutes.';
 
   /**
-   * What a sign-in reads as when the door answered a 200 that says neither that the session is
-   * open nor what to do next, and carries no line of its own — the door's own words for a sign-in
-   * that failed through nothing the person did (@proteinjs/user-server `routes/login`).
+   * What a sign-in reads as when the door's answer says neither that the session is open nor what
+   * to do next, and carries no line of its own — whatever its status: a 200 in no shape the door
+   * sends, a proxy's page for a 502. The door's own words for a sign-in that failed through nothing
+   * the person did (@proteinjs/user-server `routes/login`); a status text is never shown (over
+   * HTTP/2 there is none).
    */
   static readonly LOGIN_FAILED = 'Unable to log in right now. Please try again.';
 
@@ -101,8 +103,8 @@ export class AuthApi {
    *
    * The door's answer is read by the one reader both steps share (`doorSays`), closed: an answer
    * that is neither is a sign-in that failed, and throws — the door's own line when the answer
-   * carries one, else words of this class ({@link LOGIN_FAILED} for a 200, the status for
-   * anything else). Never the words of an exception met while reading it.
+   * carries one, else {@link LOGIN_FAILED}, whatever the status. Never the words of an exception
+   * met while reading it, and never a status text.
    */
   async login(email: string, password: string): Promise<SignInSecondStep | undefined> {
     const response = await this.post({ email, password });
@@ -114,8 +116,7 @@ export class AuthApi {
       return answer.secondStep;
     }
 
-    const generic = response.status === 200 ? AuthApi.LOGIN_FAILED : `Failed to log in, error: ${response.statusText}`;
-    throw new Error(answer.line ?? generic);
+    throw new Error(answer.line ?? AuthApi.LOGIN_FAILED);
   }
 
   /**
@@ -207,8 +208,10 @@ export class AuthApi {
    *
    * `signal` is the request's own (the fetch's): aborting it cancels a request still out, which
    * then rejects as one that never got an answer does. The page aborts it when the person leaves
-   * the step, so the door is not left opening a session for an account they walked away from. It
-   * cannot take back an answer the door has already sent.
+   * the step, so the browser drops an answer it has not received: a session opened for the account
+   * they walked away from never reaches it (its cookie is not set). It does not stop the door — a
+   * request the door has received is worked to its end, the session's row written — and it cannot
+   * take back an answer the browser has already received.
    */
   private async answerSecondStep(body: object, signal?: AbortSignal): Promise<SignInSecondStepAnswer> {
     let response: Response;

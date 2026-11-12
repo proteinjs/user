@@ -67,9 +67,10 @@ const WORDS = {
  * out, its sheet up or its request on the way: the form is free at once, a request still on its
  * way is cancelled, a sheet that answers afterwards is handed to nobody, and whatever the door
  * answers a request it had already taken — an open session, a new step — changes nothing on the
- * page the person went back to. The cancel stops a request the door has not answered; an answer
- * the door had already sent when the person pressed (a session opened for the account they left)
- * is not taken back by it.
+ * page the person went back to. The cancel makes the browser drop an answer it has not received
+ * (a session opened for the account they left never reaches it); it does not stop the door's own
+ * work on a request it has received, and an answer the browser had already received when the
+ * person pressed is not taken back by it.
  */
 const LoginComponent: React.FC = () => {
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors<LoginField>>({});
@@ -180,8 +181,9 @@ const LoginComponent: React.FC = () => {
   /**
    * Back to the password form, with the line the step ended on — none when the person chose to
    * leave. The form is free at once: a tap still out is forgotten, and so is its busy mark; and
-   * its request, if one is still on its way, is cancelled — the door is not left opening a session
-   * for the account the person just walked away from.
+   * its request, if one is still on its way, is cancelled — an answer the browser has not received
+   * is dropped, so a session the door opens for the account the person just walked away from never
+   * reaches this browser.
    */
   const leaveStep = (line?: string) => {
     awaited.current?.abort();
