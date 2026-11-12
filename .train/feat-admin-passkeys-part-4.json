@@ -1,5 +1,5 @@
 {
-  "branch": "feat/admin-passkeys-part-3",
+  "branch": "feat/admin-passkeys-part-4",
   "packages": [
     "auth",
     "server",
@@ -73,6 +73,7 @@
     "packages/user/test/AccessGrantWellFormed.test.ts",
     "packages/user/test/CapabilityEnforcement.test.ts",
     "packages/user/test/ClientRootCreationBootstrap.test.ts",
+    "packages/user/test/PasskeyCeremonies.test.ts",
     "packages/user/test/RolesCatalog.test.ts",
     "packages/user/test/ScopedRecord.test.ts",
     "packages/user/test/SharedRecord.test.ts",
