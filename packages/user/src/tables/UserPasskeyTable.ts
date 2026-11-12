@@ -49,6 +49,10 @@ export class UserPasskeyTable extends Table<UserPasskey> {
   };
   indexes = [
     { name: 'user_passkey_credential_id_unique', columns: ['credentialId'] as (keyof UserPasskey)[], unique: true },
+    // An account's passkeys, read by scope at every sign-in step (user-server `UserPasskeys`): the
+    // list a step's options name, the one passkey a response names, the count the first enrollment
+    // re-reads inside its transaction.
+    { name: 'user_passkey_scope', columns: ['scope'] as (keyof UserPasskey)[] },
   ];
   columns: Table<UserPasskey>['columns'] = withScopedRecordColumns<UserPasskey>({
     // A credential id is at most 1023 bytes (W3C WebAuthn Level 3, Terminology), 1364 characters in base64url.

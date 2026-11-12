@@ -45,6 +45,19 @@ describe('RolesCatalog', () => {
     expect(entries[0].breakGlass).toBe(true);
   });
 
+  it('break-glass and admin-grant-only roles are administrative; a flagged role is; an unflagged role and an unknown string are not', () => {
+    registerEntries([
+      { role: 'data-access', description: 'Read compliance data', adminGrantOnly: true },
+      { role: 'users', description: 'Manage people', administrative: true },
+      { role: 'dev', description: 'Use dev tools' },
+    ]);
+    expect(RolesCatalog.isAdministrative('admin')).toBe(true);
+    expect(RolesCatalog.isAdministrative('data-access')).toBe(true);
+    expect(RolesCatalog.isAdministrative('users')).toBe(true);
+    expect(RolesCatalog.isAdministrative('dev')).toBe(false);
+    expect(RolesCatalog.isAdministrative('a-retired-role')).toBe(false);
+  });
+
   it(`the reflection registration of the built-in AdminRole dedupes against the built-in`, () => {
     // In a real bundle the source graph registers AdminRole itself; the catalog must not list
     // admin twice.
