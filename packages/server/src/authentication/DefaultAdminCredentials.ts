@@ -7,8 +7,10 @@ import { User } from '@proteinjs/user';
  * admin's": the declared credentials are read here and nowhere else, and the address is compared
  * in one method (`is`) under one rule — without regard to case, as an account's address is stored
  * and a session's is bound. Everyone who needs the answer asks here: the password step
- * (`authenticate`, through `opens`), the sign-in door and the per-request session cache (`login`
- * and `userCache`, through `identityOf`) and account deletion (`AccountDeletion`, through `is`) —
+ * (`authenticate`, through `opens` — and through `is`: the address opens on the declared
+ * credentials alone, never on the password of an account row that holds it), the sign-in door and
+ * the per-request session cache (`login` and `userCache`, through `identityOf`) and account
+ * deletion (`AccountDeletion`, through `is`) —
  * so no two of them can disagree on who an address signs in as, however it was typed or declared.
  */
 export class DefaultAdminCredentials {

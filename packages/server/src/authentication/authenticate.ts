@@ -29,8 +29,14 @@ export async function authenticate(email: string, password: string): Promise<tru
     return true;
   }
 
+  // The default admin's address opens on the declared credentials ALONE. A session bound to that
+  // address resolves as the built-in admin whoever opened it (`userCache`), so an account row that
+  // holds it — written before the doors refused the address to a row (`AccountAddresses`), or by
+  // hand — never signs in on a password of its own: it is refused as any wrong try is, after the
+  // same password check every refusal pays (its verdict discarded), so neither the words nor the
+  // timing tell.
   const { user, matches } = await checkPassword(email, password);
-  if (!user || !matches) {
+  if (!user || !matches || DefaultAdminCredentials.is(email)) {
     return WRONG_CREDENTIALS;
   }
   const db = getDbAsSystem();

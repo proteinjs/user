@@ -44,7 +44,8 @@ const testEnv = new UserServerTestEnvironment();
  * when the step passed and the session cannot open, and when the client is throttled; the step's
  * cookie is read as the response sets and clears it; the built-in default admin, which can hold
  * no passkey, is refused where one is required — whatever the case its username was declared or
- * typed in — and an account of its own beside it signs in as itself.
+ * typed in — and an account of its own beside it signs in as itself; its address opens on the
+ * declared credentials alone, never on the password of an account row that holds the address.
  */
 
 const WRONG = 'User name or password incorrect';
@@ -1068,6 +1069,30 @@ describe('login route: the passkey step of an account that holds an administrati
 
       expect(signedIn.sent).toEqual({});
       expect(signedIn.signedInAs).toBe(person.email);
+    });
+
+    it('its address opens on the declared credentials alone: an account row that holds the address — in another case, with a password of its own, written directly — is refused as a wrong password is and bound no session, where no relying party is declared as where one is; the declared password still signs in', async () => {
+      const declared = 'Passkey-Held-Admin@Test.local';
+      credentials.CREDENTIALS = { username: declared, password };
+      // A row at the address, as one written before every door refused the address to a row stands.
+      await createAccount(declared.toLowerCase());
+      try {
+        for (const declare of [declareNoRelyingParty, declareRelyingParty]) {
+          declare();
+          const own = await attempt('198.18.19.90', 'passkey-HELD-admin@test.local', RIGHT_PASSWORD);
+          expect(own.sent).toEqual({ error: WRONG });
+          expect(own.signedInAs).toBeUndefined();
+          expect(own.saved).toEqual([]);
+        }
+
+        declareNoRelyingParty();
+        const signedIn = await attempt('198.18.19.91', declared, password);
+        expect(signedIn.sent).toEqual({});
+        expect(signedIn.signedInAs).toBe(declared.toLowerCase());
+      } finally {
+        declareRelyingParty();
+        credentials.CREDENTIALS = { username: address, password };
+      }
     });
 
     it('declared with a capital in its username it is the default admin however its address is typed: refused where a relying party is declared, signed in where none is', async () => {

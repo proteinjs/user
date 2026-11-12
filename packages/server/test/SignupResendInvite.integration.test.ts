@@ -9,7 +9,8 @@ import moment from 'moment';
  *  - the row count for the address stays one, its expiry re-stamped from the TTL knob, its inviter kept;
  *  - exactly one email goes out for the re-send, to the address, carrying the fresh signup link;
  *  - an address with no standing invite is refused: nothing written, nothing sent;
- *  - an address that already has an account is refused the same way (the invite was used).
+ *  - an address that already has an account is refused the same way (the invite was used);
+ *  - the built-in default admin's address is an address in use too: no invite is sent or re-sent to it.
  *
  * The email transport is stubbed at the module boundary (the SignupInvite.test.ts pattern) — SMTP
  * is an external transport; the config fake echoes the signup path so the link can be asserted.
@@ -37,6 +38,7 @@ jest.mock('@proteinjs/email-server', () => ({
 import { getDbAsSystem } from '@proteinjs/db';
 import { SourceRepository } from '@proteinjs/reflection';
 import { tables, UserAuth, USER_PERMISSIONS, type Invite, type User } from '@proteinjs/user';
+import { DefaultAdminCredentials } from '../src/authentication/DefaultAdminCredentials';
 import { INVITE_TOKEN_TTL_DAYS, Signup } from '../src/services/Signup';
 import { sha256Hex } from './sha256Hex';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
@@ -162,6 +164,41 @@ describe('SignupService.resendInvite — against the emulator', () => {
       expect(response.sent).toBe(false);
       expect(response.error).toMatch(/already exists/i);
       expect(emailsTo(email)).toHaveLength(0);
+    },
+    TIMEOUT
+  );
+
+  it(
+    `the built-in default admin's address is an address in use, however it is typed: no invite is sent to it, and one that already stands for it is not sent again — nothing written, nothing mailed`,
+    async () => {
+      const email = 'built-in.admin@example.com';
+      const credentials = DefaultAdminCredentials as unknown as {
+        CREDENTIALS?: { username: string; password: string };
+      };
+      const declare = () => {
+        credentials.CREDENTIALS = { username: 'Built-In.Admin@example.com', password: 'a-bootstrap-password' };
+      };
+      declare();
+      try {
+        const sent = await new Signup().sendInvite('built-in.ADMIN@example.com');
+        expect(sent.sent).toBe(false);
+        expect(sent.error).toMatch(/already exists/i);
+        expect(await inviteRows(email)).toHaveLength(0);
+        expect(emailsTo(email)).toHaveLength(0);
+
+        // An invite that stands from before the address was the default admin's.
+        credentials.CREDENTIALS = undefined;
+        expect(await new Signup().sendInvite(email)).toEqual({ sent: true });
+        const [standing] = await inviteRows(email);
+        declare();
+        const resent = await new Signup().resendInvite(email);
+        expect(resent.sent).toBe(false);
+        expect(resent.error).toMatch(/already exists/i);
+        expect((await inviteRows(email)).map((invite) => invite.token)).toEqual([standing.token]);
+        expect(emailsTo(email)).toHaveLength(1);
+      } finally {
+        credentials.CREDENTIALS = undefined;
+      }
     },
     TIMEOUT
   );

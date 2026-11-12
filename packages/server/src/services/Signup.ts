@@ -227,8 +227,9 @@ export class Signup implements SignupService {
     const caseInsensitiveEmail = email.toLowerCase();
     try {
       const db = getDbAsSystem();
-      const userRecord = await db.get(tables.User, { email: caseInsensitiveEmail });
-      if (userRecord) {
+      // An address in use is not invited — an account's, or the built-in default admin's, which
+      // holds its address with no row (`AccountAddresses`).
+      if (await new AccountAddresses().held(caseInsensitiveEmail)) {
         return { sent: false, error: 'User already exists with that email.' };
       }
 
@@ -274,7 +275,8 @@ export class Signup implements SignupService {
    * Re-sends a standing invite: the token in the earlier email stops working, a fresh token with
    * a fresh expiry takes its place on the same row (never a second row), and the invite email goes
    * out again through the same config. Refused when no invite stands for the address — there is
-   * nothing to re-send — and when the address already has an account (the invite was used).
+   * nothing to re-send — and when the address is in use (`AccountAddresses`: it already has an
+   * account, the invite having been used, or it is the built-in default admin's).
    * The inviter stays whoever sent it first.
    */
   async resendInvite(email: string): Promise<SendInviteResponse> {
@@ -282,8 +284,7 @@ export class Signup implements SignupService {
     const caseInsensitiveEmail = email.toLowerCase();
     try {
       const db = getDbAsSystem();
-      const userRecord = await db.get(tables.User, { email: caseInsensitiveEmail });
-      if (userRecord) {
+      if (await new AccountAddresses().held(caseInsensitiveEmail)) {
         return { sent: false, error: 'User already exists with that email.' };
       }
       const invite = await db.get(tables.Invite, { email: caseInsensitiveEmail });
