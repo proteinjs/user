@@ -27,6 +27,9 @@ import { SignInThrottle, signInThrottle } from '../throttle/SignInThrottle';
  * is over; back to the password) — the last also when the step PASSED and the session then cannot
  * open (the account is being purged, or its restore failed): the challenge is spent and the cookie
  * gone by then, so the page is sent back to the password, never left on a step that is over.
+ * A failure thrown INSIDE a step (a write the database refuses) is none of the three: the door
+ * throws, as the password step does, and the request is answered a non-2xx — which the page
+ * treats as restart, the step's challenge being spent by then.
  *
  * Whether a passkey is owed is `SecondFactorGate.mustUse`'s answer alone; the door reads no
  * declaration to decide it. The built-in default admin (`DefaultAdminCredentials`: no account row,

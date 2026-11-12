@@ -25,6 +25,16 @@ const logger = new Logger({ name: 'userCache' });
  * force all stop resolving at their next request — the person signs in again, with the passkey.
  * One more point read of the session row, for those accounts only.
  *
+ * WHEN THIS BUILD REJECTS. An account that is gone or deactivated is not a failure: it resolves as
+ * the guest. A read that fails is one, and it is not caught here — a database read that rejects,
+ * or a session row whose stored data the session store cannot read (`DbSessionStore.liveSession`,
+ * asked by the second factor's check): the build rejects, loudly, and never answers "the guest"
+ * for a session it could not read. On a routed request the framework answers that request 500 and
+ * logs it against the request's id (@proteinjs/server `loadRoutes`: the build's rejection is
+ * wrapped and the request failed outside its route — not the process's fatal boundary). On a
+ * socket event the rejection goes to whoever asked for the socket's session context; that road's
+ * rejection has not been driven.
+ *
  * Its lines name the account by digest and never carry the session id: the consumer's log writer
  * places every line written inside a request by the session's digest already, and a raw session
  * id in a line is a session token in a log.
@@ -53,8 +63,8 @@ export const userCache: SessionDataCache<User> = {
         } else {
           // A session can outlive its account (row deleted, or a dev auto-login for a never-created
           // email). Resolve it to the unauthenticated guest session — the client sees no
-          // authenticated user and re-logs. Throwing here escapes the per-request session-cache
-          // build as an unhandled rejection and downs the process.
+          // authenticated user and re-logs. Throwing here would fail every request of a session
+          // whose only fault is an account that is gone (see "when this build rejects" above).
           logger.warn({
             message: `Session references an account that does not exist; resolving as unauthenticated`,
             obj: { account: new RequestDigests().account(userEmail) },
