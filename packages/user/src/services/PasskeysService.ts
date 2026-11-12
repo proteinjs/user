@@ -1,11 +1,11 @@
 import { Service, serviceFactory } from '@proteinjs/service';
-import type {
-  AuthenticationResponseJSON,
-  PublicKeyCredentialCreationOptionsJSON,
-  PublicKeyCredentialRequestOptionsJSON,
-  RegistrationResponseJSON,
-} from '@simplewebauthn/browser';
 import { Moment } from 'moment';
+import type {
+  PasskeyAssertion,
+  PasskeyCreationOptions,
+  PasskeyRegistration,
+  PasskeyRequestOptions,
+} from '../passkeys/PasskeyCeremonies';
 
 export const getPasskeysService = serviceFactory<PasskeysService>('@proteinjs/user/PasskeysService');
 
@@ -35,16 +35,17 @@ export type PasskeyConfirmationPurpose =
   | { act: 'reset'; userId: string };
 
 /**
- * A step the device's passkey sheet answers: `options` is what the sheet takes (as JSON), `token`
- * names the step's challenge and is handed back with the sheet's answer. A step is good once, in
+ * A step the device's passkey sheet answers: `options` is what the sheet takes (as JSON, in the
+ * wire's own names — `PasskeyCeremonies`, the one importer of the browser library), `token` names
+ * the step's challenge and is handed back with the sheet's answer. A step is good once, in
  * the session that began it, for five minutes — and until that session begins another step for
  * the same act: a session holds one open step per act, and the one a later begin replaced is over.
  */
-export type PasskeyConfirmationStep = { token: string; options: PublicKeyCredentialRequestOptionsJSON };
-export type PasskeyAddStep = { token: string; options: PublicKeyCredentialCreationOptionsJSON };
+export type PasskeyConfirmationStep = { token: string; options: PasskeyRequestOptions };
+export type PasskeyAddStep = { token: string; options: PasskeyCreationOptions };
 
 /** A confirmation: a confirmation step's token with the assertion the device's sheet answered it with. */
-export type PasskeyConfirmation = { token: string; assertion: AuthenticationResponseJSON };
+export type PasskeyConfirmation = { token: string; assertion: PasskeyAssertion };
 
 /**
  * A person's own passkeys — the second factor an account that holds an administrative role signs
@@ -79,7 +80,7 @@ export interface PasskeysService extends Service {
    */
   beginAdd(confirmation?: PasskeyConfirmation): Promise<PasskeyAddStep>;
   /** Finish adding: `token` is the add step's, `registration` the device's answer. Resolves to the new passkey. */
-  finishAdd(token: string, registration: RegistrationResponseJSON): Promise<PasskeyView>;
+  finishAdd(token: string, registration: PasskeyRegistration): Promise<PasskeyView>;
   /** Name one of the caller's passkeys. A blank name is refused. */
   rename(id: string, name: string): Promise<void>;
   /**

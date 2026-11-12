@@ -12,9 +12,10 @@ export type PasskeyAccount = Pick<User, 'id' | 'email'>;
 
 /**
  * What an assertion came to: the account's passkey that answered it, or the reason none did — a
- * reason from the verifier's closed list, never the response's own text.
+ * reason from the verifier's closed list, never the response's own text. (The assertion itself,
+ * the JSON a device's sheet answers with, is `PasskeyAssertion` of @proteinjs/user.)
  */
-export type PasskeyAssertion = { passkey: UserPasskey } | { refused: string };
+export type PasskeyAssertionOutcome = { passkey: UserPasskey } | { refused: string };
 
 /**
  * What an enrollment came to: the passkey it wrote, or why it wrote nothing — `not-first`, a first
@@ -72,7 +73,7 @@ export class UserPasskeys {
    * use it proved is recorded — the counter, whether it is backed up, and now as its last use.
    * Resolves to the passkey that answered, or to why none did.
    */
-  async asserted(userId: string, response: unknown, challenge: string): Promise<PasskeyAssertion> {
+  async asserted(userId: string, response: unknown, challenge: string): Promise<PasskeyAssertionOutcome> {
     const credentialId = WebAuthnVerifier.credentialIdOf(response);
     const passkey = credentialId ? await this.one(userId, credentialId) : undefined;
     if (!passkey) {

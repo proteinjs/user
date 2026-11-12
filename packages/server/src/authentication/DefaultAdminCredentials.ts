@@ -9,9 +9,11 @@ import { User } from '@proteinjs/user';
  * and a session's is bound. Everyone who needs the answer asks here: the password step
  * (`authenticate`, through `opens` — and through `is`: the address opens on the declared
  * credentials alone, never on the password of an account row that holds it), the sign-in door and
- * the per-request session cache (`login` and `userCache`, through `identityOf`) and account
- * deletion (`AccountDeletion`, through `is`) —
- * so no two of them can disagree on who an address signs in as, however it was typed or declared.
+ * the per-request session cache (`login` and `userCache`, through `identityOf`), account
+ * deletion (`AccountDeletion`, through `is`) and the owner of which addresses are in use
+ * (`AccountAddresses`, through `is`: the address is held, so no account is created under it, moved
+ * onto it or invited at it) — so no two of them can disagree on who an address signs in as,
+ * however it was typed or declared.
  */
 export class DefaultAdminCredentials {
   private static CREDENTIALS: { username: string; password: string } | undefined;
