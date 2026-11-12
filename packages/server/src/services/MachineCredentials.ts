@@ -15,6 +15,7 @@ import { RequestDigests } from '@proteinjs/util-node';
 import { Service } from '@proteinjs/service';
 import { AccountSessions } from '../authentication/AccountSessions';
 import { PasswordHasher } from '../authentication/PasswordHasher';
+import { AdministrativeAccountGuard } from '../authorization/AdministrativeAccountGuard';
 
 /**
  * Credential minting for code-declared machine accounts — the ONLY manual step in a machine
@@ -29,7 +30,9 @@ import { PasswordHasher } from '../authentication/PasswordHasher';
  * Secret Manager secret. The same call rotates. Machine rows only (`is_loaded_from_source`);
  * human credentials go through the password-reset flow. A declared address held by a row the
  * boot sync does not own (a person's signup, a hand-made row) has no machine account at all —
- * the sync refused the declaration — and both the list and the mint say so.
+ * the sync refused the declaration — and both the list and the mint say so. The credential is the
+ * account: a machine that holds an administrative role hands its credential to an admin alone
+ * (`AdministrativeAccountGuard`), the `users` door's other holders refused in words.
  */
 export class MachineCredentials implements MachineCredentialsService {
   public serviceMetadata: Service['serviceMetadata'] = {
@@ -92,6 +95,14 @@ export class MachineCredentials implements MachineCredentialsService {
           `first boot after that row is gone creates it.`
       );
     }
+
+    // The credential signs in as the row, with the row's roles; the declaration's are what each boot
+    // brings the row to. The two differ only after a runtime edit made the row the product's, or
+    // across a rollout, so both are read: an administrative role in either makes the mint an admin's.
+    new AdministrativeAccountGuard().refuseUnlessAllowed('machine credential mint', {
+      id: user.id,
+      roles: [...declaration.roles, ...(user.roles ?? [])],
+    });
 
     // 256 bits of entropy; standard API-key UX — generated, shown once, hash-only at rest.
     const password = randomBytes(32).toString('hex');

@@ -108,4 +108,21 @@ describe('password reset form', () => {
     expect(document.querySelector('a[href*="token=reset-token-2"]')).not.toBeNull();
     expect(document.getElementById('auth-field-New password')).toBeNull();
   });
+
+  // The other direction: a check that fails for any other reason (here a proxy's error page — no
+  // JSON, as the limit's — under a 502) is not the limit, so it never reads as the limit's words.
+  it(`a link check that fails for a reason other than the limit renders the invalid-link state, never the limit's words`, async () => {
+    (global as any).fetch = jest.fn().mockResolvedValue({
+      status: 502,
+      statusText: '',
+      json: async () => {
+        throw new SyntaxError('Unexpected token < in JSON');
+      },
+    });
+    await renderPasswordReset('/login/reset-password?token=reset-token-3');
+
+    expect(document.body.textContent).toContain('This reset link is invalid');
+    expect(document.body.textContent).not.toContain(AuthApi.TOO_MANY_ATTEMPTS);
+    expect(document.getElementById('auth-field-New password')).toBeNull();
+  });
 });

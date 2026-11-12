@@ -93,13 +93,16 @@ describe('UpdateUserInfo.updateName — persists AND refreshes the server sessio
       const common = await new UpdateUserInfo().updatePassword('current-password-1', 'Password1');
       expect(common).toEqual({ updated: false, error: PasswordPolicy.TOO_COMMON });
 
-      // Every refusal the road answers is one the policy recognizes — the blank one included, which a
-      // consumer's form would otherwise file as a failure of its own.
+      // The road answers exactly the sentences on the policy's one list, in its order, and the policy
+      // recognizes every sentence on that list — the blank one included, which a consumer's form
+      // would otherwise file as a failure of its own — and nothing else.
       const blank = await new UpdateUserInfo().updatePassword('current-password-1', '');
       expect(blank.updated).toBe(false);
-      for (const refused of [short, common, blank]) {
-        expect(PasswordPolicy.isRefusal(refused.error)).toBe(true);
+      expect([blank.error, short.error, common.error]).toEqual([...PasswordPolicy.REFUSALS]);
+      for (const sentence of PasswordPolicy.REFUSALS) {
+        expect(PasswordPolicy.isRefusal(sentence)).toBe(true);
       }
+      expect(PasswordPolicy.isRefusal('Invalid password')).toBe(false);
 
       expect((await getDbAsSystem().get(tables.User, { id: user.id })).password).toBe(before);
       expect(sendEmail).not.toHaveBeenCalled();

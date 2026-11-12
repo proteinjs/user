@@ -28,6 +28,13 @@ class AuditRole implements RoleCatalogEntry {
   description = 'Audit reads';
 }
 
+/** An operator role the catalog marks administrative: a machine holding it is an admin's to mint for. */
+class FleetOpsRole implements RoleCatalogEntry {
+  role = 'fleet-ops';
+  description = 'Runs the fleet';
+  administrative = true;
+}
+
 class TestOpsMachineAccount extends MachineAccount {
   id = 'machine-test-ops';
   email = 'machine-ops@test.local';
@@ -99,7 +106,7 @@ describe('Machine accounts as source records', () => {
     (SourceRepository.get() as unknown as SourceRepositoryInternals).objectCache[
       '@proteinjs/user-auth/AuthenticatedUserRepo'
     ] = [new UserRepo()];
-    objectCache()['@proteinjs/user/RoleCatalogEntry'] = [new OpsRole(), new AuditRole()];
+    objectCache()['@proteinjs/user/RoleCatalogEntry'] = [new OpsRole(), new AuditRole(), new FleetOpsRole()];
     // The two session watchers a real server registers, rebuilt from the seeded cache — and no
     // socket server exists in this process: the shape of a boot's sync (and of a migration Job,
     // which never starts one), where deactivations delete sessions before the server is up.
@@ -502,6 +509,41 @@ describe('Machine accounts as source records', () => {
       expect(canRun()).toBe(false);
       testEnv.actAs(admin);
       expect(canRun()).toBe(true);
+    });
+
+    /**
+     * The credential is the account: a `users` holder who is not an admin mints an ordinary
+     * machine's, and is refused in words for a machine whose credential would carry an
+     * administrative role — named by its declaration (declared since the row's last boot) or held
+     * on its row (a runtime edit, the row the product's) — with nothing written: the credential
+     * minted before stands, and so do the machine's sessions. An admin mints it.
+     */
+    it(`a machine that holds an administrative role, on its declaration or its row, hands its credential to an admin alone`, async () => {
+      const desk = await testEnv.createUser({ name: 'People Desk', email: 'people.desk@test.local', roles: ['audit'] });
+      const admin = await testEnv.createUser({ name: 'Admin', email: 'admin@test.local', roles: ['admin'] });
+      testEnv.actAs(desk);
+      const ordinary = await new MachineCredentials().mintCredential('machine-ops@test.local');
+      await insertSession('minted-credential-session', 'machine-ops@test.local');
+
+      class DeclaredFleetOps extends TestOpsMachineAccount {
+        roles = ['ops', 'fleet-ops'];
+      }
+      seedLoaders([new DeclaredFleetOps()]);
+      await expect(new MachineCredentials().mintCredential('machine-ops@test.local')).rejects.toThrow(
+        /only an admin can mint the credential/i
+      );
+      seedLoaders([new TestOpsMachineAccount()]);
+      await getDbAsSystem().update(tables.User, { id: 'machine-test-ops', roles: ['ops', 'fleet-ops'] });
+      await expect(new MachineCredentials().mintCredential('machine-ops@test.local')).rejects.toThrow(
+        /only an admin can mint the credential/i
+      );
+
+      expect((await machineRow()).password).toBe(sha256Hex(ordinary.password));
+      expect(await sessionEmails()).toEqual(['machine-ops@test.local']);
+
+      testEnv.actAs(admin);
+      const minted = await new MachineCredentials().mintCredential('machine-ops@test.local');
+      expect((await machineRow()).password).toBe(sha256Hex(minted.password));
     });
   });
 });

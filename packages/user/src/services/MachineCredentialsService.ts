@@ -51,5 +51,9 @@ export type MachineAccountView = {
 export interface MachineCredentialsService extends Service {
   /** Every declared machine account with its row state, for the admin surface. */
   listMachineAccounts(): Promise<MachineAccountView[]>;
+  /**
+   * Refused in words when the machine holds an administrative role (`RolesCatalog.isAdministrative`,
+   * on its declaration or its row) and the caller does not hold `admin`: the credential is the account.
+   */
   mintCredential(email: string): Promise<MintedMachineCredential>;
 }

@@ -23,6 +23,13 @@ export interface RoleCatalogEntry extends Loadable {
    * holders: de-escalation should ride the audited path, the break-glass precedent.
    */
   adminGrantOnly?: boolean;
+  /**
+   * An operator role — one whose holder runs the product's people, roles, sessions or machinery
+   * (a consumer's 'users', 'roles', 'ops') — that is neither break-glass nor admin-grant-only and
+   * is administrative all the same: an account that holds it is guarded as one that holds 'admin'
+   * is ({@link RolesCatalog.isAdministrative}). Granting it stays the 'roles' grant's.
+   */
+  administrative?: boolean;
 }
 
 export const getRoleCatalogEntries = () =>
@@ -63,13 +70,14 @@ export class RolesCatalog {
   }
 
   /**
-   * Whether `role` is administrative: break-glass, or admin-grant-only — the catalog's two marks of
-   * a power beyond the people-management trust. An account holding one is guarded past the
-   * `users` door: its sign-in address changes by an admin's hand alone (user-server
-   * `UserAccountAdmin.setEmail`). A role the catalog does not know (a retired one) is not.
+   * Whether `role` is administrative: break-glass, admin-grant-only, or marked `administrative` —
+   * the catalog's three marks of a power past the people-management trust. An account holding one
+   * is guarded past the `users` door: its identity (its sign-in address, a machine's credential)
+   * is an admin's alone to act on (user-server `AdministrativeAccountGuard`). A role the catalog
+   * does not know (a retired one) is not.
    */
   static isAdministrative(role: string): boolean {
     const entry = RolesCatalog.getEntry(role);
-    return entry?.breakGlass === true || entry?.adminGrantOnly === true;
+    return entry?.breakGlass === true || entry?.adminGrantOnly === true || entry?.administrative === true;
   }
 }

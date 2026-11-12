@@ -8,8 +8,10 @@
  * (they lower usability without raising strength). The server adds the one check a client cannot
  * make without the list: a password among the most common ones is refused with {@link TOO_COMMON}.
  *
- * Every sentence the server's check answers lives here, so {@link isRefusal} knows each of them:
- * a refusal the server adds without its sentence here would reach a form as a failure of its own.
+ * Every sentence the server's check answers is on this policy's one list, {@link REFUSALS}, which
+ * {@link isRefusal} reads: the server's check is typed to answer only a {@link PasswordRefusal}, so a
+ * rule whose sentence is not on the list does not compile, and never reaches a form as a failure of
+ * its own.
  */
 export class PasswordPolicy {
   /** The fewest characters a password may have. */
@@ -20,19 +22,22 @@ export class PasswordPolicy {
    */
   static readonly BLANK = 'New password cannot be blank';
   /** What a too-short password is told, on the client and from the server alike. */
-  static readonly TOO_SHORT = `Use at least ${PasswordPolicy.MIN_LENGTH} characters`;
+  static readonly TOO_SHORT = `Use at least ${PasswordPolicy.MIN_LENGTH} characters` as const;
   /** What a password on the common-passwords list is told (the server's check; a client passes it through). */
   static readonly TOO_COMMON = 'That password is too common';
+  /** Every refusal this policy's rules answer, in the order the server checks them — the list's one owner. */
+  static readonly REFUSALS = [PasswordPolicy.BLANK, PasswordPolicy.TOO_SHORT, PasswordPolicy.TOO_COMMON] as const;
 
   /** The refusal a password earns by its length alone, or undefined when it is long enough. */
-  static tooShort(password: string): string | undefined {
+  static tooShort(password: string): typeof PasswordPolicy.TOO_SHORT | undefined {
     return password.length < PasswordPolicy.MIN_LENGTH ? PasswordPolicy.TOO_SHORT : undefined;
   }
 
   /** Whether `message` is one of this policy's refusals — a client shows it as it is, never as its own failure. */
   static isRefusal(message: string | undefined): boolean {
-    return (
-      message === PasswordPolicy.BLANK || message === PasswordPolicy.TOO_SHORT || message === PasswordPolicy.TOO_COMMON
-    );
+    return (PasswordPolicy.REFUSALS as readonly (string | undefined)[]).includes(message);
   }
 }
+
+/** One of the sentences on {@link PasswordPolicy.REFUSALS} — what the server's check may answer. */
+export type PasswordRefusal = (typeof PasswordPolicy.REFUSALS)[number];

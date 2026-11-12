@@ -42,9 +42,11 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
     // The caller's own roles resolve through UserAuth — the same session-backed repo the services use.
     objectCache['@proteinjs/user-auth/AuthenticatedUserRepo'] = [new UserRepo()];
     // Beside the built-in break-glass admin, one consumer role the catalog marks admin-grant-only
-    // (the compliance-grant shape) and the people desk's ordinary one.
+    // (the compliance-grant shape), one operator role it marks administrative (the roles desk's) and
+    // the people desk's ordinary one.
     objectCache['@proteinjs/user/RoleCatalogEntry'] = [
       { role: 'data-access', description: 'Compliance decrypt grant', adminGrantOnly: true } as RoleCatalogEntry,
+      { role: 'roles-desk', description: 'Grant and revoke roles', administrative: true } as RoleCatalogEntry,
       { role: 'people-desk', description: 'Manage user records' } as RoleCatalogEntry,
     ];
     actor = await testEnv.createUser({ name: 'People Desk', email: 'people.desk@test.local', roles: ['people-desk'] });
@@ -116,10 +118,11 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
 
   /**
    * Whoever holds an account's address holds the account — the reset link is mailed there. So the
-   * address of an account that holds an administrative role (the catalog's break-glass or
-   * admin-grant-only mark) is an admin's to change: a `users` holder is refused in words, nothing
-   * is written and its sessions stand, and the refusal is kept in a log line naming the actor and
-   * the target, never an address.
+   * address of an account that holds an administrative role (the catalog's break-glass,
+   * admin-grant-only or administrative mark — held anywhere in the account's list) is an admin's
+   * to change: a `users` holder is refused in words, nothing is written and its sessions stand, and
+   * the refusal is kept in a log line naming the actor and the target, never an address. A role the
+   * catalog does not know (a retired one) marks nothing.
    */
   it(`setEmail on an account that holds an administrative role: a users holder is refused and nothing is written; an admin changes it; a users holder still changes an ordinary account's`, async () => {
     const breakGlass = await testEnv.createUser({
@@ -132,10 +135,16 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       email: 'compliance@test.local',
       roles: ['data-access'],
     });
+    // An ordinary role first, the administrative one after: the list is read whole.
+    const rolesDesk = await testEnv.createUser({
+      name: 'Roles Desk',
+      email: 'roles.desk@test.local',
+      roles: ['people-desk', 'roles-desk'],
+    });
     const ordinary = await testEnv.createUser({
       name: 'Ordinary',
       email: 'ordinary@test.local',
-      roles: ['people-desk'],
+      roles: ['people-desk', 'retired-role'],
     });
     const db = getDbAsSystem();
     await db.insert(tables.Session, sessionRow('break-glass-phone', breakGlass));
@@ -143,21 +152,25 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
     const log = await LogCapture.during(async () => {
       await expect(service().setEmail(breakGlass.id, 'taken.over@test.local')).rejects.toThrow(/only an admin/i);
       await expect(service().setEmail(compliance.id, 'taken.over@test.local')).rejects.toThrow(/only an admin/i);
+      await expect(service().setEmail(rolesDesk.id, 'taken.over@test.local')).rejects.toThrow(/only an admin/i);
     });
 
     expect((await row(breakGlass.id)).email).toBe('break.glass@test.local');
     expect((await row(breakGlass.id)).emailVerified).toBe(true);
     expect((await row(compliance.id)).email).toBe('compliance@test.local');
+    expect((await row(rolesDesk.id)).email).toBe('roles.desk@test.local');
     expect(await events(breakGlass.id)).toEqual([]);
     expect(await events(compliance.id)).toEqual([]);
+    expect(await events(rolesDesk.id)).toEqual([]);
     expect(
       (await db.query(tables.Session, { userEmail: breakGlass.email })).map((session) => session.sessionId)
     ).toEqual(['break-glass-phone']);
     const refusals = log.linesContaining('Refused an address change');
-    expect(refusals.lines).toHaveLength(2);
+    expect(refusals.lines).toHaveLength(3);
     expect(refusals.text).toContain(actor.id);
     expect(refusals.text).toContain(breakGlass.id);
     expect(refusals.text).toContain(compliance.id);
+    expect(refusals.text).toContain(rolesDesk.id);
     expect(refusals.addresses).toEqual([]);
 
     // An ordinary account's address stays the users door's.
