@@ -2,6 +2,7 @@ import { UserAuth } from '@proteinjs/user-auth';
 import { TableAuth, TableServiceAuth } from '@proteinjs/db';
 import { tables } from '../src/tables/tables';
 import { USER_PERMISSIONS } from '../src/permissions';
+import { isScopedTable, retainedOnAccountPurge } from '../src/ScopedRecord';
 
 /**
  * The users/roles split lives in these table schemas — invariants worth pinning so a drive-by
@@ -24,6 +25,9 @@ import { USER_PERMISSIONS } from '../src/permissions';
  * - session: 'sessions' holders read (a different trust than 'users' — rows carry auth
  *   material); writes are system-written, so there is NO generic write door.
  * - invite: 'users' holders read and delete; creating rides SignupService only.
+ * - user_passkey and auth_challenge: NO door on either api, the admin included — the public keys a
+ *   second factor is verified against and the single-use challenges of its steps are the server's
+ *   own, read and written as system.
  */
 
 type UserAuthInternals = {
@@ -191,6 +195,44 @@ describe('session table auth shape', () => {
   it('is readable by sessions holders and has no generic write door (writes are system-written)', () => {
     expect(tables.Session.auth?.db).toEqual({ query: { permission: USER_PERMISSIONS.sessions } });
     expect(tables.Session.auth?.service).toEqual({ query: { permission: USER_PERMISSIONS.sessions } });
+  });
+});
+
+/**
+ * The passkey and sign-in challenge tables, at both gates: the RPC gate (`TableServiceAuth`, every
+ * DbService method) and the db api's own (`TableAuth`). `query: []` admits nobody, the break-glass
+ * admin included, and a declared block's other operations stay closed — so no caller reads a
+ * public key or a challenge's hash, or writes either, through a generic door. Passkeys belong to
+ * the account: the table is scoped and purges with it.
+ */
+describe('the passkey and sign-in challenge tables have no door on either api', () => {
+  const named = (name: string) => Object.values(tables).find((table) => table.name === name);
+  const serviceMethods = ['get', 'query', 'getRowCount', 'insert', 'update', 'updatePreserving', 'delete'];
+
+  afterEach(clearUser);
+
+  it(`neither table has a door on either api: the admin's query, insert, update and delete are refused at the gate; user_passkey is a scoped table that is not retained on account purge`, () => {
+    setUser(['admin']);
+    const passkeys = named('user_passkey');
+    const challenges = named('auth_challenge');
+    expect(passkeys).toBeDefined();
+    expect(challenges).toBeDefined();
+
+    for (const table of [passkeys!, challenges!]) {
+      for (const method of serviceMethods) {
+        expect(() => new TableServiceAuth().canAccess(method, [table, { id: 'row-1' }])).toThrow(
+          `User is not authorized to`
+        );
+      }
+      for (const operation of ['query', 'insert', 'update', 'delete'] as const) {
+        for (const api of ['db', 'service'] as const) {
+          expect(new TableAuth().canPerform(table, operation, api)).toBe(false);
+        }
+      }
+    }
+
+    expect(isScopedTable(passkeys!)).toBe(true);
+    expect(retainedOnAccountPurge(passkeys!)).toBe(false);
   });
 });
 
