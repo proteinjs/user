@@ -147,6 +147,19 @@ describe('devLogin first hit through the real session middleware stack', () => {
     const followUp = await request(port, '/whoami', { cookie: sessionCookiePair(firstHit), waitForBody: true });
     expect(JSON.parse(followUp.body!)).toEqual({ user: ENV_EMAIL });
   });
+
+  it(`the row the 302's cookie names carries the door's record of the second factor — bound with the account in passport's own save, through the real session object`, async () => {
+    store.rows.clear();
+
+    const firstHit = await request(port, '/dev/login');
+
+    // Read on HEADERS: the row is what passport's save committed, before the response ended.
+    const row = JSON.parse(store.rows.get(sidOf(sessionCookiePair(firstHit))) ?? '{}');
+    expect(row.passport?.user).toBe(ENV_EMAIL);
+    expect(row.secondFactor).toMatchObject({ method: 'dev' });
+    // The session's cookie came through whole: still the sixty days the middleware was given.
+    expect(row.cookie?.originalMaxAge).toBe(1000 * 60 * 60 * 24 * 60);
+  });
 });
 
 /**

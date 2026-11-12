@@ -143,7 +143,11 @@ export const devLogin: Route = {
 
     // establishSession commits the session row before the redirect — the redirected GET / must
     // never read the store ahead of the write (observed: first /dev/login load landed on /login).
-    await establishSession(request, email);
+    // The session carries this door's own record of the second factor (`dev`): where a relying
+    // party is declared, an account holding an administrative role resolves only on a session that
+    // carries a record, and this door proves no passkey — its record counts only on a process whose
+    // development switches are set (`SecondFactorGate.sessionMet`), which is the only place it runs.
+    await establishSession(request, email, { secondFactor: { method: 'dev', at: new Date().toISOString() } });
     logger.info({ message: 'Dev auto-login session established', obj: { account: digests.account(email) } });
     response.redirect('/');
   },

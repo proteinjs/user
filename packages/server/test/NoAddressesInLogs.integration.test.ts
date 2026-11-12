@@ -13,12 +13,14 @@ import { UserStatusTableWatcher } from '../src/authentication/UserStatusTableWat
 import { userCache } from '../src/authorization/userCache';
 import { executePasswordReset } from '../src/routes/executePasswordReset';
 import { initiatePasswordReset } from '../src/routes/initiatePasswordReset';
+import { login } from '../src/routes/login';
 import { validateResetPasswordToken } from '../src/routes/validateResetPasswordToken';
 import { signup } from '../src/routes/signup';
 import { MachineCredentials } from '../src/services/MachineCredentials';
 import { Signup } from '../src/services/Signup';
 import { invokeDevLogin } from './devLoginHarness';
 import { createPassportRequest } from './passportSessionHarness';
+import { SoftwareAuthenticator } from './SoftwareAuthenticator';
 import { LogCapture } from './LogCapture';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 
@@ -38,6 +40,7 @@ const testEnv = new UserServerTestEnvironment();
  * - sign-in and sessions: a deactivated account refused, a session on a deactivated account, a
  *   session on a missing account;
  * - the sessions a deactivation kills, and a minted machine credential;
+ * - the sign-in's passkey step: a refused second step;
  * - the dev doors: a missing test account created, the first-admin grant, a session established;
  * - a caught error whose words name an address: a double sign-up's unique-index refusal (the
  *   database's own words), an invite whose send or write fails with the address in its error.
@@ -356,6 +359,65 @@ describe('no e-mail address reaches the server log', () => {
     expect(log.addresses).toEqual([]);
     expect(log.text).toContain(digests.account('logs-deactivated@test.local'));
     expect(log.text).toContain(digests.account('logs-missing@test.local'));
+  });
+
+  it(`the sign-in's passkey step: a refused second step is one "Sign-in refused" line carrying the account's digest, never the address`, async () => {
+    const origin = 'https://app.example.test';
+    objectCache()['@proteinjs/user-server/PasskeyRelyingParty'] = [
+      { getRelyingParty: () => ({ id: 'example.test', origin, name: 'Example' }) },
+    ];
+    await getDbAsSystem().insert(tables.User, {
+      name: 'Passkey Admin',
+      email: 'logs-passkey-admin@test.local',
+      password: sha256Hex('correct-password'),
+      emailVerified: true,
+      roles: ['admin'],
+    });
+    // One browser at the door: its cookies ride each request and follow what each response sets and clears.
+    const jar: Record<string, string> = {};
+    const post = async (body: unknown): Promise<any> => {
+      let sent: any;
+      const response: any = {
+        status: () => response,
+        send: (answer: unknown) => {
+          sent = answer;
+        },
+        cookie: (name: string, value: string) => {
+          jar[name] = value;
+        },
+        clearCookie: (name: string) => {
+          delete jar[name];
+        },
+      };
+      const { request } = await createPassportRequest({
+        body,
+        headers: {},
+        cookies: { ...jar },
+        socket: { remoteAddress: '198.18.20.1' },
+        app: { get: () => false },
+      });
+      await login.onRequest(request, response);
+      return sent;
+    };
+
+    try {
+      const log = await LogCapture.during(async () => {
+        const step = await post({ email: 'Logs-Passkey-Admin@test.local', password: 'correct-password' });
+        expect(step.secondStep?.kind).toBe('addPasskey');
+        const unverified = new SoftwareAuthenticator().register(step.secondStep.options, {
+          origin,
+          userVerified: false,
+        });
+        expect((await post({ addPasskey: unverified })).restart).toBe(true);
+      });
+
+      const refusals = log.linesContaining('Sign-in refused');
+      expect(refusals.lines).toHaveLength(1);
+      expect(refusals.text).toContain(digests.account('logs-passkey-admin@test.local'));
+      expect(log.addresses).toEqual([]);
+    } finally {
+      objectCache()['@proteinjs/user-server/PasskeyRelyingParty'] = [];
+    }
   });
 
   it('the sessions a deactivation kills, and a minted machine credential', async () => {

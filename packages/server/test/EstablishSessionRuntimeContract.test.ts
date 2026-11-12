@@ -22,7 +22,7 @@ describe('establishSession runtime contract', () => {
     const session: Record<string, unknown> = {};
     const request = {
       session,
-      login(user: string, cb: (error?: unknown) => void) {
+      login(user: string, _options: unknown, cb: (error?: unknown) => void) {
         // passport 0.4's SessionManager.logIn: bind onto the SAME session object, no
         // regenerate, no save — the stale-runtime shape the guard must refuse.
         session.passport = { user };
@@ -50,11 +50,46 @@ describe('establishSession runtime contract', () => {
     expect(request.session.passport.user).toBe('mixed.case@test.local');
   });
 
+  it('the record given is on the session passport saved, in one save; with none given, a record on the previous session is not carried', async () => {
+    const { request, saved } = await createPassportRequest();
+    const record = { method: 'passkey' as const, passkeyId: 'passkey-row-1', at: '2026-01-02T03:04:05.000Z' };
+
+    await establishSession(request, 'admin@test.local', { secondFactor: record });
+
+    expect(saved).toHaveLength(1);
+    expect(saved[0].passport.user).toBe('admin@test.local');
+    expect(saved[0].secondFactor).toEqual(record);
+
+    // The same browser signs in again, on a password alone: the session it opens carries no record.
+    await establishSession(request, 'person@test.local');
+
+    expect(saved).toHaveLength(2);
+    expect(saved[1].passport.user).toBe('person@test.local');
+    expect(saved[1].secondFactor).toBeUndefined();
+    expect(request.session.secondFactor).toBeUndefined();
+  });
+
+  it('rejects when the login replaced the session without carrying the record given (a runtime that keeps no session info)', async () => {
+    const request: any = {
+      session: {},
+      login(user: string, _options: unknown, cb: (error?: unknown) => void) {
+        // Regenerates and binds, as passport 0.6 does, but copies nothing from the previous session.
+        request.session = { passport: { user } };
+        cb();
+      },
+    };
+    const record = { method: 'passkey' as const, passkeyId: 'passkey-row-1', at: '2026-01-02T03:04:05.000Z' };
+
+    await expect(establishSession(request, 'admin@test.local', { secondFactor: record })).rejects.toThrow(
+      /keepSessionInfo/
+    );
+  });
+
   it('still surfaces a login failure as a rejection (never as the contract error)', async () => {
     const loginError = new Error('serialize blew up');
     const request = {
       session: {},
-      login(_user: string, cb: (error?: unknown) => void) {
+      login(_user: string, _options: unknown, cb: (error?: unknown) => void) {
         cb(loginError);
       },
     };

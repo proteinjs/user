@@ -5,6 +5,7 @@ import { Logger } from '@proteinjs/logger';
 import { RequestDigests } from '@proteinjs/util-node';
 import { User, tables, guestUser, USER_SESSION_CACHE_KEY } from '@proteinjs/user';
 import { DefaultAdminCredentials } from '../authentication/DefaultAdminCredentials';
+import { SecondFactorGate } from '../authentication/SecondFactorGate';
 
 const logger = new Logger({ name: 'userCache' });
 
@@ -16,6 +17,14 @@ const logger = new Logger({ name: 'userCache' });
  * socket's room re-joins on every reconnect, the reload a deploy pushes onto every open tab —
  * transport, not a person. Presence is written from the page's human-input report alone
  * (UserPresence.recordPresence).
+ *
+ * THE SECOND FACTOR, on every request: an identity that must use one (`SecondFactorGate.mustUse` —
+ * a person's account holding an administrative role, where the deployment declares a relying
+ * party) resolves only on a session whose stored data carries the record of it; any other session
+ * of that account resolves as the unauthenticated guest. So a role granted to a person who is
+ * signed in, a session older than the rule, and a session opened where the rule was not yet in
+ * force all stop resolving at their next request — the person signs in again, with the passkey.
+ * One more point read of the session row, for those accounts only.
  *
  * Its lines name the account by digest and never carry the session id: the consumer's log writer
  * places every line written inside a request by the session's digest already, and a raw session
@@ -63,6 +72,15 @@ export const userCache: SessionDataCache<User> = {
           });
         }
       }
+    }
+
+    const gate = new SecondFactorGate();
+    if (user !== guestUser && gate.mustUse(user) && !(await gate.sessionMet(sessionId))) {
+      logger.warn({
+        message: `Session of an account that must use a second factor carries no record of one; resolving as unauthenticated`,
+        obj: { account: new RequestDigests().account(userEmail) },
+      });
+      user = guestUser;
     }
 
     return user;

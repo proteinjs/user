@@ -6,6 +6,8 @@ export type DevLoginOutcome = {
   loggedInAs?: string;
   sessionRegenerated: boolean;
   sessionSaved: boolean;
+  /** The session's data as its row would hold it after the door's save — absent when the door saved none. */
+  savedSession?: Record<string, any>;
   status?: number;
   body?: unknown;
   redirect?: string;
@@ -17,7 +19,7 @@ export type DevLoginOutcome = {
  * is pinned by SignupRoute.test.ts — the dev-door suites assert the door INHERITS it.
  */
 export const invokeDevLogin = async (query?: Record<string, unknown>): Promise<DevLoginOutcome> => {
-  const { request, events } = await createPassportRequest({ query });
+  const { request, events, saved } = await createPassportRequest({ query });
   const outcome: DevLoginOutcome = { sessionRegenerated: false, sessionSaved: false };
   const response = {
     status(code: number) {
@@ -35,5 +37,6 @@ export const invokeDevLogin = async (query?: Record<string, unknown>): Promise<D
   outcome.loggedInAs = request.session.passport?.user;
   outcome.sessionRegenerated = events.includes('regenerate');
   outcome.sessionSaved = events.includes('save');
+  outcome.savedSession = saved[saved.length - 1];
   return outcome;
 };

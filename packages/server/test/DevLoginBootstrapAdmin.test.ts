@@ -1,5 +1,7 @@
 import { getDbAsSystem } from '@proteinjs/db';
+import { SourceRepository } from '@proteinjs/reflection';
 import { tables } from '@proteinjs/user';
+import { userCache } from '../src/authorization/userCache';
 import { invokeDevLogin } from './devLoginHarness';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 
@@ -156,6 +158,31 @@ describe('devLogin — the DEV_BOOTSTRAP_ADMIN_EMAIL first-admin door', () => {
 
     expect((await userRow(BOOTSTRAP_EMAIL))!.roles).toEqual([]);
     expect(await auditRows()).toHaveLength(0);
+  });
+
+  it(`where a relying party is declared, the development door's admin session carries the door's record and resolves as the admin`, async () => {
+    const objectCache = (SourceRepository.get() as unknown as { objectCache: Record<string, unknown[]> }).objectCache;
+    objectCache['@proteinjs/user-server/PasskeyRelyingParty'] = [
+      { getRelyingParty: () => ({ id: 'localhost', origin: 'http://localhost:3000', name: 'Example' }) },
+    ];
+    try {
+      const outcome = await invokeDevLogin({ email: BOOTSTRAP_EMAIL });
+
+      expect(outcome.savedSession?.secondFactor).toMatchObject({ method: 'dev' });
+      // The row the store writes for that session, as the per-request check reads it.
+      await getDbAsSystem().delete(tables.Session, { sessionId: 'dev-door-admin-session' });
+      await getDbAsSystem().insert(tables.Session, {
+        sessionId: 'dev-door-admin-session',
+        session: JSON.stringify(outcome.savedSession),
+        expires: new Date(Date.now() + 60 * 60 * 1000),
+        userEmail: BOOTSTRAP_EMAIL,
+      });
+      const resolved = await userCache.create('dev-door-admin-session', BOOTSTRAP_EMAIL);
+      expect(resolved.id).toBe((await userRow(BOOTSTRAP_EMAIL))!.id);
+      expect(resolved.roles).toEqual(['admin']);
+    } finally {
+      objectCache['@proteinjs/user-server/PasskeyRelyingParty'] = [];
+    }
   });
 
   it.each([['DEVELOPMENT'], ['DEV_AUTO_LOGIN_EMAIL']])(

@@ -14,6 +14,9 @@ export {
   getDefaultSignupGuard,
 } from './src/services/SignupGuard';
 export { DisposableEmailDomains } from './src/services/DisposableEmailDomains';
+// The switch of the passkey second factor: a deployment registers its relying party (who a
+// passkey is made for, and the one origin its ceremonies run on) by implementing this.
+export { PasskeyRelyingParty, RelyingParty } from './src/authentication/passkeys/PasskeyRelyingParty';
 export { AccessInvite } from './src/services/AccessInvite';
 export { AccountDeletion } from './src/services/AccountDeletion';
 export * from './src/emails/AccountDeletionEmailConfigs';

@@ -12,6 +12,11 @@ export type PassportRequest = {
    * of the account onto the fresh session, then save (the row must commit before the response).
    */
   events: SessionEvent[];
+  /**
+   * The session's data at each `save`, as a store would serialize it — one entry per save, in
+   * order: what a session row would hold (the bound account, and anything else the session carries).
+   */
+  saved: Record<string, any>[];
 };
 
 /**
@@ -29,10 +34,12 @@ export type PassportRequest = {
  * account email directly), instrumented to record the bind ('login') between 'regenerate' and
  * 'save'. The session mock replicates the one express-session behavior passport depends on:
  * `regenerate` REPLACES `request.session` with a fresh session (new id, no passport state), so
- * the bind provably lands on the post-regeneration session.
+ * the bind provably lands on the post-regeneration session. Each `save` records the session's
+ * data as JSON — what the store would write — so a suite reads what passport's save committed.
  */
 export const createPassportRequest = async (extra: Record<string, unknown> = {}): Promise<PassportRequest> => {
   const events: SessionEvent[] = [];
+  const saved: Record<string, any>[] = [];
   const authenticator = new passport.Passport();
   authenticator.serializeUser((user: unknown, done: (err: unknown, id?: unknown) => void) => {
     events.push('login');
@@ -48,11 +55,12 @@ export const createPassportRequest = async (extra: Record<string, unknown> = {})
     },
     save: (done: (err?: unknown) => void) => {
       events.push('save');
+      saved.push(JSON.parse(JSON.stringify(request.session)));
       done();
     },
   });
   request.session = makeSession();
 
   await new Promise<void>((resolve) => authenticator.initialize()(request, {} as never, () => resolve()));
-  return { request, events };
+  return { request, events, saved };
 };

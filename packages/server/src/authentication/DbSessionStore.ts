@@ -4,6 +4,7 @@ import { getDbAsSystem, QueryBuilderFactory } from '@proteinjs/db';
 import { tables } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
 import { destroySession } from './destroySession';
+import { AuthChallenges } from './passkeys/AuthChallenges';
 
 export class DbSessionStore extends Store {
   private static readonly TWELVE_HOURS = 1000 * 60 * 60 * 12;
@@ -199,6 +200,9 @@ export class DbSessionStore extends Store {
       .getQueryBuilder(tables.Session)
       .condition({ field: 'expires', operator: '<=', value: new Date() });
     const deleteCount = await getDbAsSystem().delete(tables.Session, qb);
-    this.logger.info({ message: `Finished sweeping expired sessions`, obj: { deleteCount } });
+    // The sign-in step's lapsed challenges leave with the sessions (five-minute rows; a claim
+    // refuses a lapsed one whether or not it has been swept).
+    const challengeCount = await new AuthChallenges().sweep();
+    this.logger.info({ message: `Finished sweeping expired sessions`, obj: { deleteCount, challengeCount } });
   }
 }

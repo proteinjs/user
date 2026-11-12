@@ -125,3 +125,23 @@ describe(`DbSessionStore writes the address in the account row's form — the on
     expect(await getDbAsSystem().query(tables.Session, { userEmail: asTyped })).toEqual([]);
   });
 });
+
+describe(`DbSessionStore's sweep — the sign-in step's lapsed challenges leave with the expired sessions`, () => {
+  it('a lapsed challenge is removed; one still live stays', async () => {
+    const db = getDbAsSystem();
+    const challenge = (tokenHash: string, expiresAt: moment.Moment) => ({
+      kind: 'webauthn_login' as const,
+      tokenHash,
+      userId: 'sweep-account',
+      payload: {},
+      expiresAt,
+    });
+    await db.insert(tables.AuthChallenge, challenge('a'.repeat(64), moment().subtract(1, 'minute')));
+    await db.insert(tables.AuthChallenge, challenge('b'.repeat(64), moment().add(5, 'minutes')));
+
+    await (store as unknown as { sweep(): Promise<void> }).sweep();
+
+    const left = await db.query(tables.AuthChallenge, { userId: 'sweep-account' });
+    expect(left.map((row) => row.tokenHash)).toEqual(['b'.repeat(64)]);
+  });
+});
