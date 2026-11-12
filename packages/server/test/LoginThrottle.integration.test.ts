@@ -41,7 +41,8 @@ const testEnv = new UserServerTestEnvironment();
  * answered one of three shapes — `{}`, `{ error, secondStep }`, `{ error, restart: true }` — also
  * when the step passed and the session cannot open, and when the client is throttled; the step's
  * cookie is read as the response sets and clears it; the built-in default admin, which can hold
- * no passkey, is refused where one is required.
+ * no passkey, is refused where one is required — whatever the case its username was declared or
+ * typed in — and an account of its own beside it signs in as itself.
  */
 
 const WRONG = 'User name or password incorrect';
@@ -958,6 +959,11 @@ describe('login route: the passkey step of an account that holds an administrati
     it('where no relying party is declared it signs in with its credentials, as before', async () => {
       declareNoRelyingParty();
       try {
+        // Its address alone opens nothing: another password is refused as any wrong one is.
+        const wrong = await attempt('198.18.19.101', address, 'not-the-bootstrap-password');
+        expect(wrong.sent).toEqual({ error: WRONG });
+        expect(wrong.signedInAs).toBeUndefined();
+
         const signedIn = await attempt('198.18.19.100', address, password);
         expect(signedIn.sent).toEqual({});
         expect(signedIn.signedInAs).toBe(address);
@@ -994,6 +1000,38 @@ describe('login route: the passkey step of an account that holds an administrati
       const ip = (i: number) => `198.18.19.${i + 10}`;
       expect(await errors(8, ip, () => address, password)).toEqual(Array(8).fill(WRONG));
       expect((await attempt('198.18.19.50', address, password)).sent).toEqual({ error: THROTTLED });
+    });
+
+    it('an account of its own beside the declared default admin is itself at the door: its password opens its own session, and it is not refused as the default admin', async () => {
+      const person = await createAccount('passkey-beside-default-admin@test.local');
+
+      const signedIn = await attempt('198.18.19.60', person.email, RIGHT_PASSWORD);
+
+      expect(signedIn.sent).toEqual({});
+      expect(signedIn.signedInAs).toBe(person.email);
+    });
+
+    it('declared with a capital in its username it is the default admin however its address is typed: refused where a relying party is declared, signed in where none is', async () => {
+      const declared = 'Passkey-Capital-Admin@Test.local';
+      credentials.CREDENTIALS = { username: declared, password };
+      try {
+        // As declared, and as a session would be bound: the same identity, so the same refusal.
+        const typed = [declared, declared.toLowerCase()];
+        for (let i = 0; i < typed.length; i++) {
+          const refused = await attempt(`198.18.19.${70 + i}`, typed[i], password);
+          expect(refused.sent).toEqual({ error: WRONG });
+          expect(refused.signedInAs).toBeUndefined();
+          expect(refused.saved).toEqual([]);
+        }
+
+        declareNoRelyingParty();
+        const signedIn = await attempt('198.18.19.80', declared.toLowerCase(), password);
+        expect(signedIn.sent).toEqual({});
+        expect(signedIn.signedInAs).toBe(declared.toLowerCase());
+      } finally {
+        declareRelyingParty();
+        credentials.CREDENTIALS = { username: address, password };
+      }
     });
   });
 });

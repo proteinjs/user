@@ -22,12 +22,9 @@ export function createAuthentication(defaultAdminCredentials?: { username: strin
 
 export async function authenticate(email: string, password: string): Promise<true | string> {
   const logger = new Logger({ name: 'authenticate' });
-  const defaultAdminCredentials = DefaultAdminCredentials.getCredentials();
-  if (
-    defaultAdminCredentials &&
-    defaultAdminCredentials.username == email &&
-    defaultAdminCredentials.password == password
-  ) {
+  // The built-in default admin's credentials are `DefaultAdminCredentials`' to compare — the one
+  // owner of whose address it is, under the one case rule the door and the session cache ask by.
+  if (DefaultAdminCredentials.opens(email, password)) {
     logger.info({ message: 'Authenitcated default admin user' });
     return true;
   }

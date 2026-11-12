@@ -147,8 +147,7 @@ export class AccountDeletion implements AccountDeletionService {
   /** Verify the caller's password against their own account row; throws with nothing written. */
   private async reauthenticateSessionUser(password: string): Promise<User> {
     const sessionUser = new UserRepo().getUser();
-    const adminCredentials = DefaultAdminCredentials.getCredentials();
-    if (adminCredentials && sessionUser.email === adminCredentials.username) {
+    if (DefaultAdminCredentials.is(sessionUser.email)) {
       throw new Error('The default admin session has no account row to delete.');
     }
     if (!sessionUser.id || !sessionUser.email) {

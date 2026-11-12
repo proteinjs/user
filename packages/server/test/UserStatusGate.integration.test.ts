@@ -175,21 +175,26 @@ describe('user status gate — login refusal and session resolution', () => {
       await expect(userCache.create('factor-unreadable', email)).rejects.toThrow();
     });
 
-    it('the built-in default admin can hold no passkey: its session does not resolve; where no relying party is declared it resolves as the built-in admin', async () => {
+    it('the built-in default admin can hold no passkey: its session does not resolve; where no relying party is declared it resolves as the built-in admin — its username declared with a capital, its session bound lowercased as every session is; an account of its own beside it resolves as itself either way', async () => {
       const credentials = DefaultAdminCredentials as unknown as {
         CREDENTIALS?: { username: string; password: string };
       };
-      credentials.CREDENTIALS = { username: 'factor-default-admin@test.local', password: 'a-bootstrap-password' };
+      credentials.CREDENTIALS = { username: 'Factor-Default-Admin@Test.local', password: 'a-bootstrap-password' };
       const declared = objectCache()[RELYING_PARTY_KEY];
       try {
         await insertSession('factor-default-admin', 'factor-default-admin@test.local');
+        const person = await createAccount('factor-beside-default-admin@test.local', 'correct-password');
+        await insertSession('factor-beside-default-admin', person.email);
 
         expect(await resolvedId('factor-default-admin', 'factor-default-admin@test.local')).toBe('guest');
+        expect(await resolvedId('factor-beside-default-admin', person.email)).toBe(person.id);
 
         objectCache()[RELYING_PARTY_KEY] = [];
         const builtIn = await userCache.create('factor-default-admin', 'factor-default-admin@test.local');
         expect(builtIn.id).toBe('admin');
         expect(builtIn.roles).toEqual(['admin']);
+        expect(builtIn.email).toBe('factor-default-admin@test.local');
+        expect(await resolvedId('factor-beside-default-admin', person.email)).toBe(person.id);
       } finally {
         objectCache()[RELYING_PARTY_KEY] = declared;
         credentials.CREDENTIALS = undefined;
