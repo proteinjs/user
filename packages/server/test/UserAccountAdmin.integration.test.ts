@@ -1,5 +1,6 @@
 import moment from 'moment';
 import { Db, getDbAsSystem } from '@proteinjs/db';
+import { MailSink } from '@proteinjs/email-server';
 import { SourceRepository } from '@proteinjs/reflection';
 import { Session } from '@proteinjs/server-api';
 // Deep import (test-only): ServiceAuth is the real RPC door but is not index-exported by
@@ -242,12 +243,24 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
    * authenticator's registrations and assertions, verified by the real library. The account is
    * the session's (the suite acts as one and rides the environment's session, `test-session`);
    * an act on the passkeys asks for a fresh assertion made for exactly that act in exactly that
-   * session; each act is one transaction with its audit row.
+   * session; each act is one transaction with its audit row, and once it has committed the
+   * account is mailed (the process's mail sink stands in for a transport, and the suite registers
+   * the app's seam for the mail's words: a subject that says which change it tells of).
    */
   describe('the passkey services, with a relying party declared', () => {
     const RELYING_PARTY = { id: 'example.test', origin: 'https://app.example.test', name: 'Example' };
     const RELYING_PARTY_KEY = '@proteinjs/user-server/PasskeyRelyingParty';
+    const MAIL_SENDER_KEY = '@proteinjs/email-server/DefaultEmailConfigFactory';
+    const PASSKEY_MAIL_KEY = '@proteinjs/user-server/DefaultPasskeyChangedEmailConfigFactory';
     const ORIGIN = { origin: RELYING_PARTY.origin };
+    // The app's seam: its own words for each change. Its options never redirect the mail.
+    const passkeyMail = {
+      getConfig: () => ({
+        options: { to: 'elsewhere@test.local' },
+        getEmailContent: (change: string) => ({ subject: `passkey ${change}`, text: `A passkey was ${change}.` }),
+      }),
+    };
+    const originalTransport = process.env.EMAIL_TRANSPORT;
     const objectCache = () =>
       (SourceRepository.get() as unknown as { objectCache: Record<string, unknown[]> }).objectCache;
     const passkeys = () => new Passkeys();
@@ -257,6 +270,13 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       );
     const passkeyEvents = async (target: string) =>
       (await events(target)).filter((event) => event.field === 'passkeys');
+    /** The subjects of the mails `user`'s address was sent, oldest first. */
+    const mailed = (user: User) =>
+      MailSink.get()
+        .list()
+        .filter((mail) => mail.to.includes(user.email))
+        .map((mail) => mail.subject)
+        .reverse();
     const sessionIdsOf = async (user: User) =>
       (await getDbAsSystem().query(tables.Session, { userEmail: user.email }))
         .map((session) => session.sessionId)
@@ -295,10 +315,29 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
 
     beforeAll(() => {
       objectCache()[RELYING_PARTY_KEY] = [{ getRelyingParty: () => RELYING_PARTY }];
+      process.env.EMAIL_TRANSPORT = 'sink';
+      objectCache()[MAIL_SENDER_KEY] = [
+        {
+          getEmailConfig: () => ({
+            host: 'smtp.test.local',
+            port: 465,
+            secure: true,
+            from: '"Example" <hi@example.com>',
+          }),
+        },
+      ];
+      objectCache()[PASSKEY_MAIL_KEY] = [passkeyMail];
     });
 
     afterAll(() => {
       objectCache()[RELYING_PARTY_KEY] = [];
+      delete objectCache()[MAIL_SENDER_KEY];
+      delete objectCache()[PASSKEY_MAIL_KEY];
+      if (originalTransport === undefined) {
+        delete process.env.EMAIL_TRANSPORT;
+      } else {
+        process.env.EMAIL_TRANSPORT = originalTransport;
+      }
       ride('test-session');
       testEnv.actAs(actor);
     });
@@ -532,7 +571,7 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       expect((await passkeyRows(stranger)).map((row) => row.name)).toEqual(['Passkey']);
     });
 
-    it('an act on the passkeys is one transaction: when a later step of it fails, a confirmed add, a removal and a reset leave the passkeys and the sessions as they were and write no audit row', async () => {
+    it('an act on the passkeys is one transaction: when a later step of it fails, a confirmed add, a removal and a reset leave the passkeys and the sessions as they were, write no audit row and mail nobody', async () => {
       const locked = await person('passkey.atomic.locked', ['roles-desk']);
       await addAnother(await addFirst());
       const admin = await person('passkey.atomic.admin', ['admin']);
@@ -543,6 +582,7 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       await db.insert(tables.Session, sessionRow('passkey-atomic-admin-phone', admin));
       await db.insert(tables.Session, sessionRow('passkey-atomic-locked-phone', locked));
       const before = { admin: await passkeyEvents(admin.id), locked: await passkeyEvents(locked.id) };
+      MailSink.get().clear();
 
       // A confirmed add whose audit row cannot be written.
       const step = await passkeys().beginAdd(await confirm(own, { act: 'add' }));
@@ -586,6 +626,54 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       expect(await passkeyEvents(locked.id)).toEqual(before.locked);
       expect(await sessionIdsOf(admin)).toEqual(['passkey-atomic-admin-phone']);
       expect(await sessionIdsOf(locked)).toEqual(['passkey-atomic-locked-phone']);
+      expect(MailSink.get().list()).toEqual([]);
+    });
+
+    it('each act on an account’s passkeys mails the account’s address once — a passkey added, one removed, all of them reset — and an act that is refused mails nothing', async () => {
+      const locked = await person('passkey.mail.locked', ['roles-desk']);
+      MailSink.get().clear();
+      const first = await addFirst();
+      await addAnother(first);
+      const [, another] = await passkeyRows(locked);
+      await expect(passkeys().remove(another.id, undefined as unknown as PasskeyConfirmation)).rejects.toThrow();
+      expect(mailed(locked)).toEqual(['passkey added', 'passkey added']);
+
+      await passkeys().remove(another.id, await confirm(first, { act: 'remove', passkeyId: another.id }));
+      const admin = await person('passkey.mail.admin', ['admin']);
+      const own = await addFirst();
+      await new PasskeyAdmin().reset(locked.id, await confirm(own, { act: 'reset', userId: locked.id }));
+
+      expect(mailed(locked)).toEqual(['passkey added', 'passkey added', 'passkey removed', 'passkey reset']);
+      expect(mailed(admin)).toEqual(['passkey added']);
+      expect(MailSink.get().list()).toHaveLength(5);
+    });
+
+    it('a mail that cannot be sent is one error line that names the account by digest, never its address, and the act stands', async () => {
+      const owner = await person('passkey.mail.unsent', ['admin']);
+      objectCache()[PASSKEY_MAIL_KEY] = [
+        {
+          getConfig: () => {
+            throw new Error(`no words today for ${owner.email}`);
+          },
+        },
+      ];
+      MailSink.get().clear();
+      let log: LogCapture;
+      try {
+        log = await LogCapture.during(async () => {
+          await addFirst();
+        });
+      } finally {
+        objectCache()[PASSKEY_MAIL_KEY] = [passkeyMail];
+      }
+
+      expect(await passkeyRows(owner)).toHaveLength(1);
+      expect(await passkeyEvents(owner.id)).toHaveLength(1);
+      expect(MailSink.get().list()).toEqual([]);
+      const failures = log.linesContaining('Passkey mail failed to send');
+      expect(failures.lines).toHaveLength(1);
+      expect(failures.addresses).toEqual([]);
+      expect(log.addresses).toEqual([]);
     });
 
     it('reset: the admin is refused on their own account and on a declared machine account; on another person it deletes the passkeys, ends that person’s sessions and nobody else’s, and writes one audit row', async () => {

@@ -20,6 +20,9 @@ export { PasskeyRelyingParty, RelyingParty } from './src/authentication/passkeys
 export { AccessInvite } from './src/services/AccessInvite';
 export { AccountDeletion } from './src/services/AccountDeletion';
 export * from './src/emails/AccountDeletionEmailConfigs';
+// The seam an app says the passkey mail through (a passkey added, removed, or all of them reset):
+// its own words and frame in place of the library's default content.
+export * from './src/emails/PasskeyChangedEmailConfig';
 export { AccountDeletionEmails } from './src/emails/AccountDeletionEmails';
 // The throttle primitives, for consumer doors throttling per client (the invite-request door):
 // ONE sliding window, ONE client-address read, ONE pair of keyed digests — never a second copy.

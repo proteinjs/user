@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import moment from 'moment';
 import { Db, getDbAsSystem } from '@proteinjs/db';
+import { MailSink } from '@proteinjs/email-server';
 import { SourceRepository } from '@proteinjs/reflection';
 import { User, routes, tables } from '@proteinjs/user';
 import { login } from '../src/routes/login';
@@ -426,6 +427,31 @@ const declareNoRelyingParty = () => {
   objectCache()[RELYING_PARTY_KEY] = [];
 };
 
+/** The mail a passkey step sends goes to the process's sink, never a transport, in the library's own words. */
+const MAIL_KEYS = {
+  sender: '@proteinjs/email-server/DefaultEmailConfigFactory',
+  passkeyMail: '@proteinjs/user-server/DefaultPasskeyChangedEmailConfigFactory',
+};
+const originalMailTransport = process.env.EMAIL_TRANSPORT;
+const sendMailToTheSink = () => {
+  process.env.EMAIL_TRANSPORT = 'sink';
+  objectCache()[MAIL_KEYS.sender] = [
+    {
+      getEmailConfig: () => ({ host: 'smtp.test.local', port: 465, secure: true, from: '"Example" <hi@example.com>' }),
+    },
+  ];
+  objectCache()[MAIL_KEYS.passkeyMail] = [];
+};
+const restoreMail = () => {
+  delete objectCache()[MAIL_KEYS.sender];
+  delete objectCache()[MAIL_KEYS.passkeyMail];
+  if (originalMailTransport === undefined) {
+    delete process.env.EMAIL_TRANSPORT;
+  } else {
+    process.env.EMAIL_TRANSPORT = originalMailTransport;
+  }
+};
+
 const accountRow = async (user: User) => await getDbAsSystem().get(tables.User, { id: user.id });
 const passkeysOf = async (user: User) => await getDbAsSystem().query(tables.UserPasskey, { scope: user.id });
 const challengesOf = async (user: User) => await getDbAsSystem().query(tables.AuthChallenge, { userId: user.id });
@@ -462,8 +488,14 @@ const enroll = async (ip: string, email: string, authenticator = new SoftwareAut
 };
 
 describe('login route: the passkey step of an account that holds an administrative role', () => {
-  beforeAll(declareRelyingParty);
-  afterAll(declareNoRelyingParty);
+  beforeAll(() => {
+    declareRelyingParty();
+    sendMailToTheSink();
+  });
+  afterAll(() => {
+    declareNoRelyingParty();
+    restoreMail();
+  });
 
   it('an account holding an administrative role with a passkey, the right password: the door answers the passkey step and no session is bound', async () => {
     const admin = await createAccount('passkey-headline@test.local', ['admin']);
@@ -519,9 +551,10 @@ describe('login route: the passkey step of an account that holds an administrati
     expect(replayed.saved).toEqual([]);
   });
 
-  it('with no passkey the door answers the add step; the registration stores one passkey, writes one audit row and opens the session; after it a password alone is answered the passkey step, never the add step', async () => {
+  it('with no passkey the door answers the add step; the registration stores one passkey, writes one audit row, mails the account once and opens the session; after it a password alone is answered the passkey step, never the add step', async () => {
     const admin = await createAccount('passkey-add@test.local', ['admin']);
     const authenticator = new SoftwareAuthenticator();
+    MailSink.get().clear();
 
     const { jar, step, kind, options } = await passwordStep('198.18.3.1', admin.email);
     expect(kind).toBe('addPasskey');
@@ -538,6 +571,11 @@ describe('login route: the passkey step of an account that holds an administrati
     const audit = await getDbAsSystem().query(tables.UserAccountEvent, { target: admin.id });
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({ actor: admin.id, target: admin.id, field: 'passkeys', value: 'added' });
+    expect(
+      MailSink.get()
+        .list()
+        .map((mail) => mail.to)
+    ).toEqual([[admin.email]]);
 
     const next = await passwordStep('198.18.3.2', admin.email);
     expect(next.kind).toBe('passkey');
@@ -922,6 +960,7 @@ describe('login route: the passkey step of an account that holds an administrati
   it('the first enrollment is one transaction: when its audit row cannot be written, no passkey is stored and no session opens', async () => {
     const admin = await createAccount('passkey-atomic@test.local', ['admin']);
     const { jar, options } = await passwordStep('198.18.18.1', admin.email);
+    MailSink.get().clear();
     const insert = Db.prototype.insert;
     const auditFails = jest.spyOn(Db.prototype, 'insert').mockImplementation(function (this: any, table, ...rest) {
       return table.name === tables.UserAccountEvent.name
@@ -940,6 +979,7 @@ describe('login route: the passkey step of an account that holds an administrati
     expect(failed.saved).toEqual([]);
     expect(await passkeysOf(admin)).toEqual([]);
     expect(await getDbAsSystem().query(tables.UserAccountEvent, { target: admin.id })).toEqual([]);
+    expect(MailSink.get().list()).toEqual([]);
   });
 
   describe('the built-in default admin, an identity with no account row that can hold no passkey', () => {

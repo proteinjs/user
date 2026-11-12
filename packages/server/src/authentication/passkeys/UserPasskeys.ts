@@ -1,12 +1,11 @@
 import moment from 'moment';
 import { getDbAsSystem, QueryBuilderFactory } from '@proteinjs/db';
 import { User, UserPasskey, tables } from '@proteinjs/user';
+import { PasskeyChange } from '../../emails/PasskeyChangedEmailConfig';
+import { PasskeyEmails } from '../../emails/PasskeyEmails';
 import { AccountSessions } from '../AccountSessions';
 import { AuthChallenges } from './AuthChallenges';
 import { CredentialUse, RegisteredCredential } from './WebAuthnVerifier';
-
-/** An act on an account's passkeys, as its audit row names it. */
-export type PasskeyAct = 'added' | 'removed' | 'reset';
 
 /** The account an act on passkeys is made on: its id (the rows' scope) and its address (its sessions are bound to it). */
 export type PasskeyAccount = Pick<User, 'id' | 'email'>;
@@ -26,7 +25,9 @@ export type PasskeyAccount = Pick<User, 'id' | 'email'>;
  * audit row that records the act (`record`: actor, target, field 'passkeys', the act as its value;
  * a passkey's name is never copied into it), and the sessions the act ends (`AccountSessions`)
  * commit together or not at all, so the trail cannot diverge from the rows and no session outlives
- * the passkey whose removal was meant to end it.
+ * the passkey whose removal was meant to end it. Once it has committed — and only then — the
+ * account is told of it by mail (`PasskeyEmails`): an act that rolled back mails nothing, and a
+ * mail that cannot be sent undoes nothing.
  */
 export class UserPasskeys {
   /** The transports of a roaming security key: a passkey that reports only these is named for what it is. */
@@ -162,10 +163,13 @@ export class UserPasskeys {
 
   /**
    * The record of an act on an account's passkeys: its audit row, written inside the act's
-   * transaction. `actor` is the account itself for a person's own act.
+   * transaction, and the mail that tells the account of it, queued to go once that transaction
+   * has committed. `actor` is the account itself for a person's own act.
    */
-  private async record(act: PasskeyAct, actor: string, target: string): Promise<void> {
-    await getDbAsSystem().insert(tables.UserAccountEvent, { actor, target, field: 'passkeys', value: act });
+  private async record(act: PasskeyChange, actor: string, target: string): Promise<void> {
+    const db = getDbAsSystem();
+    await db.insert(tables.UserAccountEvent, { actor, target, field: 'passkeys', value: act });
+    await db.runAfterCommit(async () => await new PasskeyEmails().tell(target, act));
   }
 
   /** The rows of ONE account — the scope condition every read and write of the table starts from. */
