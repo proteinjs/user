@@ -1,5 +1,6 @@
 import { createServer } from 'http';
-import { QueryBuilder } from '@proteinjs/db';
+import { Db, DbDriver, QueryBuilder } from '@proteinjs/db';
+import { TransactionContext } from '@proteinjs/db-transaction-context';
 import { SourceRepository } from '@proteinjs/reflection';
 import { SocketIOServerRepo } from '@proteinjs/server';
 import { Session } from '@proteinjs/user';
@@ -30,12 +31,22 @@ class RecordingSocketIOServer {
 const session = (sessionId: string): Session =>
   ({ id: `row-${sessionId}`, sessionId, session: '{}', userEmail: 'someone@test.local' }) as unknown as Session;
 
+/**
+ * The Db a delete hands its hooks, over a driver no statement here reaches and the real
+ * transaction context: these deletions are made outside a transaction, where its post-commit
+ * queue runs a hook at once. (What a transaction's rollback and commit do to the ask is pinned
+ * against the database, with the passkey acts that end sessions inside one:
+ * UserAccountAdmin.integration.)
+ */
+const hookDb = () => new Db({ getDbName: () => 'none' } as unknown as DbDriver, undefined, new TransactionContext());
+
 const deleteSessions = async (sessions: Session[]) =>
   await new SocketIOSessionWatcher().afterDelete(
     sessions.length,
     sessions,
     new QueryBuilder<Session>('session'),
-    new QueryBuilder<Session>('session')
+    new QueryBuilder<Session>('session'),
+    hookDb()
   );
 
 /**

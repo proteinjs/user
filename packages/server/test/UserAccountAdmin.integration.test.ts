@@ -1,7 +1,9 @@
+import { createServer } from 'http';
 import moment from 'moment';
 import { Db, getDbAsSystem } from '@proteinjs/db';
 import { MailSink } from '@proteinjs/email-server';
 import { SourceRepository } from '@proteinjs/reflection';
+import { SocketIOServerRepo } from '@proteinjs/server';
 import { Session } from '@proteinjs/server-api';
 // Deep import (test-only): ServiceAuth is the real RPC door but is not index-exported by
 // @proteinjs/service — the passkey services' door case runs the actual gate.
@@ -20,6 +22,7 @@ import {
 } from '@proteinjs/user';
 import { AccountSessions } from '../src/authentication/AccountSessions';
 import { EmailVerificationToken } from '../src/authentication/EmailVerificationToken';
+import { SocketIOSessionWatcher } from '../src/authentication/SocketIOSessionWatcher';
 import { PasskeyAdmin } from '../src/services/PasskeyAdmin';
 import { Passkeys } from '../src/services/Passkeys';
 import { UserAccountAdmin } from '../src/services/UserAccountAdmin';
@@ -311,6 +314,58 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       const user = await testEnv.createUser({ name, email: `${name}@test.local`, roles });
       testEnv.actAs(user);
       return user;
+    };
+
+    /** Whether a transaction is open where this is asked (the ambient context every Db shares). */
+    const transactionOpen = () =>
+      Boolean(
+        (
+          getDbAsSystem() as unknown as {
+            transactionContextFactory: { getTransactionContext: () => { currentTransaction?: unknown } };
+          }
+        ).transactionContextFactory.getTransactionContext().currentTransaction
+      );
+
+    /**
+     * Run `acts` with the Session table's real watcher registered and a socket server that records
+     * what it is asked to close, and whether a transaction was still open when it was asked. The
+     * watcher map is a static of a class @proteinjs/db does not export, so it is reset through a Db
+     * instance; everything is put back as it was found.
+     */
+    const withSessionSockets = async (
+      acts: (asked: { rooms: string[]; insideATransaction: boolean }[]) => Promise<void>
+    ) => {
+      const WATCHERS = '@proteinjs/db/TableWatcher';
+      const SOCKET_SERVER = '@proteinjs/event/DefaultSocketIOServerFactory';
+      const resetTableWatcherMap = () => {
+        const runner = (getDbAsSystem() as unknown as { tableWatcherRunner: object }).tableWatcherRunner;
+        (runner.constructor as { tableWatcherMap?: unknown }).tableWatcherMap = undefined;
+      };
+      const asked: { rooms: string[]; insideATransaction: boolean }[] = [];
+      const socketServer = {
+        in: (rooms: string | string[]) => ({
+          disconnectSockets: () => {
+            asked.push({ rooms: ([] as string[]).concat(rooms), insideATransaction: transactionOpen() });
+          },
+        }),
+      };
+      const watchers = objectCache()[WATCHERS];
+      objectCache()[WATCHERS] = [new SocketIOSessionWatcher()];
+      resetTableWatcherMap();
+      objectCache()[SOCKET_SERVER] = [{ createSocketIOServer: async () => socketServer }];
+      await SocketIOServerRepo.createSocketIOServer(createServer());
+      try {
+        await acts(asked);
+      } finally {
+        delete (globalThis as { __proteinjs_server_SocketIOServer?: unknown }).__proteinjs_server_SocketIOServer;
+        delete objectCache()[SOCKET_SERVER];
+        if (watchers === undefined) {
+          delete objectCache()[WATCHERS];
+        } else {
+          objectCache()[WATCHERS] = watchers;
+        }
+        resetTableWatcherMap();
+      }
     };
 
     beforeAll(() => {
@@ -627,6 +682,51 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       expect(await sessionIdsOf(admin)).toEqual(['passkey-atomic-admin-phone']);
       expect(await sessionIdsOf(locked)).toEqual(['passkey-atomic-locked-phone']);
       expect(MailSink.get().list()).toEqual([]);
+    });
+
+    it('a socket is closed only for a session that is truly gone: a reset that rolls back asks the socket server nothing, and a removal that commits asks it for the ended session once its transaction has committed', async () => {
+      const locked = await person('passkey.sockets.locked', ['roles-desk']);
+      await addFirst();
+      const admin = await person('passkey.sockets.admin', ['admin']);
+      const own = await addFirst();
+      await addAnother(own);
+      const [, second] = await passkeyRows(admin);
+      const db = getDbAsSystem();
+      await db.insert(tables.Session, sessionRow('test-session', admin));
+      await db.insert(tables.Session, sessionRow('passkey-sockets-admin-phone', admin));
+      await db.insert(tables.Session, sessionRow('passkey-sockets-locked-phone', locked));
+      const reset = await confirm(own, { act: 'reset', userId: locked.id });
+      const removal = await confirm(own, { act: 'remove', passkeyId: second.id });
+
+      const askedBy = { theResetThatRolledBack: [] as unknown[], theRemovalThatCommitted: [] as unknown[] };
+      await withSessionSockets(async (asked) => {
+        // A reset whose audit row cannot be written: the person's session row is deleted inside
+        // the transaction, and the transaction then rolls back.
+        const insert = Db.prototype.insert;
+        const auditFails = jest.spyOn(Db.prototype, 'insert').mockImplementation(function (this: any, table, ...rest) {
+          return table.name === tables.UserAccountEvent.name
+            ? Promise.reject(new Error('the audit row could not be written'))
+            : insert.call(this, table, ...rest);
+        });
+        try {
+          await expect(new PasskeyAdmin().reset(locked.id, reset)).rejects.toThrow();
+        } finally {
+          auditFails.mockRestore();
+        }
+        askedBy.theResetThatRolledBack = asked.splice(0);
+
+        await passkeys().remove(second.id, removal);
+        askedBy.theRemovalThatCommitted = asked.splice(0);
+      });
+
+      expect(await passkeyRows(locked)).toHaveLength(1);
+      expect(await sessionIdsOf(locked)).toEqual(['passkey-sockets-locked-phone']);
+      expect(await passkeyRows(admin)).toHaveLength(1);
+      expect(await sessionIdsOf(admin)).toEqual(['test-session']);
+      expect(askedBy).toEqual({
+        theResetThatRolledBack: [],
+        theRemovalThatCommitted: [{ rooms: ['passkey-sockets-admin-phone'], insideATransaction: false }],
+      });
     });
 
     it('each act on an account’s passkeys mails the account’s address once — a passkey added, one removed, all of them reset — and an act that is refused mails nothing', async () => {
