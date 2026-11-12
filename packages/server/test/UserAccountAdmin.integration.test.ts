@@ -27,6 +27,7 @@ import { PasskeyAdmin } from '../src/services/PasskeyAdmin';
 import { Passkeys } from '../src/services/Passkeys';
 import { UserAccountAdmin } from '../src/services/UserAccountAdmin';
 import { LogCapture } from './LogCapture';
+import { sha256Hex } from './sha256Hex';
 import { SoftwareAuthenticator } from './SoftwareAuthenticator';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 
@@ -316,6 +317,16 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       return user;
     };
 
+    /** Run `act` with the clock every challenge and passkey row is read and stamped by set to `now`. */
+    const at = async <T>(now: moment.Moment, act: () => Promise<T>): Promise<T> => {
+      const clock = jest.spyOn(moment, 'now').mockReturnValue(now.valueOf());
+      try {
+        return await act();
+      } finally {
+        clock.mockRestore();
+      }
+    };
+
     /** Whether a transaction is open where this is asked (the ambient context every Db shares). */
     const transactionOpen = () =>
       Boolean(
@@ -491,6 +502,8 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       expect(rows.map((row) => row.credentialId)).toEqual([first.credentialId, second.credentialId]);
       expect(rows.map((row) => row.name)).toEqual(['Passkey', 'Passkey 2']);
       expect(added.id).toBe(rows[1].id);
+      // The owner's list shows them oldest first.
+      expect((await passkeys().list()).passkeys.map((passkey) => passkey.id)).toEqual(rows.map((row) => row.id));
       expect(await passkeyEvents(owner.id)).toEqual([
         { actor: owner.id, field: 'passkeys', value: 'added' },
         { actor: owner.id, field: 'passkeys', value: 'added' },
@@ -500,6 +513,14 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       const ordinary = await person('passkey.add.ordinary', ['people-desk']);
       await expect(passkeys().beginAdd()).rejects.toThrow();
       expect(await passkeyRows(ordinary)).toEqual([]);
+      // And an add begun while the account had to use one adds nothing once it need not.
+      const leaving = await person('passkey.add.leaving', ['admin']);
+      const begun = await passkeys().beginAdd();
+      await getDbAsSystem().update(tables.User, { id: leaving.id, roles: [] });
+      await expect(
+        passkeys().finishAdd(begun.token, new SoftwareAuthenticator().register(begun.options, ORIGIN))
+      ).rejects.toThrow();
+      expect(await passkeyRows(leaving)).toEqual([]);
     });
 
     it('an add begun before the account had a passkey adds nothing once it has one', async () => {
@@ -513,6 +534,56 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
 
       expect((await passkeyRows(owner)).map((row) => row.credentialId)).toEqual([first.credentialId]);
       expect(await passkeyEvents(owner.id)).toHaveLength(1);
+    });
+
+    it('a confirmation and an add step are each good for five minutes from their minting — answered a moment before, each holds; a moment after, each is refused — and a confirmation records the passkey’s use', async () => {
+      const owner = await person('passkey.life.owner', ['admin']);
+      const first = await addFirst();
+      expect((await passkeyRows(owner))[0].lastUsedAt ?? null).toBeNull();
+      const fiveMinutesFrom = (minted: moment.Moment, seconds: number) =>
+        minted.clone().add(5, 'minutes').add(seconds, 'seconds');
+      const another = (step: { options: Parameters<SoftwareAuthenticator['register']>[0] }) =>
+        new SoftwareAuthenticator().register(step.options, ORIGIN);
+
+      // A confirmation answered a moment before its five minutes are up confirms, and the passkey
+      // that answered it is recorded as used then: its counter, and that moment as its last use.
+      let minted = moment();
+      const held = await confirm(first, { act: 'add' });
+      const justInside = fiveMinutesFrom(minted, -20);
+      const step = await at(justInside, () => passkeys().beginAdd(held));
+      const [used] = await passkeyRows(owner);
+      expect(used.counter).toBe(first.signatureCount);
+      expect(used.lastUsedAt?.valueOf()).toBe(justInside.valueOf());
+
+      // The add step it opened was minted at that moment: a moment after ITS five minutes it adds nothing.
+      await expect(
+        at(fiveMinutesFrom(justInside, 20), () => passkeys().finishAdd(step.token, another(step)))
+      ).rejects.toThrow();
+      expect(await passkeyRows(owner)).toHaveLength(1);
+
+      // A confirmation answered a moment after its five minutes confirms nothing.
+      minted = moment();
+      const late = await confirm(first, { act: 'add' });
+      await expect(at(fiveMinutesFrom(minted, 20), () => passkeys().beginAdd(late))).rejects.toThrow();
+
+      // And an add step answered a moment before its five minutes adds the passkey.
+      minted = moment();
+      const open = await passkeys().beginAdd(await confirm(first, { act: 'add' }));
+      await at(fiveMinutesFrom(minted, -20), () => passkeys().finishAdd(open.token, another(open)));
+      expect(await passkeyRows(owner)).toHaveLength(2);
+    });
+
+    it('a challenge made in a session knows its session by the SHA-256 of the session id: its row never holds the id', async () => {
+      const SESSION = 'a-session-id-is-a-credential';
+      const owner = await person('passkey.rest.owner', ['admin']);
+      const first = await addFirst();
+      ride(SESSION);
+      await passkeys().beginAdd(await confirm(first, { act: 'add' }));
+
+      const rows = await getDbAsSystem().query(tables.AuthChallenge, { userId: owner.id });
+      const madeInIt = rows.filter((row) => (row.payload as { session?: string }).session === sha256Hex(SESSION));
+      expect(madeInIt.map((row) => row.kind).sort()).toEqual(['webauthn_login', 'webauthn_register']);
+      expect(JSON.stringify(rows)).not.toContain(SESSION);
     });
 
     it('remove refuses the last passkey of an account that must use one; refuses without a confirmation; with one it deletes the row, ends the account’s other sessions and keeps this one, and writes one audit row', async () => {
