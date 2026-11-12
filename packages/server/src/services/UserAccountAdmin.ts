@@ -4,6 +4,7 @@ import { Service } from '@proteinjs/service';
 import { tables, User, UserAccountAdminService, UserRepo, USER_PERMISSIONS } from '@proteinjs/user';
 import { emailRegex } from '@proteinjs/util';
 import { RequestDigests } from '@proteinjs/util-node';
+import { AccountAddresses } from '../authentication/AccountAddresses';
 import { AccountSessions } from '../authentication/AccountSessions';
 import { AdministrativeAccountGuard } from '../authorization/AdministrativeAccountGuard';
 
@@ -75,8 +76,8 @@ export class UserAccountAdmin implements UserAccountAdminService {
       return;
     }
 
-    const db = getDbAsSystem();
-    if (await db.get(tables.User, { email: address })) {
+    // A row's address, or the built-in default admin's: no row may come to hold either.
+    if (await new AccountAddresses().held(address)) {
       throw new Error('Another account already uses that email address.');
     }
 

@@ -26,6 +26,7 @@ import {
   SignupConfirmationEmailContext,
 } from '@proteinjs/email-server';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
+import { AccountAddresses } from '../authentication/AccountAddresses';
 import { EmailVerificationToken } from '../authentication/EmailVerificationToken';
 import { MailedTokenValue } from '../authentication/MailedTokenValue';
 import { PasswordHasher } from '../authentication/PasswordHasher';
@@ -389,7 +390,9 @@ export class Signup implements SignupService {
    * a row it does not own), so the address is refused here in plain words — the declared machine
    * accounts of this build are the list, nothing else.
    *
-   * 'exists' means the address has an account this call did not create — found by the check, or
+   * 'exists' means the address has an account this call did not create — found by the check
+   * (`AccountAddresses`: a row's address, or the built-in default admin's, which holds its address
+   * with no row and is never registered), or
    * written by a concurrent create between the check and this insert. Two creates for one address
    * both pass the check; the database's unique index on the address refuses the second insert, and
    * that refusal is the same fact the check reads, so the second answers 'exists' exactly as if it
@@ -409,7 +412,8 @@ export class Signup implements SignupService {
       throw new Error(`This address can't be registered.`);
     }
 
-    if (await this.hasAccount(email)) {
+    const addresses = new AccountAddresses();
+    if (await addresses.held(email)) {
       return 'exists';
     }
 
@@ -424,17 +428,12 @@ export class Signup implements SignupService {
         invitedBy: account.invitedBy,
       });
     } catch (error: unknown) {
-      if (await this.hasAccount(email)) {
+      if (await addresses.held(email)) {
         return 'exists';
       }
       throw error;
     }
     return 'created';
-  }
-
-  /** Whether an account holds `email` (already lowercased) — the one existence read `createAccount` makes. */
-  private async hasAccount(email: string): Promise<boolean> {
-    return Boolean(await getDbAsSystem().get(tables.User, { email }));
   }
 
   /**

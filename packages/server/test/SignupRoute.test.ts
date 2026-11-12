@@ -12,6 +12,8 @@ import moment from 'moment';
  * - invited signup: email resolved from the invite, invite consumed, session established;
  * - already-registered email: response body indistinguishable from success, but NO session —
  *   auto-login must never hand out a session for an account the caller didn't just create;
+ * - the built-in default admin's address is an address in use, though no row holds it: a sign-up
+ *   under it, direct or by invite, is answered the same way and writes no account;
  * - invalid token / invite-only violations: honest error, no session, no account row;
  * - an invite row the previous release minted holds the token ITSELF: once DigestStandingInviteTokens
  *   has run, the link mailed back then still redeems it (nothing dies at the deploy);
@@ -41,6 +43,7 @@ jest.mock('@proteinjs/email-server', () => ({
 import { getDbAsSystem, Reference } from '@proteinjs/db';
 import { SourceRepository } from '@proteinjs/reflection';
 import { MachineAccount, PasswordPolicy, tables } from '@proteinjs/user';
+import { DefaultAdminCredentials } from '../src/authentication/DefaultAdminCredentials';
 import { MailedTokenValue } from '../src/authentication/MailedTokenValue';
 import { signup } from '../src/routes/signup';
 import { createPassportRequest } from './passportSessionHarness';
@@ -288,6 +291,47 @@ describe('signup route — auto-login after signup', () => {
     const existing = await getUserRow('existing@test.local');
     expect(existing!.password).toBe('test'); // untouched — seeded by testEnv.createUser
     expect(sendEmail).toHaveBeenCalledTimes(1); // "account already exists" email
+  });
+
+  it(`the built-in default admin's address is an address in use, however it is typed: a sign-up under it — direct or by invite — is answered as success is, with no account and no session`, async () => {
+    const credentials = DefaultAdminCredentials as unknown as {
+      CREDENTIALS?: { username: string; password: string };
+    };
+    credentials.CREDENTIALS = { username: 'Built-In.Admin@test.local', password: 'a-bootstrap-password' };
+    try {
+      const direct = await invokeSignup({
+        name: 'Squatter',
+        email: 'built-in.ADMIN@test.local',
+        password: 'pw-squat-admin-1',
+      });
+      expect(direct.body).toEqual({});
+      expect(direct.loggedInAs).toBeUndefined();
+      expect(direct.sessionEvents).toEqual([]);
+
+      await getDbAsSystem().insert(tables.Invite, {
+        email: 'built-in.admin@test.local',
+        token: sha256Hex(DECLARED_INVITE_TOKEN),
+        tokenExpiresAt: moment().add(1, 'day'),
+        invitedBy: new Reference(tables.User.name, 'inviter-1'),
+      });
+      const invited = await invokeSignup({
+        name: 'Squatter',
+        password: 'pw-squat-admin-2',
+        token: DECLARED_INVITE_TOKEN,
+      });
+      expect(invited.body).toEqual({});
+      expect(invited.loggedInAs).toBeUndefined();
+      expect(invited.sessionEvents).toEqual([]);
+
+      expect(await getDbAsSystem().query(tables.User, {})).toEqual([]);
+    } finally {
+      credentials.CREDENTIALS = undefined;
+    }
+
+    // Where no default admin is declared, the same address registers as any other.
+    const free = await invokeSignup({ name: 'Anyone', email: 'built-in.admin@test.local', password: 'pw-anyone-1' });
+    expect(free.loggedInAs).toBe('built-in.admin@test.local');
+    expect(await userRowCount('built-in.admin@test.local')).toBe(1);
   });
 
   it(`an address a machine-account declaration owns can't be registered — by signup or by invite: plain words, no account, no session`, async () => {

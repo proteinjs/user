@@ -21,6 +21,7 @@ import {
   USER_PERMISSIONS,
 } from '@proteinjs/user';
 import { AccountSessions } from '../src/authentication/AccountSessions';
+import { DefaultAdminCredentials } from '../src/authentication/DefaultAdminCredentials';
 import { EmailVerificationToken } from '../src/authentication/EmailVerificationToken';
 import { PasskeyEmails } from '../src/emails/PasskeyEmails';
 import { SocketIOSessionWatcher } from '../src/authentication/SocketIOSessionWatcher';
@@ -127,7 +128,7 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
     expect(await events(target.id)).toHaveLength(1);
   });
 
-  it('setEmail refuses a malformed address, an address another account holds, and a machine account — nothing written', async () => {
+  it(`setEmail refuses a malformed address, an address another account holds — a row's, or the built-in default admin's, which holds its address with no row — and a machine account: nothing written`, async () => {
     const target = await testEnv.createUser({ name: 'Holder', email: 'holder@test.local' });
     const other = await testEnv.createUser({ name: 'Other', email: 'other@test.local' });
     const machine = await testEnv.createUser({ name: 'Machine', email: 'machine@test.local' });
@@ -136,6 +137,15 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
     await expect(service().setEmail(target.id, 'not-an-address')).rejects.toThrow(/valid email/i);
     await expect(service().setEmail(target.id, 'Other@test.local')).rejects.toThrow(/another account/i);
     await expect(service().setEmail(machine.id, 'renamed.machine@test.local')).rejects.toThrow(/machine account/i);
+    const credentials = DefaultAdminCredentials as unknown as {
+      CREDENTIALS?: { username: string; password: string };
+    };
+    credentials.CREDENTIALS = { username: 'Built-In.Admin@test.local', password: 'a-bootstrap-password' };
+    try {
+      await expect(service().setEmail(target.id, 'built-in.ADMIN@test.local')).rejects.toThrow(/another account/i);
+    } finally {
+      credentials.CREDENTIALS = undefined;
+    }
 
     expect((await row(target.id)).email).toBe('holder@test.local');
     expect((await row(other.id)).email).toBe('other@test.local');
