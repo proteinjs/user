@@ -13,21 +13,22 @@ import { USER_PERMISSIONS } from '../permissions';
  * Also written for every act on an account's passkeys (user-server `UserPasskeys`): `field` is
  * 'passkeys' and `value` the act — 'added' and 'removed' are a person's own acts, so `actor`
  * equals `target`; 'reset' is an admin's act on another person's passkeys, so `actor` is the
- * admin.
+ * admin. And for the mint of a machine account's credential (user-server `MachineCredentials`):
+ * `field` is 'machineCredential', `value` 'minted', `target` the machine account.
  *
  * The row carries no personal value: a name or an address written is not copied here (the user
  * row holds the current one, and an account purge must leave no address behind in a durable
- * table), nor is a passkey's name; `value` carries only a non-personal written value — a flag's
- * word, a consumer's phase, a passkey act.
+ * table), nor is a passkey's name, nor a credential or its hash; `value` carries only a
+ * non-personal written value — a flag's word, a consumer's phase, a passkey act, 'minted'.
  */
 export type UserAccountEvent = Record & {
   /** id of the user who made the change */
   actor: string;
   /** id of the user whose cell changed */
   target: string;
-  /** the cell that changed: 'name', 'email', 'emailVerified', a consumer's own column name, or 'passkeys' */
+  /** the cell that changed: 'name', 'email', 'emailVerified', a consumer's own column name, 'passkeys' or 'machineCredential' */
   field: string;
-  /** the written value for a non-personal cell ('true' / 'false' for a flag; 'added', 'removed' or 'reset' for passkeys); null for name and email */
+  /** the written value for a non-personal cell ('true' / 'false' for a flag; 'added', 'removed' or 'reset' for passkeys; 'minted' for a machine credential); null for name and email */
   value?: string | null;
 };
 

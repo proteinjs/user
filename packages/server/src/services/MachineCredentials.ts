@@ -7,6 +7,7 @@ import {
   MintedMachineCredential,
   USER_PERMISSIONS,
   User,
+  UserRepo,
   getMachineAccounts,
   tables,
 } from '@proteinjs/user';
@@ -33,6 +34,11 @@ import { AdministrativeAccountGuard } from '../authorization/AdministrativeAccou
  * the sync refused the declaration — and both the list and the mint say so. The credential is the
  * account: a machine that holds an administrative role hands its credential to an admin alone
  * (`AdministrativeAccountGuard`), the `users` door's other holders refused in words.
+ *
+ * A mint is AUDITED: the new credential's hash and a `user_account_event` row (the caller as actor,
+ * the machine account as target, `field` 'machineCredential', `value` 'minted' — never the secret
+ * or its hash) commit in one transaction, so no credential changes without its row and no row
+ * records a mint that did not happen.
  */
 export class MachineCredentials implements MachineCredentialsService {
   public serviceMetadata: Service['serviceMetadata'] = {
@@ -106,7 +112,17 @@ export class MachineCredentials implements MachineCredentialsService {
 
     // 256 bits of entropy; standard API-key UX — generated, shown once, hash-only at rest.
     const password = randomBytes(32).toString('hex');
-    await db.update(tables.User, { id: user.id, password: await new PasswordHasher().hash(password, 'machine') });
+    const hash = await new PasswordHasher().hash(password, 'machine');
+    const actor = new UserRepo().getUser();
+    await db.runTransaction(async () => {
+      await db.update(tables.User, { id: user.id, password: hash });
+      await db.insert(tables.UserAccountEvent, {
+        actor: actor.id,
+        target: user.id,
+        field: 'machineCredential',
+        value: 'minted',
+      });
+    });
     // Rotation ends the old credential's sessions at once (the bridge logs in fresh per poll, so
     // this is cheap for it), through AccountSessions — the one owner of the by-account session end.
     await new AccountSessions().endAll(normalizedEmail);

@@ -1,5 +1,5 @@
 import { sha256Hex } from './sha256Hex';
-import { getDbAsSystem } from '@proteinjs/db';
+import { Db, getDbAsSystem } from '@proteinjs/db';
 import { SourceRecordSyncRunner } from '@proteinjs/db/source';
 import { SourceRepository } from '@proteinjs/reflection';
 // Deep import (test-only): ServiceAuth is the real RPC door but is not index-exported by
@@ -440,6 +440,47 @@ describe('Machine accounts as source records', () => {
       expect(await sessionEmails()).toEqual([]);
       // ...and the minted credential is immediately loggable.
       expect(await authenticate('machine-ops@test.local', minted.password)).toBe(true);
+    });
+
+    it('a mint is audited: one row naming the caller and the machine account, carrying no secret — written with the credential, or neither is', async () => {
+      const admin = await testEnv.createUser({ name: 'Admin', email: 'admin@test.local', roles: ['admin'] });
+      testEnv.actAs(admin);
+      const machine = await machineRow();
+      const mints = async () =>
+        (await getDbAsSystem().query(tables.UserAccountEvent, { target: machine.id, actor: admin.id })).map(
+          (event) => ({
+            actor: event.actor,
+            target: event.target,
+            field: event.field,
+            value: event.value,
+          })
+        );
+
+      const minted = await new MachineCredentials().mintCredential('machine-ops@test.local');
+
+      const row = { actor: admin.id, target: machine.id, field: 'machineCredential', value: 'minted' };
+      expect(await mints()).toEqual([row]);
+      const stored = JSON.stringify(await getDbAsSystem().query(tables.UserAccountEvent, { target: machine.id }));
+      expect(stored).not.toContain(minted.password);
+      expect(stored).not.toContain(sha256Hex(minted.password));
+
+      // One transaction: when the row cannot be written the mint fails whole — the credential
+      // minted before still signs in, its sessions stand, and no second row exists.
+      await insertSession('minted-credential-session', 'machine-ops@test.local');
+      const insert = Db.prototype.insert;
+      const auditFails = jest.spyOn(Db.prototype, 'insert').mockImplementation(function (this: any, table, ...rest) {
+        return table.name === tables.UserAccountEvent.name
+          ? Promise.reject(new Error('the audit row could not be written'))
+          : insert.call(this, table, ...rest);
+      });
+      try {
+        await expect(new MachineCredentials().mintCredential('machine-ops@test.local')).rejects.toThrow();
+      } finally {
+        auditFails.mockRestore();
+      }
+      expect((await machineRow()).password).toBe(sha256Hex(minted.password));
+      expect(await sessionEmails()).toEqual(['machine-ops@test.local']);
+      expect(await mints()).toEqual([row]);
     });
 
     it('lists declared accounts with row state for the admin surface', async () => {
