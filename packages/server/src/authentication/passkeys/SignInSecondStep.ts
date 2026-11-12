@@ -2,9 +2,8 @@ import moment, { Moment } from 'moment';
 import { getDbAsSystem, isDuplicateKeyError } from '@proteinjs/db';
 import { User, UserPasskey, routes, tables } from '@proteinjs/user';
 import { AccountStanding } from '../AccountStanding';
-import { SecondFactorRecord } from '../SecondFactorGate';
+import { SecondFactorGate, SecondFactorRecord } from '../SecondFactorGate';
 import { AuthChallenges, ClaimedAuthChallenge } from './AuthChallenges';
-import { getPasskeyRelyingParty } from './PasskeyRelyingParty';
 import { UserPasskeys } from './UserPasskeys';
 import { PasskeyAuthenticationOptions, PasskeyRegistrationOptions, WebAuthnVerifier } from './WebAuthnVerifier';
 
@@ -251,14 +250,12 @@ export class SignInSecondStep {
     return { method: 'passkey', passkeyId, at: moment().toISOString() };
   }
 
-  /** The verifier for the declared relying party; a deployment that declares none never reaches a second step. */
+  /**
+   * The verifier for the declared relying party, whose values are the gate's to hand out
+   * (`SecondFactorGate.relyingParty`); a deployment that declares none never reaches a second step.
+   */
   private verifier(): WebAuthnVerifier {
-    const declaration = getPasskeyRelyingParty();
-    if (!declaration) {
-      throw new Error('A passkey step needs a relying party, and this deployment declares none');
-    }
-
-    return new WebAuthnVerifier(declaration.getRelyingParty());
+    return new WebAuthnVerifier(new SecondFactorGate().relyingParty());
   }
 
   private clearCookie(): void {

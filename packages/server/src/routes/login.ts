@@ -2,10 +2,10 @@ import { Route } from '@proteinjs/server-api';
 import { getDbAsSystem } from '@proteinjs/db';
 import { routes, tables } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
-import { authenticate, checkPassword } from '../authentication/authenticate';
+import { WRONG_CREDENTIALS, authenticate, checkPassword } from '../authentication/authenticate';
+import { DefaultAdminCredentials } from '../authentication/DefaultAdminCredentials';
 import { establishSession } from '../authentication/establishSession';
 import { SecondFactorGate, SecondFactorRecord } from '../authentication/SecondFactorGate';
-import { getPasskeyRelyingParty } from '../authentication/passkeys/PasskeyRelyingParty';
 import { SignInSecondStep, SignInSecondStepKind } from '../authentication/passkeys/SignInSecondStep';
 import { AccountDeletion } from '../services/AccountDeletion';
 import { ClientAddress } from '../throttle/ClientAddress';
@@ -22,8 +22,16 @@ import { SignInThrottle, signInThrottle } from '../throttle/SignInThrottle';
  * 2. `{ passkey }` — an assertion answering the passkey step.
  * 3. `{ addPasskey }` — the registration of the account's first passkey, answering the add step.
  * A second-step body carries no address: the step's cookie names its challenge and the challenge
- * names the account. It answers `{}` (the session is open), `{ error, secondStep }` (refused, with
- * a new challenge) or `{ error, restart: true }` (the step is over; back to the password).
+ * names the account. It answers one of three shapes and no other: `{}` (the session is open),
+ * `{ error, secondStep }` (refused, with a new challenge) or `{ error, restart: true }` (the step
+ * is over; back to the password) — the last also when the step PASSED and the session then cannot
+ * open (the account is being purged, or its restore failed): the challenge is spent and the cookie
+ * gone by then, so the page is sent back to the password, never left on a step that is over.
+ *
+ * Whether a passkey is owed is `SecondFactorGate.mustUse`'s answer alone; the door reads no
+ * declaration to decide it. The built-in default admin (`DefaultAdminCredentials`: no account row,
+ * so no passkey) is refused where one is owed, in the words any wrong try is told, with one
+ * warning line for the operator — never given a session that would resolve as nobody.
  *
  * Throttled per client and per account (`SignInThrottle`): a throttled try is told "Too many
  * attempts. Try again in a few minutes." whether or not the address has an account, after the
@@ -94,20 +102,34 @@ class SignInDoor {
       this.response.send({ error: result });
       return;
     }
+
+    // Who the address signs in as is who a session bound to it resolves as (`userCache`): the
+    // built-in default admin, or the account row. The default admin has no account row, so it can
+    // hold no passkey: where it must use one it is refused as any wrong try is (and counted as
+    // one) — a session of it would resolve as nobody on its first request. The line says why, for
+    // the operator.
+    const gate = new SecondFactorGate();
+    const address = email.toLowerCase();
+    const defaultAdmin = DefaultAdminCredentials.identityOf(address);
+    if (defaultAdmin && gate.mustUse(defaultAdmin)) {
+      const reason =
+        'the built-in default admin cannot sign in where passkeys are required: make an account that holds the admin role';
+      this.logger.warn({ message: 'Sign-in refused', obj: { ...fields, reason } });
+      this.response.send({ error: WRONG_CREDENTIALS });
+      return;
+    }
     await signInThrottle.recordSuccess(account, this.ip);
 
     // The password alone opens a session only for an account that need not use a passkey. One
-    // that must is answered the passkey step instead: no restore, no session. (No relying party
-    // declared = no second factor: the account is not even read.)
-    const user = getPasskeyRelyingParty()
-      ? await getDbAsSystem().get(tables.User, { email: email.toLowerCase() })
-      : undefined;
-    if (user && new SecondFactorGate().mustUse(user)) {
+    // that must is answered the passkey step instead: no restore, no session.
+    const user = defaultAdmin ? undefined : await getDbAsSystem().get(tables.User, { email: address });
+    if (user && gate.mustUse(user)) {
       this.response.send({ secondStep: await new SignInSecondStep(this.request, this.response).begin(user) });
       return;
     }
 
-    await this.openSession(email);
+    const refusal = await this.openSession(email);
+    this.response.send(refusal ? { error: refusal } : {});
   }
 
   /** Bodies 2 and 3: the passkey step's answer. Counted against the client alone — it names no account. */
@@ -132,16 +154,21 @@ class SignInDoor {
       return;
     }
 
-    // The sign-in succeeded: its try is forgiven, as a password's is.
+    // The step passed: its try is forgiven, as a password's is. If the session then cannot open,
+    // the step is over all the same (its challenge is spent, its cookie cleared): restart.
     await signInThrottle.recordSuccess(this.digests.account(outcome.account.email), this.ip);
-    await this.openSession(outcome.account.email, outcome.secondFactor);
+    const refusal = await this.openSession(outcome.account.email, outcome.secondFactor);
+    this.response.send(refusal ? { error: refusal, restart: true } : {});
   }
 
   /**
    * The end of every sign-in that succeeds, whichever body finished it: the pending-deletion
    * restore, then the session — carrying the second factor's record when a passkey step proved one.
+   * Resolves to the words the sign-in is refused with when the session cannot open (the restore
+   * failed; the account is being purged) — the caller answers them in its own body's shape — and
+   * to undefined once the session is open.
    */
-  private async openSession(email: string, secondFactor?: SecondFactorRecord): Promise<void> {
+  private async openSession(email: string, secondFactor?: SecondFactorRecord): Promise<string | undefined> {
     // Cancel-by-login: a pending-deletion account's successful sign-in IS the cancel signal. The
     // restore runs synchronously here, BEFORE request.login, so the first authenticated paint sees
     // the fully restored account (no transient). For an account that must use a passkey this is
@@ -156,17 +183,15 @@ class SignInDoor {
       // 2026-08-18 after a watcher error surfaced verbatim in the login form). The real
       // error stays loud in the server log.
       console.error('cancelPendingDeletion failed during login', error);
-      this.response.send({ error: 'Unable to log in right now. Please try again.' });
-      return;
+      return 'Unable to log in right now. Please try again.';
     }
     if (outcome === 'purging') {
       const error = 'This account is being deleted and can no longer be restored.';
       console.error(error);
-      this.response.send({ error });
-      return;
+      return error;
     }
 
     await establishSession(this.request, email, { secondFactor });
-    this.response.send({});
+    return undefined;
   }
 }

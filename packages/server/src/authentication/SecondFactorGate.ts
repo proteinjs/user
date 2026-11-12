@@ -1,7 +1,7 @@
-import { getDbAsSystem } from '@proteinjs/db';
-import { RolesCatalog, User, tables } from '@proteinjs/user';
+import { RolesCatalog, User } from '@proteinjs/user';
 import { devLoopDoorsOpen } from '../routes/devLoopDoorsOpen';
-import { getPasskeyRelyingParty } from './passkeys/PasskeyRelyingParty';
+import { DbSessionStore } from './DbSessionStore';
+import { RelyingParty, getPasskeyRelyingParty } from './passkeys/PasskeyRelyingParty';
 
 /**
  * A session's record of the second factor it was opened with — kept in the session's stored data,
@@ -13,7 +13,10 @@ import { getPasskeyRelyingParty } from './passkeys/PasskeyRelyingParty';
 export type SecondFactorRecord = { method: 'passkey' | 'dev'; passkeyId?: string; at: string };
 
 /**
- * The ONE owner of "must this account use a second factor, and has this session met it".
+ * The ONE owner of "must this account use a second factor, and has this session met it". Both
+ * questions are answered here and nowhere else, and the deployment's relying-party declaration is
+ * read here and nowhere else: the sign-in door and the per-request check ask `mustUse`, and the
+ * passkey step takes the values its ceremonies run against from `relyingParty`.
  *
  * WHO MUST. An account must use a passkey when all three hold:
  * 1. the deployment declares a relying party (`PasskeyRelyingParty`) — a consumer that declares
@@ -25,14 +28,16 @@ export type SecondFactorRecord = { method: 'passkey' | 'dev'; passkeyId?: string
  *    account for this rule;
  * 3. it holds at least one administrative role (`RolesCatalog.isAdministrative`: break-glass,
  *    admin-grant-only, or marked administrative). A role the catalog does not know is not one.
- * The built-in default admin (`createAuthentication`'s credentials — an identity with no account
- * row) holds `admin` and can hold no passkey: where a relying party is declared its sessions do
- * not resolve.
+ * The built-in default admin (`DefaultAdminCredentials` — an identity with no account row) holds
+ * `admin` and can hold no passkey: where a relying party is declared it must use one and never
+ * can, so the sign-in door refuses it and a session of it opened earlier does not resolve.
  *
  * WHEN MET. A session has met it when its stored data carries a record whose method is `passkey`,
  * or `dev` while this process's development switches are set (`devLoopDoorsOpen` — the development
  * door's own gate): a session the development door opened is worth nothing on a deployment that
- * sets neither switch.
+ * sets neither switch. The stored data is read through the session store's own reader
+ * (`DbSessionStore.liveSession`), under the store's expiry rule: a row that has lapsed is no
+ * session, so it carries no record.
  */
 export class SecondFactorGate {
   /** The key the record sits under in a session's stored data. */
@@ -47,28 +52,28 @@ export class SecondFactorGate {
     );
   }
 
+  /**
+   * The relying party the factor's ceremonies run against, as the deployment declares it. Throws
+   * where none is declared: no account must use a passkey there (`mustUse`), so no ceremony is
+   * ever begun.
+   */
+  relyingParty(): RelyingParty {
+    const declaration = getPasskeyRelyingParty();
+    if (!declaration) {
+      throw new Error('A passkey step needs a relying party, and this deployment declares none');
+    }
+
+    return declaration.getRelyingParty();
+  }
+
   /** Whether the session's stored data carries a record that meets the factor on this process. */
   async sessionMet(sessionId: string): Promise<boolean> {
     if (!sessionId) {
       return false;
     }
 
-    const row = await getDbAsSystem().get(tables.Session, { sessionId });
-    const method = this.recordIn(row?.session)?.method;
+    const session: Record<string, any> | undefined = await DbSessionStore.liveSession(sessionId);
+    const method = session?.[SecondFactorGate.SESSION_KEY]?.method;
     return method === 'passkey' || (method === 'dev' && devLoopDoorsOpen(process.env));
-  }
-
-  /** The record a session's stored data carries, or undefined when it carries none or cannot be read. */
-  private recordIn(stored: string | undefined): Partial<SecondFactorRecord> | undefined {
-    if (!stored) {
-      return undefined;
-    }
-
-    try {
-      const record = JSON.parse(stored)?.[SecondFactorGate.SESSION_KEY];
-      return record && typeof record === 'object' ? record : undefined;
-    } catch (error) {
-      return undefined;
-    }
   }
 }

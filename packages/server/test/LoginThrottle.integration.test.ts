@@ -1,9 +1,10 @@
 import { createHash } from 'crypto';
 import moment from 'moment';
-import { getDbAsSystem } from '@proteinjs/db';
+import { Db, getDbAsSystem } from '@proteinjs/db';
 import { SourceRepository } from '@proteinjs/reflection';
-import { User, tables } from '@proteinjs/user';
+import { User, routes, tables } from '@proteinjs/user';
 import { login } from '../src/routes/login';
+import { DefaultAdminCredentials } from '../src/authentication/DefaultAdminCredentials';
 import { PasswordHasher } from '../src/authentication/PasswordHasher';
 import { AccountDeletion } from '../src/services/AccountDeletion';
 import { createPassportRequest } from './passportSessionHarness';
@@ -35,8 +36,12 @@ const testEnv = new UserServerTestEnvironment();
  * ceremonies — a software authenticator's registrations and assertions, verified by the real
  * library: an account that holds an administrative role gets no session on its password alone;
  * the step's challenge is single use, bound to its account, its kind and its five minutes; the
- * first passkey is enrolled inside the sign-in, once; a declared machine account and a deployment
- * that declares no relying party sign in as before.
+ * first passkey is enrolled inside the sign-in, once, in one transaction; a declared machine
+ * account and a deployment that declares no relying party sign in as before. A second-step body is
+ * answered one of three shapes — `{}`, `{ error, secondStep }`, `{ error, restart: true }` — also
+ * when the step passed and the session cannot open, and when the client is throttled; the step's
+ * cookie is read as the response sets and clears it; the built-in default admin, which can hold
+ * no passkey, is refused where one is required.
  */
 
 const WRONG = 'User name or password incorrect';
@@ -44,11 +49,18 @@ const THROTTLED = 'Too many attempts. Try again in a few minutes.';
 const BLANK = 'Email and password cannot be blank';
 const RIGHT_PASSWORD = 'the right horse battery';
 
+/** A cookie the response set or cleared, with the attributes it was given. */
+type CookieAct = { act: 'set' | 'clear'; name: string; options: Record<string, any> };
+
 type Attempt = {
   sent: any;
   signedInAs?: string;
   /** The session's data at each save, as its row would hold it (see passportSessionHarness). */
   saved: Record<string, any>[];
+  /** Every cookie the response set or cleared, in order. */
+  cookies: CookieAct[];
+  /** What the door threw, when it failed instead of answering. */
+  threw?: unknown;
 };
 
 /** A browser's cookie jar: sent with a request, and changed by what the response sets and clears. */
@@ -57,25 +69,29 @@ type CookieJar = Record<string, string>;
 /**
  * One request at the door from `ip`, as the server sees it with no proxy in front (the dev shape).
  * `jar` is the browser's cookies: the request carries them, and a cookie the response sets or
- * clears is set in or removed from the jar, as a browser would.
+ * clears is set in or removed from the jar, as a browser would. A door that fails instead of
+ * answering is reported (`threw`), with what the request was left holding.
  */
-const post = async (
+const send = async (
   ip: string,
   body: unknown,
   jar: CookieJar = {},
   headers: Record<string, string> = {}
 ): Promise<Attempt> => {
   let sent: any;
+  const cookies: CookieAct[] = [];
   const response: any = {
     send: (answer: any) => {
       sent = answer;
     },
     status: () => response,
-    cookie: (name: string, value: string) => {
+    cookie: (name: string, value: string, options: Record<string, any> = {}) => {
       jar[name] = value;
+      cookies.push({ act: 'set', name, options });
     },
-    clearCookie: (name: string) => {
+    clearCookie: (name: string, options: Record<string, any> = {}) => {
       delete jar[name];
+      cookies.push({ act: 'clear', name, options });
     },
   };
   const { request, saved } = await createPassportRequest({
@@ -85,8 +101,27 @@ const post = async (
     socket: { remoteAddress: ip },
     app: { get: () => false },
   });
-  await login.onRequest(request, response);
-  return { sent, signedInAs: request.session.passport?.user, saved };
+  let threw: unknown;
+  try {
+    await login.onRequest(request, response);
+  } catch (error) {
+    threw = error;
+  }
+  return { sent, signedInAs: request.session.passport?.user, saved, cookies, threw };
+};
+
+/** One request the door answers: a door that fails instead fails the case. */
+const post = async (
+  ip: string,
+  body: unknown,
+  jar: CookieJar = {},
+  headers: Record<string, string> = {}
+): Promise<Attempt> => {
+  const answered = await send(ip, body, jar, headers);
+  if (answered.threw) {
+    throw answered.threw;
+  }
+  return answered;
 };
 
 /** One sign-in attempt by address and password. */
@@ -743,5 +778,222 @@ describe('login route: the passkey step of an account that holds an administrati
     };
     await getDbAsSystem().insert(tables.AuthChallenge, challenge);
     await expect(getDbAsSystem().insert(tables.AuthChallenge, challenge)).rejects.toThrow();
+  });
+
+  it('an account being purged is refused with no session: on the password alone when it need not use a passkey, and with restart at the passkey step — which passed — when it must', async () => {
+    const purging = async (user: User) => {
+      testEnv.actAs(user);
+      await new AccountDeletion().requestDeletion(RIGHT_PASSWORD);
+      const deletion = await getDbAsSystem().get(tables.AccountDeletion, { userId: user.id });
+      await getDbAsSystem().update(tables.AccountDeletion, { id: deletion.id, phase: 'purging' });
+    };
+    const person = await createAccount('passkey-purging-person@test.local');
+    await purging(person);
+    const admin = await createAccount('passkey-purging@test.local', ['admin']);
+    const authenticator = await enroll('198.18.13.1', admin.email);
+    await purging(admin);
+
+    const alone = await attempt('198.18.13.2', person.email, RIGHT_PASSWORD);
+    expect(alone.sent).toEqual({ error: expect.any(String) });
+    expect(alone.signedInAs).toBeUndefined();
+    expect(alone.saved).toEqual([]);
+
+    // The passkey step itself passes (the passkey's use is recorded): it is the session that
+    // cannot open. The challenge is spent and the cookie gone, so the answer sends the page back
+    // to the password — one of the step's three shapes, never an error alone.
+    const { jar, kind, options } = await passwordStep('198.18.13.3', admin.email);
+    expect(kind).toBe('passkey');
+    const passed = await post('198.18.13.3', { passkey: authenticator.assert(options, ORIGIN) }, jar);
+    expect(passed.sent).toEqual({ error: alone.sent.error, restart: true });
+    expect(passed.signedInAs).toBeUndefined();
+    expect(passed.saved).toEqual([]);
+    expect(jar).toEqual({});
+    expect((await passkeysOf(admin))[0].lastUsedAt).toBeTruthy();
+    expect((await accountRow(admin)).status).toBe('deactivated');
+  });
+
+  it('a restore that fails opens no session and tells the page nothing of the failure: the password alone is answered plain words, the passkey step the same words with restart', async () => {
+    const person = await createAccount('passkey-restore-fails-person@test.local');
+    const admin = await createAccount('passkey-restore-fails@test.local', ['admin']);
+    const authenticator = await enroll('198.18.14.1', admin.email);
+    const { jar, options } = await passwordStep('198.18.14.2', admin.email);
+    const detail = 'a watcher failed while restoring grant 7f3a';
+    const restore = jest.spyOn(AccountDeletion.prototype, 'cancelPendingDeletion').mockRejectedValue(new Error(detail));
+    try {
+      const alone = await attempt('198.18.14.3', person.email, RIGHT_PASSWORD);
+      expect(alone.sent).toEqual({ error: expect.any(String) });
+      expect(alone.sent.error).not.toContain(detail);
+      expect(alone.signedInAs).toBeUndefined();
+      expect(alone.saved).toEqual([]);
+
+      const passed = await post('198.18.14.2', { passkey: authenticator.assert(options, ORIGIN) }, jar);
+      expect(passed.sent).toEqual({ error: alone.sent.error, restart: true });
+      expect(passed.signedInAs).toBeUndefined();
+      expect(passed.saved).toEqual([]);
+      expect(jar).toEqual({});
+    } finally {
+      restore.mockRestore();
+    }
+  });
+
+  it('the step cookie as the response sets and clears it: HttpOnly, Secure outside development, SameSite=Strict, the login path, and a life of what remains of the five minutes', async () => {
+    const admin = await createAccount('passkey-cookie@test.local', ['admin']);
+    const authenticator = await enroll('198.18.15.1', admin.email);
+    const standing = { httpOnly: true, secure: true, sameSite: 'strict', path: routes.login.path };
+    const development = process.env.DEVELOPMENT;
+    delete process.env.DEVELOPMENT;
+    try {
+      // Set by the password step, for the step's five minutes.
+      const { jar, step, options } = await passwordStep('198.18.15.2', admin.email);
+      expect(step.cookies).toHaveLength(1);
+      const [first] = step.cookies;
+      expect(first).toMatchObject({ act: 'set', options: standing });
+      expect(first.options.maxAge).toBeGreaterThan(240_000);
+      expect(first.options.maxAge).toBeLessThanOrEqual(300_000);
+
+      // Four minutes on (the challenge's end is moved to a minute from now), a refused try is
+      // answered with a new challenge, and its cookie lives the minute that remains.
+      const [open] = await openChallengesOf(admin);
+      await getDbAsSystem().update(tables.AuthChallenge, { id: open.id, expiresAt: moment().add(1, 'minute') });
+      const unverified = authenticator.assert(options, { ...ORIGIN, userVerified: false });
+      const refused = await post('198.18.15.2', { passkey: unverified }, jar);
+      expect(refused.cookies).toHaveLength(1);
+      expect(refused.cookies[0]).toMatchObject({ act: 'set', name: first.name, options: standing });
+      expect(refused.cookies[0].options.maxAge).toBeGreaterThan(30_000);
+      expect(refused.cookies[0].options.maxAge).toBeLessThanOrEqual(60_000);
+
+      // Cleared when the step passes, with the attributes it was set with: a clear that names
+      // another path clears nothing in a browser.
+      const assertion = authenticator.assert(refused.sent.secondStep.options, ORIGIN);
+      const opened = await post('198.18.15.2', { passkey: assertion }, jar);
+      expect(opened.sent).toEqual({});
+      expect(opened.cookies).toHaveLength(1);
+      expect(opened.cookies[0]).toMatchObject({ act: 'clear', name: first.name, options: standing });
+
+      // In development the cookie rides plain http, as the session's own does.
+      process.env.DEVELOPMENT = 'true';
+      const local = await passwordStep('198.18.15.3', admin.email);
+      expect(local.step.cookies).toHaveLength(1);
+      expect(local.step.cookies[0]).toMatchObject({ act: 'set', options: { ...standing, secure: false } });
+    } finally {
+      if (development === undefined) {
+        delete process.env.DEVELOPMENT;
+      } else {
+        process.env.DEVELOPMENT = development;
+      }
+    }
+  });
+
+  it('a throttled passkey step answers the throttled words with restart and clears the cookie: a good assertion from a client whose window is spent opens nothing', async () => {
+    const admin = await createAccount('passkey-throttled@test.local', ['admin']);
+    const authenticator = await enroll('198.18.16.1', admin.email);
+    const { jar, options } = await passwordStep('198.18.16.2', admin.email);
+    // Fifty tries that are not successes spend a client's window (blank ones judge no password).
+    const spent = () => '198.18.16.3';
+    expect(await errors(50, spent, () => '', '')).toEqual(Array(50).fill(BLANK));
+
+    const throttled = await post(spent(), { passkey: authenticator.assert(options, ORIGIN) }, jar);
+
+    expect(throttled.sent).toEqual({ error: THROTTLED, restart: true });
+    expect(throttled.signedInAs).toBeUndefined();
+    expect(throttled.saved).toEqual([]);
+    expect(throttled.cookies.map((cookie) => cookie.act)).toEqual(['clear']);
+    expect(jar).toEqual({});
+  });
+
+  it('a passed passkey step forgives its try, as a correct password does: a sign-in leaves the window of its client where it was', async () => {
+    const admin = await createAccount('passkey-forgiven@test.local', ['admin']);
+    const authenticator = await enroll('198.18.17.1', admin.email);
+    // Forty-nine tries that are not successes: the client has one left before its window shuts.
+    const client = () => '198.18.17.2';
+    const blank = () => '';
+    expect(await errors(49, client, blank, '')).toEqual(Array(49).fill(BLANK));
+
+    const { jar, options } = await passwordStep(client(), admin.email);
+    const opened = await post(client(), { passkey: authenticator.assert(options, ORIGIN) }, jar);
+    expect(opened.sent).toEqual({});
+    expect(opened.signedInAs).toBe(admin.email);
+
+    // Neither request of the sign-in was counted: the one try left is still there, and only that one.
+    expect(await errors(2, client, blank, '')).toEqual([BLANK, THROTTLED]);
+  });
+
+  it('the first enrollment is one transaction: when its audit row cannot be written, no passkey is stored and no session opens', async () => {
+    const admin = await createAccount('passkey-atomic@test.local', ['admin']);
+    const { jar, options } = await passwordStep('198.18.18.1', admin.email);
+    const insert = Db.prototype.insert;
+    const auditFails = jest.spyOn(Db.prototype, 'insert').mockImplementation(function (this: any, table, ...rest) {
+      return table.name === tables.UserAccountEvent.name
+        ? Promise.reject(new Error('the audit row could not be written'))
+        : insert.call(this, table, ...rest);
+    });
+    let failed: Attempt;
+    try {
+      failed = await send('198.18.18.1', { addPasskey: new SoftwareAuthenticator().register(options, ORIGIN) }, jar);
+    } finally {
+      auditFails.mockRestore();
+    }
+
+    expect(failed.sent).not.toEqual({});
+    expect(failed.signedInAs).toBeUndefined();
+    expect(failed.saved).toEqual([]);
+    expect(await passkeysOf(admin)).toEqual([]);
+    expect(await getDbAsSystem().query(tables.UserAccountEvent, { target: admin.id })).toEqual([]);
+  });
+
+  describe('the built-in default admin, an identity with no account row that can hold no passkey', () => {
+    const address = 'passkey-default-admin@test.local';
+    const password = 'a-bootstrap-password';
+    const credentials = DefaultAdminCredentials as unknown as {
+      CREDENTIALS?: { username: string; password: string };
+    };
+
+    beforeAll(() => {
+      credentials.CREDENTIALS = { username: address, password };
+    });
+    afterAll(() => {
+      credentials.CREDENTIALS = undefined;
+    });
+
+    it('where no relying party is declared it signs in with its credentials, as before', async () => {
+      declareNoRelyingParty();
+      try {
+        const signedIn = await attempt('198.18.19.100', address, password);
+        expect(signedIn.sent).toEqual({});
+        expect(signedIn.signedInAs).toBe(address);
+      } finally {
+        declareRelyingParty();
+      }
+    });
+
+    it('where a relying party is declared the door refuses it as it refuses a wrong password — no session, no step, counted as a refused try — with one line for the operator that names it by digest', async () => {
+      const refusals: Attempt[] = [];
+      const log = await LogCapture.during(async () => {
+        refusals.push(await attempt('198.18.19.1', address, password));
+      });
+      const [refused] = refusals;
+      expect(refused.sent).toEqual({ error: WRONG });
+      expect(refused.signedInAs).toBeUndefined();
+      expect(refused.saved).toEqual([]);
+      expect(refused.cookies).toEqual([]);
+      const lines = log.lines.map(plain).filter((line) => line.includes('Sign-in refused'));
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain('default admin');
+      expect(fieldsOn(log, 'Sign-in refused', 'account')).toEqual([expect.stringMatching(/^[0-9a-f]{16}$/)]);
+      expect(plain(log.text).toLowerCase()).not.toContain('passkey-default-admin');
+
+      // The door asks who the address signs in as, as the session cache will: an account row at
+      // the default admin's address, signed in with its own password and typed in another case,
+      // would be bound a session that resolves as the default admin — refused the same.
+      await createAccount(address);
+      const row = await attempt('198.18.19.2', 'Passkey-Default-Admin@Test.local', RIGHT_PASSWORD);
+      expect(row.sent).toEqual({ error: WRONG });
+      expect(row.signedInAs).toBeUndefined();
+
+      // Ordinary refusals: eight more are judged, and the account's window shuts on the eleventh try.
+      const ip = (i: number) => `198.18.19.${i + 10}`;
+      expect(await errors(8, ip, () => address, password)).toEqual(Array(8).fill(WRONG));
+      expect((await attempt('198.18.19.50', address, password)).sent).toEqual({ error: THROTTLED });
+    });
   });
 });

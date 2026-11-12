@@ -15,7 +15,8 @@ const testEnv = new UserServerTestEnvironment();
  *   after the idle window kept working for up to twelve hours — until the sweep's next pass deleted
  *   the row. A row whose `expires` has passed now resolves to no session before the sweep runs; a
  *   live row resolves as before; the sweep stays the row's undertaker (the expired row is still
- *   there after the refusal).
+ *   there after the refusal). The store is the one reader of a row's stored form: a row whose data
+ *   it cannot read fails the read.
  *
  * - the store is the ONE writer of `userEmail`, and the column's form is decided there: the account
  *   row's, lowercased, whatever case the blob's `passport.user` carries — on the insert (`set`) and
@@ -83,6 +84,17 @@ describe('DbSessionStore.get — a row past its expiry is no session', () => {
 
   it('an unknown id resolves to no session', async () => {
     expect((await read('never-minted')) ?? null).toBeNull();
+  });
+
+  it('a row whose stored data cannot be read fails the read: the callback is handed the failure, not a session and not "no session"', async () => {
+    await getDbAsSystem().insert(tables.Session, {
+      sessionId: 'unreadable-session',
+      session: 'not a session',
+      expires: moment().add(1, 'day').toDate(),
+      userEmail: 'unreadable@test.local',
+    });
+
+    await expect(read('unreadable-session')).rejects.toThrow();
   });
 });
 

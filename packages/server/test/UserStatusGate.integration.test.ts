@@ -78,11 +78,16 @@ describe('user status gate — login refusal and session resolution', () => {
     const switches = { DEVELOPMENT: process.env.DEVELOPMENT, DEV_LOOP_DOORS: process.env.DEV_LOOP_DOORS };
 
     /** A session row as the store writes one: the bound account, and the second factor's record when it was opened with one. */
-    const insertSession = async (sessionId: string, email: string, secondFactor?: Record<string, string>) =>
+    const insertSession = async (
+      sessionId: string,
+      email: string,
+      secondFactor?: Record<string, string>,
+      expires = new Date(Date.now() + 60 * 60 * 1000)
+    ) =>
       await getDbAsSystem().insert(tables.Session, {
         sessionId,
         session: JSON.stringify({ cookie: {}, passport: { user: email }, ...(secondFactor ? { secondFactor } : {}) }),
-        expires: new Date(Date.now() + 60 * 60 * 1000),
+        expires,
         userEmail: email,
       });
     const resolvedId = async (sessionId: string, email: string) => (await userCache.create(sessionId, email)).id;
@@ -148,16 +153,45 @@ describe('user status gate — login refusal and session resolution', () => {
       }
     });
 
-    it('the built-in default admin can hold no passkey: its session does not resolve', async () => {
+    it('a session row that has lapsed is no session, so it carries no record: the account resolves as the guest on it, and as itself on the same row still live; a row the store cannot read fails the request', async () => {
+      const email = 'factor-lapsed@test.local';
+      const account = await createAccount(email, 'correct-password');
+      await getDbAsSystem().update(tables.User, { id: account.id, roles: ['admin'] });
+      const record = { method: 'passkey', passkeyId: 'a-passkey-row', at: '2026-01-02T03:04:05.000Z' };
+      await insertSession('factor-live', email, record);
+      await insertSession('factor-lapsed', email, record, new Date(Date.now() - 60 * 1000));
+
+      expect(await resolvedId('factor-live', email)).toBe(account.id);
+      expect(await resolvedId('factor-lapsed', email)).toBe('guest');
+
+      // The store is the one reader of a row's stored form: data it cannot read is its failure,
+      // as at its own `get` — never read here as "no record".
+      await getDbAsSystem().insert(tables.Session, {
+        sessionId: 'factor-unreadable',
+        session: 'not a session',
+        expires: new Date(Date.now() + 60 * 60 * 1000),
+        userEmail: email,
+      });
+      await expect(userCache.create('factor-unreadable', email)).rejects.toThrow();
+    });
+
+    it('the built-in default admin can hold no passkey: its session does not resolve; where no relying party is declared it resolves as the built-in admin', async () => {
       const credentials = DefaultAdminCredentials as unknown as {
         CREDENTIALS?: { username: string; password: string };
       };
       credentials.CREDENTIALS = { username: 'factor-default-admin@test.local', password: 'a-bootstrap-password' };
+      const declared = objectCache()[RELYING_PARTY_KEY];
       try {
         await insertSession('factor-default-admin', 'factor-default-admin@test.local');
 
         expect(await resolvedId('factor-default-admin', 'factor-default-admin@test.local')).toBe('guest');
+
+        objectCache()[RELYING_PARTY_KEY] = [];
+        const builtIn = await userCache.create('factor-default-admin', 'factor-default-admin@test.local');
+        expect(builtIn.id).toBe('admin');
+        expect(builtIn.roles).toEqual(['admin']);
       } finally {
+        objectCache()[RELYING_PARTY_KEY] = declared;
         credentials.CREDENTIALS = undefined;
       }
     });

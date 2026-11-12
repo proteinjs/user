@@ -6,6 +6,12 @@ import { AccountStanding } from './AccountStanding';
 import { DefaultAdminCredentials } from './DefaultAdminCredentials';
 import { PasswordHasher } from './PasswordHasher';
 
+/**
+ * What a sign-in is told when its address and password do not open an account: the door's ordinary
+ * refusal, the same for an address with no account and for a wrong password.
+ */
+export const WRONG_CREDENTIALS = 'User name or password incorrect';
+
 export function createAuthentication(defaultAdminCredentials?: { username: string; password: string }) {
   if (defaultAdminCredentials) {
     DefaultAdminCredentials.setCredentials(defaultAdminCredentials);
@@ -28,7 +34,7 @@ export async function authenticate(email: string, password: string): Promise<tru
 
   const { user, matches } = await checkPassword(email, password);
   if (!user || !matches) {
-    return 'User name or password incorrect';
+    return WRONG_CREDENTIALS;
   }
   const db = getDbAsSystem();
   const hasher = new PasswordHasher();

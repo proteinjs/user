@@ -27,6 +27,12 @@ export class DbSessionStore extends Store {
   }
 
   /**
+   * The stored data of a live session, or undefined when the id has no row or its row has lapsed —
+   * the ONE reader of a row's stored form (the blob `insertOrUpdate` writes), under the store's one
+   * expiry rule. `get` hands express-session what this resolves to; a reader that is not the
+   * session middleware (the second factor's per-request check, `SecondFactorGate.sessionMet`)
+   * reads a session's data here and never parses a row itself.
+   *
    * A row past its `expires` is no session: refused here, at the read, not left to the sweep.
    * Honoring the expiry at the read is what lets a deployment say a session ends when its idle
    * window does. express-session never checks the cookie's expiry when it loads a session (only its own
@@ -34,15 +40,24 @@ export class DbSessionStore extends Store {
    * working for up to twelve hours — until the sweep's next pass deleted the row. The expiry is
    * honored the moment it passes; the sweep stays the row's undertaker.
    */
+  static async liveSession(sessionId: string): Promise<Express.SessionData | undefined> {
+    const result = await getDbAsSystem().get(tables.Session, { sessionId });
+    if (!result || DbSessionStore.hasExpired(result.expires)) {
+      return undefined;
+    }
+
+    return JSON.parse(result.session);
+  }
+
   get = (sessionId: string, cb: (error: any, session?: Express.SessionData | null) => void) => {
     (async () => {
-      const result = await getDbAsSystem().get(tables.Session, { sessionId });
-      if (!result || DbSessionStore.hasExpired(result.expires)) {
+      const session = await DbSessionStore.liveSession(sessionId);
+      if (!session) {
         cb(null);
         return;
       }
 
-      return cb(null, JSON.parse(result.session));
+      return cb(null, session);
     })().catch((error) => cb(error));
   };
 
