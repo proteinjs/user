@@ -24,9 +24,9 @@
  * place — nobody is in the app until the step passes. The device's sheet is a stand-in here
  * (`PasskeyCeremonies`, stubbed at the package boundary): no browser authenticator runs. A step's
  * request that never reaches the door is a line above the same button; and a person who goes back
- * to the password form while a tap is still out has the form at once, whatever that tap comes to —
- * also when they have signed in again by then and a new tap is out: the page waits on that tap and
- * on no other.
+ * to the password form while a tap is still out has the form at once, and the request they walked
+ * away from is cancelled; whatever that tap still comes to changes nothing — also when they have
+ * signed in again by then and a new tap is out: the page waits on that tap and on no other.
  */
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
@@ -226,25 +226,34 @@ describe('signing in with a passkey step: the page changes in place, and lands i
   const LATE: Late[] = [{}, { error: 'the door’s line for a refusal', secondStep: NEXT }, NO_ANSWER];
 
   /**
-   * The door answers the password with the step at once, and holds each answer to the step until
-   * the case lets it go: `answer(n, late)` ends the n-th request the step sent, counted from 0.
+   * The door answers the password with `step` at once, and holds each answer to the step until
+   * the case lets it go: `answer(n, late)` ends the n-th request the step sent, counted from 0 —
+   * whether or not the page has cancelled that request by then (an answer already on its way in is
+   * not stopped by a cancel). `cancelled()` says, for each request the step sent, whether the page
+   * has cancelled it, by the signal the request was sent with.
    */
-  function doorHoldingTheStep() {
+  function doorHoldingTheStep(step: object = STEP) {
     const sent: any[] = [];
     const held: Array<(late: Late) => void> = [];
-    (global as any).fetch = jest.fn(async (_path: string, init: { body: string }) => {
+    const signals: Array<AbortSignal | undefined> = [];
+    (global as any).fetch = jest.fn(async (_path: string, init: { body: string; signal?: AbortSignal }) => {
       const body = JSON.parse(init.body);
       sent.push(body);
       if ('email' in body) {
-        return { status: 200, statusText: 'OK', json: async () => ({ secondStep: STEP }) };
+        return { status: 200, statusText: 'OK', json: async () => ({ secondStep: step }) };
       }
+      signals.push(init.signal);
       const late = await new Promise<Late>((resolve) => held.push(resolve));
       if (late === NO_ANSWER) {
         throw new TypeError('Failed to fetch');
       }
       return { status: 200, statusText: 'OK', json: async () => late };
     });
-    return { sent, answer: (request: number, late: Late) => held[request](late) };
+    return {
+      sent,
+      cancelled: () => signals.map((signal) => (signal ? signal.aborted : 'sent with no signal')),
+      answer: (request: number, late: Late) => held[request](late),
+    };
   }
 
   it('the second state shows the address just typed and one button, and no field; its tap hands the door what the sheet answered, and only then is the person in the app', async () => {
@@ -352,29 +361,36 @@ describe('signing in with a passkey step: the page changes in place, and lands i
     expect(locationSpy.replace).toHaveBeenCalledWith('/');
   });
 
-  it('"use a different account" pressed while a tap is still out: the password form is free at once, and what the tap comes to afterwards changes nothing — an open session lands nobody in the app, a new step is not put back, a request that fails writes no line on the form, and a sheet that answers late is handed to nobody', async () => {
+  it('"use a different account" pressed while a tap is still out, on either step: the password form is free at once and the request the person walked away from is cancelled, and what the tap comes to afterwards changes nothing — an open session lands nobody in the app, a new step is not put back, a request that fails writes no line on the form, and a sheet that answers late is handed to nobody', async () => {
     const thePasswordFormFree = { fields: ['email', 'password'], acts: 0, seat: null, line: null };
     sheet.authenticate.mockResolvedValue({ status: 'done', response: ASSERTION });
+    sheet.register.mockResolvedValue({ status: 'done', response: REGISTRATION });
     await renderPage(loginPage.component, '/login');
 
-    for (const late of LATE) {
-      const door = doorHoldingTheStep();
-      await typeThePasswordAgain();
-      await tapTheStep();
-      // The request is out, and the step waits on it.
-      expect(door.sent).toHaveLength(2);
-      expect(actIsFree()).toBe(false);
+    // Either step — confirming with a passkey, adding the first — and every way its tap can end.
+    for (const step of [STEP, ADD]) {
+      for (const late of LATE) {
+        const door = doorHoldingTheStep(step);
+        await typeThePasswordAgain();
+        await tapTheStep();
+        // The request is out, and the step waits on it.
+        expect(door.sent).toHaveLength(2);
+        expect(actIsFree()).toBe(false);
+        expect(door.cancelled()).toEqual([false]);
 
-      await tap('[data-signin-link="other-account"]');
-      expect(page()).toMatchObject(thePasswordFormFree);
-      expect(actIsFree()).toBe(true);
-      expect(field('Email').disabled).toBe(false);
+        await tap('[data-signin-link="other-account"]');
+        expect(page()).toMatchObject(thePasswordFormFree);
+        expect(actIsFree()).toBe(true);
+        expect(field('Email').disabled).toBe(false);
+        // The request the person walked away from is cancelled, by its own signal.
+        expect(door.cancelled()).toEqual([true]);
 
-      door.answer(0, late);
-      await settle();
-      expect(locationSpy.replace).not.toHaveBeenCalled();
-      expect(page()).toMatchObject(thePasswordFormFree);
-      expect(actIsFree()).toBe(true);
+        door.answer(0, late);
+        await settle();
+        expect(locationSpy.replace).not.toHaveBeenCalled();
+        expect(page()).toMatchObject(thePasswordFormFree);
+        expect(actIsFree()).toBe(true);
+      }
     }
 
     // The sheet still up across the press: when it answers, nothing is sent.
@@ -413,16 +429,19 @@ describe('signing in with a passkey step: the page changes in place, and lands i
       await typeThePasswordAgain();
       await tapTheStep();
       await leaveSignInAgainAndTap();
-      // Both taps' requests are at the door, and the page waits on the second.
+      // Both taps' requests are at the door, and the page waits on the second: the way back
+      // cancelled the first and no other.
       expect(door.sent).toHaveLength(4);
       expect(page()).toEqual(theSecondStepWaiting);
       expect(actIsFree()).toBe(false);
+      expect(door.cancelled()).toEqual([true, false]);
 
       door.answer(0, late);
       await settle();
       expect(locationSpy.replace).not.toHaveBeenCalled();
       expect(page()).toEqual(theSecondStepWaiting);
       expect(actIsFree()).toBe(false);
+      expect(door.cancelled()).toEqual([true, false]);
 
       // The second tap's own answer is the one the page takes: here, the end of its step.
       door.answer(1, { error: 'the door’s line for the end', restart: true });

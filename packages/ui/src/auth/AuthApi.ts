@@ -118,14 +118,20 @@ export class AuthApi {
     throw new Error(answer.line ?? generic);
   }
 
-  /** Answer the passkey step with the assertion the device's sheet gave. */
-  async answerPasskey(assertion: PasskeyAssertion): Promise<SignInSecondStepAnswer> {
-    return await this.answerSecondStep({ passkey: assertion });
+  /**
+   * Answer the passkey step with the assertion the device's sheet gave. `signal` cancels the
+   * request when it is aborted (see `answerSecondStep`).
+   */
+  async answerPasskey(assertion: PasskeyAssertion, signal?: AbortSignal): Promise<SignInSecondStepAnswer> {
+    return await this.answerSecondStep({ passkey: assertion }, signal);
   }
 
-  /** Answer the add step with the registration of the account's first passkey. */
-  async answerAddPasskey(registration: PasskeyRegistration): Promise<SignInSecondStepAnswer> {
-    return await this.answerSecondStep({ addPasskey: registration });
+  /**
+   * Answer the add step with the registration of the account's first passkey. `signal` cancels
+   * the request when it is aborted (see `answerSecondStep`).
+   */
+  async answerAddPasskey(registration: PasskeyRegistration, signal?: AbortSignal): Promise<SignInSecondStepAnswer> {
+    return await this.answerSecondStep({ addPasskey: registration }, signal);
   }
 
   /**
@@ -198,11 +204,16 @@ export class AuthApi {
    * failed on the server (answered by no JSON), a proxy's page. A request that never got an answer
    * at all (no network) is not an answer: it throws, as every other call here does, and the page
    * says so.
+   *
+   * `signal` is the request's own (the fetch's): aborting it cancels a request still out, which
+   * then rejects as one that never got an answer does. The page aborts it when the person leaves
+   * the step, so the door is not left opening a session for an account they walked away from. It
+   * cannot take back an answer the door has already sent.
    */
-  private async answerSecondStep(body: object): Promise<SignInSecondStepAnswer> {
+  private async answerSecondStep(body: object, signal?: AbortSignal): Promise<SignInSecondStepAnswer> {
     let response: Response;
     try {
-      response = await this.post(body);
+      response = await this.post(body, signal);
     } catch (error: unknown) {
       if (AuthApi.isTooManyAttempts(error)) {
         return { status: 'restart', line: AuthApi.TOO_MANY_ATTEMPTS };
@@ -263,13 +274,14 @@ export class AuthApi {
     return known && typeof step.options === 'object' && step.options !== null ? step : undefined;
   }
 
-  /** One request at the sign-in door. */
-  private async post(body: object): Promise<Response> {
+  /** One request at the sign-in door; `signal`, when given, cancels it. */
+  private async post(body: object, signal?: AbortSignal): Promise<Response> {
     return await this.send(routes.login.path, {
       method: routes.login.method,
       body: JSON.stringify(body),
       redirect: 'follow',
       headers: { 'Content-Type': 'application/json' },
+      signal,
     });
   }
 

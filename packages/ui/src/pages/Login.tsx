@@ -64,9 +64,12 @@ const WORDS = {
  * button, and the next tap tries again.
  *
  * "Use a different account" goes back to the password form at any time — also while a tap is still
- * out, its sheet up or its request on the way: the form is free at once, a sheet that answers
- * afterwards is handed to nobody, and whatever the door answers a request already sent — an open
- * session, a new step — changes nothing on the page the person went back to.
+ * out, its sheet up or its request on the way: the form is free at once, a request still on its
+ * way is cancelled, a sheet that answers afterwards is handed to nobody, and whatever the door
+ * answers a request it had already taken — an open session, a new step — changes nothing on the
+ * page the person went back to. The cancel stops a request the door has not answered; an answer
+ * the door had already sent when the person pressed (a session opened for the account they left)
+ * is not taken back by it.
  */
 const LoginComponent: React.FC = () => {
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors<LoginField>>({});
@@ -80,10 +83,11 @@ const LoginComponent: React.FC = () => {
   const arrival = arrivalMessage(useLocation().state);
   const message = returnedWith ?? arrival;
   /**
-   * The tap whose outcome the page is waiting for, while one is out. Leaving the step forgets it,
-   * and a tap that is no longer this one changes nothing when its sheet or its request ends.
+   * The tap whose outcome the page is waiting for, while one is out — held as the handle that
+   * cancels its request. Leaving the step cancels and forgets it, and a tap that is no longer this
+   * one changes nothing when its sheet or its request ends.
    */
-  const awaited = useRef<object | undefined>();
+  const awaited = useRef<AbortController | undefined>();
 
   const clearFieldError = (name: LoginField) =>
     setFieldErrors((errors) => (errors[name] ? { ...errors, [name]: undefined } : errors));
@@ -137,17 +141,18 @@ const LoginComponent: React.FC = () => {
       return;
     }
 
-    const tap = {};
+    const tap = new AbortController();
     awaited.current = tap;
     const stillAwaited = () => awaited.current === tap;
     setError(undefined);
     setBusy(true);
     let outcome: StepOutcome | 'failed';
     try {
-      outcome = await answerStep(step.secondStep, stillAwaited);
+      outcome = await answerStep(step.secondStep, stillAwaited, tap.signal);
     } catch {
       // The request itself failed (no network): whether the door saw it is not known, and the
-      // next tap finds out — a step the door has spent answers restart.
+      // next tap finds out — a step the door has spent answers restart. A request the way back
+      // cancelled ends here too, and the check below finds its tap no longer awaited.
       outcome = 'failed';
     }
     if (!stillAwaited()) {
@@ -174,9 +179,12 @@ const LoginComponent: React.FC = () => {
 
   /**
    * Back to the password form, with the line the step ended on — none when the person chose to
-   * leave. The form is free at once: a tap still out is forgotten, and so is its busy mark.
+   * leave. The form is free at once: a tap still out is forgotten, and so is its busy mark; and
+   * its request, if one is still on its way, is cancelled — the door is not left opening a session
+   * for the account the person just walked away from.
    */
   const leaveStep = (line?: string) => {
+    awaited.current?.abort();
     awaited.current = undefined;
     setStep(undefined);
     setError(undefined);
@@ -304,9 +312,14 @@ type StepOutcome = SignInSecondStepAnswer | Exclude<PasskeyCeremonyOutcome<unkno
  * Run one passkey step: the ceremony its kind names, on the device, and — when the sheet answered
  * — the door's answer to it. Resolves to how the ceremony ended when nothing was sent. A sheet
  * that answers once its tap is no longer `wanted` (the person left the step while it was up) is
- * handed to nobody: nothing is sent, and it reads as a sheet that came to nothing.
+ * handed to nobody: nothing is sent, and it reads as a sheet that came to nothing. The request to
+ * the door rides `cancel`, the tap's own signal: aborted, a request still out is cancelled.
  */
-async function answerStep(secondStep: SignInSecondStep, wanted: () => boolean): Promise<StepOutcome> {
+async function answerStep(
+  secondStep: SignInSecondStep,
+  wanted: () => boolean,
+  cancel: AbortSignal
+): Promise<StepOutcome> {
   const ceremonies = new PasskeyCeremonies();
   const api = new AuthApi();
   let handToTheDoor: () => Promise<SignInSecondStepAnswer>;
@@ -315,13 +328,13 @@ async function answerStep(secondStep: SignInSecondStep, wanted: () => boolean): 
     if (sheet.status !== 'done') {
       return sheet.status;
     }
-    handToTheDoor = () => api.answerPasskey(sheet.response);
+    handToTheDoor = () => api.answerPasskey(sheet.response, cancel);
   } else {
     const sheet = await ceremonies.register(secondStep.options);
     if (sheet.status !== 'done') {
       return sheet.status;
     }
-    handToTheDoor = () => api.answerAddPasskey(sheet.response);
+    handToTheDoor = () => api.answerAddPasskey(sheet.response, cancel);
   }
 
   return wanted() ? await handToTheDoor() : 'cancelled';
