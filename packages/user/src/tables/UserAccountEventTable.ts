@@ -10,9 +10,10 @@ import { USER_PERMISSIONS } from '../permissions';
  * services' system path — no generic door grants writes, so the trail cannot be edited from the
  * record surfaces.
  *
- * Also written when an account enrolls a passkey (user-server `UserPasskeys`): `field` is
- * 'passkeys' and `value` the act ('added'); enrolling is a person's own act, so `actor` equals
- * `target`.
+ * Also written for every act on an account's passkeys (user-server `UserPasskeys`): `field` is
+ * 'passkeys' and `value` the act — 'added' and 'removed' are a person's own acts, so `actor`
+ * equals `target`; 'reset' is an admin's act on another person's passkeys, so `actor` is the
+ * admin.
  *
  * The row carries no personal value: a name or an address written is not copied here (the user
  * row holds the current one, and an account purge must leave no address behind in a durable
@@ -26,7 +27,7 @@ export type UserAccountEvent = Record & {
   target: string;
   /** the cell that changed: 'name', 'email', 'emailVerified', a consumer's own column name, or 'passkeys' */
   field: string;
-  /** the written value for a non-personal cell ('true' / 'false' for a flag, 'added' for a passkey); null for name and email */
+  /** the written value for a non-personal cell ('true' / 'false' for a flag; 'added', 'removed' or 'reset' for passkeys); null for name and email */
   value?: string | null;
 };
 
