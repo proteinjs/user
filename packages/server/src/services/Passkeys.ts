@@ -1,4 +1,3 @@
-import { isDuplicateKeyError } from '@proteinjs/db';
 import { Logger } from '@proteinjs/logger';
 import { Service } from '@proteinjs/service';
 import {
@@ -86,7 +85,7 @@ export class Passkeys implements PasskeysService {
       throw new Error(Passkeys.CONFIRM_FIRST);
     }
 
-    const options = await this.verifier().registrationOptions(account, passkeys);
+    const options = await WebAuthnVerifier.forDeclaredRelyingParty().registrationOptions(account, passkeys);
     const token = await this.challenges.mintInSession(
       'webauthn_register',
       { userId: account.id, sessionId, purpose: 'add' },
@@ -108,30 +107,24 @@ export class Passkeys implements PasskeysService {
       throw new Error(Passkeys.STEP_OVER);
     }
 
-    const verdict = await this.verifier().verifyRegistration(registration, claimed.challenge);
+    const verifier = WebAuthnVerifier.forDeclaredRelyingParty();
+    const verdict = await verifier.verifyRegistration(registration, claimed.challenge);
     if (!verdict.verified) {
       this.logger.info({ message: 'Passkey add refused', obj: { account: account.id, reason: verdict.reason } });
       throw new Error('That passkey could not be added. Start again.');
     }
 
-    let passkey: UserPasskey | undefined;
-    try {
-      // A step begun with no confirmation adds a FIRST passkey only: if the account has gained one
-      // since, it adds nothing, and the person begins again — with a confirmation this time.
-      passkey = claimed.confirmed
-        ? await this.passkeys.insert(account.id, verdict.credential)
-        : await this.passkeys.insertFirst(account.id, verdict.credential);
-    } catch (error) {
-      // A credential id is unique across accounts: one already enrolled, here or elsewhere, adds nothing.
-      if (!isDuplicateKeyError(error)) {
-        throw error;
-      }
-      throw new Error('That passkey is already added.');
-    }
-    if (!passkey) {
-      throw new Error(Passkeys.STEP_OVER);
+    // A step begun with no confirmation adds a FIRST passkey only: if the account has gained one
+    // since, it adds nothing, and the person begins again — with a confirmation this time. A
+    // credential that is already a passkey, here or on another account, adds nothing either.
+    const enrollment = claimed.confirmed
+      ? await this.passkeys.insert(account.id, verdict.credential)
+      : await this.passkeys.insertFirst(account.id, verdict.credential);
+    if ('refused' in enrollment) {
+      throw new Error(enrollment.refused === 'taken' ? 'That passkey is already added.' : Passkeys.STEP_OVER);
     }
 
+    const { passkey } = enrollment;
     this.logger.info({ message: 'Passkey added', obj: { account: account.id, passkey: passkey.id } });
     return this.view(passkey);
   }
@@ -178,11 +171,6 @@ export class Passkeys implements PasskeysService {
     if (!this.gate.mustUse(account)) {
       throw new Error('Passkeys are for accounts that sign in with one.');
     }
-  }
-
-  /** The verifier for the declared relying party, whose values are the gate's to hand out. */
-  private verifier(): WebAuthnVerifier {
-    return new WebAuthnVerifier(this.gate.relyingParty());
   }
 
   /** A passkey as its owner's list shows it: no key, no credential id. */

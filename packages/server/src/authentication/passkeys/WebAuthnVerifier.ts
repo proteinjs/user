@@ -12,6 +12,7 @@ import type {
 } from '@simplewebauthn/server';
 import { isoBase64URL, isoUint8Array } from '@simplewebauthn/server/helpers';
 import { User, UserPasskey } from '@proteinjs/user';
+import { SecondFactorGate } from '../SecondFactorGate';
 import { RelyingParty } from './PasskeyRelyingParty';
 
 /** The options a browser's `navigator.credentials.create` takes, as JSON. */
@@ -65,6 +66,16 @@ export class WebAuthnVerifier {
   private static readonly UNREADABLE = 'the response could not be verified';
 
   constructor(private readonly relyingParty: RelyingParty) {}
+
+  /**
+   * The verifier for the relying party this deployment declares — made here and nowhere else, for
+   * every ceremony of the package. The declaration's values are the gate's to hand out
+   * (`SecondFactorGate.relyingParty`), which refuses where none is declared: no account must use a
+   * passkey there, so no ceremony is ever begun.
+   */
+  static forDeclaredRelyingParty(): WebAuthnVerifier {
+    return new WebAuthnVerifier(new SecondFactorGate().relyingParty());
+  }
 
   /** The options for registering a passkey to `account`; the account's own passkeys are excluded, so one authenticator is not enrolled twice. */
   async registrationOptions(

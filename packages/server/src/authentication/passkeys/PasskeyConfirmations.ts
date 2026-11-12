@@ -1,7 +1,6 @@
 import { Logger } from '@proteinjs/logger';
 import { RequestDigests } from '@proteinjs/util-node';
 import { PasskeyConfirmationPurpose, PasskeyConfirmationStep, User } from '@proteinjs/user';
-import { SecondFactorGate } from '../SecondFactorGate';
 import { AuthChallenges, SessionChallengeHolder } from './AuthChallenges';
 import { UserPasskeys } from './UserPasskeys';
 import { WebAuthnVerifier } from './WebAuthnVerifier';
@@ -15,9 +14,10 @@ import { WebAuthnVerifier } from './WebAuthnVerifier';
  * the act (`AuthChallenges.mintInSession`; for a removal or a reset the challenge also names the
  * passkey or the person), and answers the options one of the account's passkeys signs. `confirms`
  * claims that challenge — single use, five minutes, answered only to the same account in the same
- * session for the same act — reads the passkey the assertion names by the account AND the
- * credential id, and verifies the assertion against the declared relying party with user
- * verification required (`WebAuthnVerifier`). So a confirmation made for one act confirms no
+ * session for the same act — and puts the assertion to the passkey rows' owner
+ * (`UserPasskeys.asserted`: the passkey read by the account AND the credential id the assertion
+ * names, verified against the declared relying party with user verification required, its use
+ * recorded), as the sign-in's passkey step does. So a confirmation made for one act confirms no
  * other, one made in another session or by another account confirms nothing, and one presented
  * twice confirms once. A refusal is one line naming the account by digest and the reason from the
  * verifier's closed list; the caller answers the person.
@@ -44,7 +44,7 @@ export class PasskeyConfirmations {
       return undefined;
     }
 
-    const options = await this.verifier().authenticationOptions(passkeys);
+    const options = await WebAuthnVerifier.forDeclaredRelyingParty().authenticationOptions(passkeys);
     const token = await this.challenges.mintInSession('webauthn_login', holder, options.challenge, { subject });
     return { token, options };
   }
@@ -70,18 +70,11 @@ export class PasskeyConfirmations {
       return this.refused(account, purpose, 'no open confirmation of this act in this session');
     }
 
-    const credentialId = WebAuthnVerifier.credentialIdOf(assertion);
-    const passkey = credentialId ? await this.passkeys.one(account.id, credentialId) : undefined;
-    if (!passkey) {
-      return this.refused(account, purpose, 'the response names no passkey of this account');
+    const asserted = await this.passkeys.asserted(account.id, assertion, claimed.challenge);
+    if ('refused' in asserted) {
+      return this.refused(account, purpose, asserted.refused);
     }
 
-    const verdict = await this.verifier().verifyAuthentication(assertion, claimed.challenge, passkey);
-    if (!verdict.verified) {
-      return this.refused(account, purpose, verdict.reason);
-    }
-
-    await this.passkeys.used(passkey, verdict.use);
     return true;
   }
 
@@ -117,10 +110,5 @@ export class PasskeyConfirmations {
     }
 
     return subject;
-  }
-
-  /** The verifier for the declared relying party (`SecondFactorGate.relyingParty` refuses where none is declared). */
-  private verifier(): WebAuthnVerifier {
-    return new WebAuthnVerifier(new SecondFactorGate().relyingParty());
   }
 }

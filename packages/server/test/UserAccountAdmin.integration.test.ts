@@ -504,6 +504,18 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       expect(added.id).toBe(rows[1].id);
       // The owner's list shows them oldest first.
       expect((await passkeys().list()).passkeys.map((passkey) => passkey.id)).toEqual(rows.map((row) => row.id));
+      // A credential that is already a passkey adds nothing, and is refused in the service's own
+      // words: the table's refusal, which names its key, never reaches the caller.
+      const taken = await passkeys().beginAdd(await confirm(first, { act: 'add' }));
+      const refusal = await passkeys()
+        .finishAdd(taken.token, second.register(taken.options, ORIGIN))
+        .then(
+          () => 'added',
+          (error: Error) => error.message
+        );
+      expect(refusal).not.toBe('added');
+      expect(refusal).not.toMatch(/user_passkey|unique|index/i);
+      expect(await passkeyRows(owner)).toHaveLength(2);
       expect(await passkeyEvents(owner.id)).toEqual([
         { actor: owner.id, field: 'passkeys', value: 'added' },
         { actor: owner.id, field: 'passkeys', value: 'added' },
@@ -719,9 +731,11 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
           : insert.call(this, table, ...rest);
       });
       try {
+        // The failure itself reaches the caller: only a credential that is already a passkey is
+        // answered as a refusal in the service's words.
         await expect(
           passkeys().finishAdd(step.token, new SoftwareAuthenticator().register(step.options, ORIGIN))
-        ).rejects.toThrow();
+        ).rejects.toThrow('the audit row could not be written');
       } finally {
         auditFails.mockRestore();
       }

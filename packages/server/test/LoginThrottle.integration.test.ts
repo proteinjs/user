@@ -974,7 +974,10 @@ describe('login route: the passkey step of an account that holds an administrati
       auditFails.mockRestore();
     }
 
-    expect(failed.sent).not.toEqual({});
+    // A write the database refuses is a failure, not one of the step's answers: the door throws
+    // it — only a credential that is already a passkey is answered as a refusal.
+    expect((failed.threw as Error | undefined)?.message).toBe('the audit row could not be written');
+    expect(failed.sent).toBeUndefined();
     expect(failed.signedInAs).toBeUndefined();
     expect(failed.saved).toEqual([]);
     expect(await passkeysOf(admin)).toEqual([]);

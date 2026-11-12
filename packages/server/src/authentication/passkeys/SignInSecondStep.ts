@@ -1,8 +1,8 @@
 import moment, { Moment } from 'moment';
-import { getDbAsSystem, isDuplicateKeyError } from '@proteinjs/db';
-import { User, UserPasskey, routes, tables } from '@proteinjs/user';
+import { getDbAsSystem } from '@proteinjs/db';
+import { User, routes, tables } from '@proteinjs/user';
 import { AccountStanding } from '../AccountStanding';
-import { SecondFactorGate, SecondFactorRecord } from '../SecondFactorGate';
+import { SecondFactorRecord } from '../SecondFactorGate';
 import { AuthChallenges, ClaimedAuthChallenge } from './AuthChallenges';
 import { UserPasskeys } from './UserPasskeys';
 import { PasskeyAuthenticationOptions, PasskeyRegistrationOptions, WebAuthnVerifier } from './WebAuthnVerifier';
@@ -41,11 +41,12 @@ export type SignInSecondStepOutcome =
  * BETWEEN THE TWO REQUESTS nothing is trusted but the cookie's token: it claims a challenge row
  * (`AuthChallenges` — single use, five minutes, of the body's own kind and purpose), and the row
  * names the account. The body carries no address. Then, in order: the account is loaded and its
- * standing re-asked (`AccountStanding` — the password step's own rule); for an assertion the
- * passkey row is read by the account AND the credential id the response names (`UserPasskeys`);
- * the response is verified against the declared relying party with user verification required
- * (`WebAuthnVerifier`); and what passed is recorded — the passkey's use, or the account's first
- * passkey in one transaction that re-checks it has none.
+ * standing re-asked (`AccountStanding` — the password step's own rule); an assertion is put to
+ * the passkey rows' owner (`UserPasskeys.asserted`: the row read by the account AND the credential
+ * id the response names, the response verified against the declared relying party with user
+ * verification required, the passkey's use recorded); a registration is verified the same way
+ * (`WebAuthnVerifier`) and enrolls the account's first passkey in one transaction that re-checks
+ * it has none.
  *
  * A REFUSED ASSERTION is answered with a new challenge — at most twice, and only inside the five
  * minutes that began when the password was proven (a retry's challenge lapses when the first one
@@ -141,20 +142,13 @@ export class SignInSecondStep {
     claimed: ClaimedAuthChallenge,
     response: unknown
   ): Promise<SignInSecondStepOutcome> {
-    const credentialId = WebAuthnVerifier.credentialIdOf(response);
-    const passkey = credentialId ? await this.passkeys.one(account.id, credentialId) : undefined;
-    if (!passkey) {
-      return await this.refused(account, claimed, 'the response names no passkey of this account');
+    const assertion = await this.passkeys.asserted(account.id, response, claimed.payload.challenge);
+    if ('refused' in assertion) {
+      return await this.refused(account, claimed, assertion.refused);
     }
 
-    const verdict = await this.verifier().verifyAuthentication(response, claimed.payload.challenge, passkey);
-    if (!verdict.verified) {
-      return await this.refused(account, claimed, verdict.reason);
-    }
-
-    await this.passkeys.used(passkey, verdict.use);
     this.clearCookie();
-    return { status: 'passed', account, secondFactor: this.record(passkey.id) };
+    return { status: 'passed', account, secondFactor: this.record(assertion.passkey.id) };
   }
 
   /** Body 3: the registration of the account's first passkey. */
@@ -163,28 +157,23 @@ export class SignInSecondStep {
     claimed: ClaimedAuthChallenge,
     response: unknown
   ): Promise<SignInSecondStepOutcome> {
-    const verdict = await this.verifier().verifyRegistration(response, claimed.payload.challenge);
+    const verifier = WebAuthnVerifier.forDeclaredRelyingParty();
+    const verdict = await verifier.verifyRegistration(response, claimed.payload.challenge);
     if (!verdict.verified) {
       return this.restart(account, verdict.reason, SignInSecondStep.REFUSED);
     }
 
-    let passkey: UserPasskey | undefined;
-    try {
-      passkey = await this.passkeys.insertFirst(account.id, verdict.credential);
-    } catch (error) {
-      // A credential id is unique across accounts: one already enrolled, here or on another
-      // account, enrolls nothing. Any other failure is the door's to answer as any failure is.
-      if (!isDuplicateKeyError(error)) {
-        throw error;
-      }
-      return this.restart(account, 'the credential is already enrolled', SignInSecondStep.REFUSED);
-    }
-    if (!passkey) {
-      return this.restart(account, 'the account already has a passkey', SignInSecondStep.REFUSED);
+    // A credential that is already a passkey, here or on another account, enrolls nothing; nor
+    // does a first enrollment for an account that has gained a passkey since the step began.
+    const enrollment = await this.passkeys.insertFirst(account.id, verdict.credential);
+    if ('refused' in enrollment) {
+      const reason =
+        enrollment.refused === 'taken' ? 'the credential is already enrolled' : 'the account already has a passkey';
+      return this.restart(account, reason, SignInSecondStep.REFUSED);
     }
 
     this.clearCookie();
-    return { status: 'passed', account, secondFactor: this.record(passkey.id) };
+    return { status: 'passed', account, secondFactor: this.record(enrollment.passkey.id) };
   }
 
   /**
@@ -223,10 +212,11 @@ export class SignInSecondStep {
     attempt: number
   ): Promise<SignInSecondStepAnswer> {
     const passkeys = await this.passkeys.forAccount(account.id);
+    const verifier = WebAuthnVerifier.forDeclaredRelyingParty();
     const answer: SignInSecondStepAnswer =
       passkeys.length > 0
-        ? { kind: 'passkey', options: await this.verifier().authenticationOptions(passkeys) }
-        : { kind: 'addPasskey', options: await this.verifier().registrationOptions(account, passkeys) };
+        ? { kind: 'passkey', options: await verifier.authenticationOptions(passkeys) }
+        : { kind: 'addPasskey', options: await verifier.registrationOptions(account, passkeys) };
     const token = await this.challenges.mint({
       kind: answer.kind === 'passkey' ? 'webauthn_login' : 'webauthn_register',
       userId: account.id,
@@ -248,14 +238,6 @@ export class SignInSecondStep {
   /** The session's record of a passkey that just proved the factor. */
   private record(passkeyId: string): SecondFactorRecord {
     return { method: 'passkey', passkeyId, at: moment().toISOString() };
-  }
-
-  /**
-   * The verifier for the declared relying party, whose values are the gate's to hand out
-   * (`SecondFactorGate.relyingParty`); a deployment that declares none never reaches a second step.
-   */
-  private verifier(): WebAuthnVerifier {
-    return new WebAuthnVerifier(new SecondFactorGate().relyingParty());
   }
 
   private clearCookie(): void {
