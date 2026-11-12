@@ -28,6 +28,17 @@ export type SignInSecondStepAnswer =
   | { status: 'restart'; line: string };
 
 /**
+ * What one answer of the sign-in door says, as its one reader reads it (`AuthApi.doorSays`):
+ * - `open` — the session is open;
+ * - `step` — a passkey step the page can run, with the door's line when one came beside it;
+ * - `neither` — anything else, with the door's line when the answer carries one.
+ */
+type SignInDoorAnswer =
+  | { says: 'open' }
+  | { says: 'step'; secondStep: SignInSecondStep; line?: string }
+  | { says: 'neither'; line?: string };
+
+/**
  * The auth flows' server calls, in one place so the pages hold presentation only.
  * Methods resolve on success and throw an `Error` whose message is user-readable: the door's own
  * line when its answer carries one (`{ error }`, whatever the status — a refusal of the new
@@ -42,6 +53,13 @@ export class AuthApi {
    * over HTTP/2 no status text either, so it is named here rather than passed through.
    */
   static readonly TOO_MANY_ATTEMPTS = 'Too many attempts. Try again in a few minutes.';
+
+  /**
+   * What a sign-in reads as when the door answered a 200 that says neither that the session is
+   * open nor what to do next, and carries no line of its own — the door's own words for a sign-in
+   * that failed through nothing the person did (@proteinjs/user-server `routes/login`).
+   */
+  static readonly LOGIN_FAILED = 'Unable to log in right now. Please try again.';
 
   /**
    * What an answer to the passkey step reads as when the door sent no line of its own — a step
@@ -80,19 +98,24 @@ export class AuthApi {
    * The password step. Resolves with nothing when the session is open, and with the passkey step
    * when the door answers one in its place — no session exists then, and the page runs the step
    * (`answerPasskey`, `answerAddPasskey`).
+   *
+   * The door's answer is read by the one reader both steps share (`doorSays`), closed: an answer
+   * that is neither is a sign-in that failed, and throws — the door's own line when the answer
+   * carries one, else words of this class ({@link LOGIN_FAILED} for a 200, the status for
+   * anything else). Never the words of an exception met while reading it.
    */
   async login(email: string, password: string): Promise<SignInSecondStep | undefined> {
     const response = await this.post({ email, password });
-    if (response.status != 200) {
-      throw new Error(await this.reason(response, `Failed to log in, error: ${response.statusText}`));
+    const answer = await this.doorSays(response);
+    if (answer.says === 'open') {
+      return undefined;
+    }
+    if (answer.says === 'step') {
+      return answer.secondStep;
     }
 
-    const body = await response.json();
-    if (body.error) {
-      throw new Error(body.error);
-    }
-
-    return this.secondStepOf(body);
+    const generic = response.status === 200 ? AuthApi.LOGIN_FAILED : `Failed to log in, error: ${response.statusText}`;
+    throw new Error(answer.line ?? generic);
   }
 
   /** Answer the passkey step with the assertion the device's sheet gave. */
@@ -167,13 +190,14 @@ export class AuthApi {
    * the request and names its challenge; the body carries no address. The door answers one of
    * three shapes on a 200: `{}`, `{ error, secondStep }` or `{ error, restart: true }`.
    *
-   * It is read closed. The session is open (`done`) on the door's own empty answer and on nothing
-   * else; an answer that carries a step the page can run is that step (`again`); and everything
-   * else is the end of the step (`restart`) — the door's restart, a line with nothing beside it, a
-   * 200 in no shape the door sends (nothing, a list, a step of a kind this page cannot run), the
-   * limit in front of the door, a step that failed on the server (answered by no JSON), a proxy's
-   * page. A request that never got an answer at all (no network) is not an answer: it throws, as
-   * every other call here does, and the page says so.
+   * It is read by the one reader both steps share (`doorSays`), closed. The session is open
+   * (`done`) on the door's own empty answer and on nothing else; an answer that carries a step the
+   * page can run is that step (`again`); and everything else is the end of the step (`restart`) —
+   * the door's restart, a line with nothing beside it, a 200 in no shape the door sends (nothing,
+   * a list, a step of a kind this page cannot run), the limit in front of the door, a step that
+   * failed on the server (answered by no JSON), a proxy's page. A request that never got an answer
+   * at all (no network) is not an answer: it throws, as every other call here does, and the page
+   * says so.
    */
   private async answerSecondStep(body: object): Promise<SignInSecondStepAnswer> {
     let response: Response;
@@ -185,26 +209,46 @@ export class AuthApi {
       }
       throw error;
     }
-    if (response.status !== 200) {
-      return { status: 'restart', line: await this.reason(response, AuthApi.STEP_OVER) };
+
+    const answer = await this.doorSays(response);
+    if (answer.says === 'open') {
+      return { status: 'done' };
+    }
+    if (answer.says === 'step') {
+      return { status: 'again', line: answer.line ?? AuthApi.STEP_OVER, secondStep: answer.secondStep };
     }
 
+    return { status: 'restart', line: answer.line ?? AuthApi.STEP_OVER };
+  }
+
+  /**
+   * The ONE reader of what an answer of the sign-in door says — the password step's and the
+   * passkey step's alike, so "the session is open" has one meaning in this class. It is read
+   * closed: the session is open on a 200 whose body is the door's own empty answer, `{}`, and on
+   * nothing else; a 200 that carries a step the page can run is that step; and everything else is
+   * neither — an answer that is not a 200, whatever its body; a body that is no JSON (a proxy's
+   * page); nothing, a list, text; a step of a kind this page cannot run; an answer with anything
+   * else in it. `line` is the door's own sentence when the answer carries one. What an answer with
+   * none reads as is its asker's to say, in words of its own: nothing met while reading the answer
+   * is thrown from here, so no exception's words reach the person.
+   */
+  private async doorSays(response: Response): Promise<SignInDoorAnswer> {
     let answer: any;
     try {
       answer = await response.json();
     } catch {
-      return { status: 'restart', line: AuthApi.STEP_OVER };
+      return { says: 'neither' };
     }
-    const line = typeof answer?.error === 'string' && answer.error.trim() ? answer.error : undefined;
+    const line = this.lineOf(answer);
+    if (response.status !== 200) {
+      return { says: 'neither', line };
+    }
     const secondStep = this.secondStepOf(answer);
     if (secondStep) {
-      return { status: 'again', line: line ?? AuthApi.STEP_OVER, secondStep };
-    }
-    if (this.isEmptyAnswer(answer)) {
-      return { status: 'done' };
+      return { says: 'step', secondStep, line };
     }
 
-    return { status: 'restart', line: line ?? AuthApi.STEP_OVER };
+    return this.isEmptyAnswer(answer) ? { says: 'open' } : { says: 'neither', line };
   }
 
   /** Whether `answer` is the door's own empty answer, `{}` — the one shape that says the session is open. */
@@ -250,10 +294,15 @@ export class AuthApi {
    */
   private async reason(response: { json(): Promise<any> }, generic: string): Promise<string> {
     try {
-      const error = (await response.json())?.error;
-      return typeof error === 'string' && error.trim() ? error : generic;
+      return this.lineOf(await response.json()) ?? generic;
     } catch {
       return generic;
     }
+  }
+
+  /** The door's own sentence in an answer's body, when it carries one that is not blank. */
+  private lineOf(answer: any): string | undefined {
+    const error = answer?.error;
+    return typeof error === 'string' && error.trim() ? error : undefined;
   }
 }

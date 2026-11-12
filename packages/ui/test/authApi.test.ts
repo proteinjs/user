@@ -61,7 +61,9 @@ describe('AuthApi.login', () => {
  * device's sheet answered to the same door, whose answer is one of three: the session is open, a
  * new step with a line, or the step is over with a line. Anything else the step's answer could be
  * — the limit in front of the door, a step that failed on the server, a 200 that is not the door's
- * own empty answer — means it is over: the session is open on `{}` and on nothing else.
+ * own empty answer — means it is over: the session is open on `{}` and on nothing else. The
+ * password step reads the door the same way: what is no open session and no step the page can run
+ * is a sign-in that failed.
  */
 describe('AuthApi — the passkey step of a sign-in', () => {
   const STEP = { kind: 'passkey', options: { challenge: 'the-first-challenge', rpId: 'example.test' } };
@@ -71,6 +73,25 @@ describe('AuthApi — the passkey step of a sign-in', () => {
   const registration = { id: 'a-new-credential', type: 'public-key' } as never;
   const posted = (fetchMock: jest.Mock) => fetchMock.mock.calls.map(([path, init]) => [path, JSON.parse(init.body)]);
 
+  /** The door answers 200 with exactly `body` — whatever it is, nothing included. */
+  const doorAnswers = (body: unknown) => {
+    (global as any).fetch = jest.fn().mockResolvedValue({ status: 200, statusText: 'OK', json: async () => body });
+  };
+
+  /** A 200 in no shape the door sends: not its empty answer, not a step the page can run, and no line of the door's. */
+  const STRANGERS: unknown[] = [
+    null,
+    [],
+    [{}],
+    'ok',
+    true,
+    { secondStep: { kind: 'somethingElse', options: {} } },
+    { secondStep: { kind: 'passkey' } },
+    { restart: false },
+    { ok: true },
+    { error: '   ' },
+  ];
+
   it('login resolves with the step when the door answers one, and with nothing when the session is open', async () => {
     mockFetch({ body: { secondStep: STEP } });
     await expect(new AuthApi().login('ada@example.com', 'hunter22')).resolves.toEqual(STEP);
@@ -78,8 +99,30 @@ describe('AuthApi — the passkey step of a sign-in', () => {
     await expect(new AuthApi().login('ada@example.com', 'hunter22')).resolves.toEqual(ADD);
     mockFetch({ body: {} });
     await expect(new AuthApi().login('ada@example.com', 'hunter22')).resolves.toBeUndefined();
-    // A step in no shape the page can run is no step.
-    mockFetch({ body: { secondStep: { kind: 'somethingElse', options: {} } } });
+  });
+
+  // This case replaces the assertion "a step in no shape the page can run is no step": that one
+  // resolved with nothing, which the page reads as an open session.
+  it("the password step reads the door's answer closed, as the passkey step does: a 200 in no shape the door sends — nothing, a list, text, a step of a kind the page cannot run, an answer with something else in it, a body that is no JSON — is a sign-in that failed, told in one line of the client's own and never in an exception's words; none is an open session, and none hands the page a step", async () => {
+    const signIn = () =>
+      new AuthApi().login('ada@example.com', 'hunter22').then(
+        (step) => ({ resolvedWith: step ?? 'an open session' }),
+        (failure: Error) => ({ told: failure.message })
+      );
+    const strangeAnswers: Array<() => void> = STRANGERS.map((stranger) => () => doorAnswers(stranger));
+    strangeAnswers.push(() => mockFetch({ notJson: true }));
+    const told: string[] = [];
+    for (let nth = 0; nth < strangeAnswers.length; nth++) {
+      strangeAnswers[nth]();
+      const outcome = await signIn();
+      expect([nth, outcome]).toEqual([nth, { told: expect.any(String) }]);
+      told.push((outcome as { told: string }).told);
+    }
+    // One line for every one of them: an exception's words differ from one answer to the next.
+    expect(told.filter((line) => line !== told[0])).toEqual([]);
+    expect(told[0].trim()).toBeTruthy();
+
+    doorAnswers({});
     await expect(new AuthApi().login('ada@example.com', 'hunter22')).resolves.toBeUndefined();
   });
 
@@ -134,11 +177,6 @@ describe('AuthApi — the passkey step of a sign-in', () => {
     }
   });
 
-  /** The door answers 200 with exactly `body` — whatever it is, nothing included. */
-  const doorAnswers = (body: unknown) => {
-    (global as any).fetch = jest.fn().mockResolvedValue({ status: 200, statusText: 'OK', json: async () => body });
-  };
-
   it("a 200 that carries the door's line and nothing beside it — no step, no restart — is the end of the step with that line, never an open session", async () => {
     doorAnswers({ error: 'the door’s line, alone' });
     await expect(new AuthApi().answerPasskey(assertion)).resolves.toEqual({
@@ -152,19 +190,7 @@ describe('AuthApi — the passkey step of a sign-in', () => {
   });
 
   it("a 200 in no shape the door sends is the end of the step — nothing, a list, text, a step of a kind the page cannot run, an answer with something else in it: each resolves as restart, and only the door's own empty answer as an open session", async () => {
-    const strangers: unknown[] = [
-      null,
-      [],
-      [{}],
-      'ok',
-      true,
-      { secondStep: { kind: 'somethingElse', options: {} } },
-      { secondStep: { kind: 'passkey' } },
-      { restart: false },
-      { ok: true },
-      { error: '   ' },
-    ];
-    for (const stranger of strangers) {
+    for (const stranger of STRANGERS) {
       doorAnswers(stranger);
       expect([stranger, await new AuthApi().answerPasskey(assertion)]).toEqual([
         stranger,
