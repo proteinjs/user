@@ -58,7 +58,10 @@ export function AuthLayout(props: AuthLayoutProps) {
           {title}
         </Typography>
         {subtitle && (
-          <Typography sx={{ fontSize: '0.875rem', lineHeight: 1.45, color: 'text.secondary', mb: 4 }}>
+          // A long word (an address) wraps whole inside the column, never past its edge.
+          <Typography
+            sx={{ fontSize: '0.875rem', lineHeight: 1.45, color: 'text.secondary', mb: 4, overflowWrap: 'anywhere' }}
+          >
             {subtitle}
           </Typography>
         )}

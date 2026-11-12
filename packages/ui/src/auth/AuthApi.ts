@@ -1,4 +1,31 @@
-import { UserSignup, routes } from '@proteinjs/user';
+import {
+  PasskeyAssertion,
+  PasskeyCreationOptions,
+  PasskeyRegistration,
+  PasskeyRequestOptions,
+  UserSignup,
+  routes,
+} from '@proteinjs/user';
+
+/**
+ * The passkey step the sign-in door answers IN PLACE OF a session, for an account that must use
+ * one: `passkey` — the account has a passkey, and one of them answers `options`; `addPasskey` —
+ * it has none yet, and `options` creates its first.
+ */
+export type SignInSecondStep =
+  | { kind: 'passkey'; options: PasskeyRequestOptions }
+  | { kind: 'addPasskey'; options: PasskeyCreationOptions };
+
+/**
+ * How an answer to the passkey step ended, as the door said it:
+ * - `done` — the session is open;
+ * - `again` — refused, with a new step to answer (`secondStep`) and the door's line for the person;
+ * - `restart` — the step is over, with the door's line: back to the password.
+ */
+export type SignInSecondStepAnswer =
+  | { status: 'done' }
+  | { status: 'again'; line: string; secondStep: SignInSecondStep }
+  | { status: 'restart'; line: string };
 
 /**
  * The auth flows' server calls, in one place so the pages hold presentation only.
@@ -15,6 +42,12 @@ export class AuthApi {
    * over HTTP/2 no status text either, so it is named here rather than passed through.
    */
   static readonly TOO_MANY_ATTEMPTS = 'Too many attempts. Try again in a few minutes.';
+
+  /**
+   * What an answer to the passkey step reads as when the door sent no line of its own — a step
+   * that failed on the server is answered by no JSON at all. The step is over either way.
+   */
+  static readonly STEP_OVER = 'That didn’t work. Log in again.';
 
   /** Whether `error` is the limit's refusal ({@link TOO_MANY_ATTEMPTS}) — a page that shows no form line asks this. */
   static isTooManyAttempts(error: unknown): boolean {
@@ -43,13 +76,13 @@ export class AuthApi {
     }
   }
 
-  async login(email: string, password: string): Promise<void> {
-    const response = await this.send(routes.login.path, {
-      method: routes.login.method,
-      body: JSON.stringify({ email, password }),
-      redirect: 'follow',
-      headers: { 'Content-Type': 'application/json' },
-    });
+  /**
+   * The password step. Resolves with nothing when the session is open, and with the passkey step
+   * when the door answers one in its place — no session exists then, and the page runs the step
+   * (`answerPasskey`, `answerAddPasskey`).
+   */
+  async login(email: string, password: string): Promise<SignInSecondStep | undefined> {
+    const response = await this.post({ email, password });
     if (response.status != 200) {
       throw new Error(await this.reason(response, `Failed to log in, error: ${response.statusText}`));
     }
@@ -58,6 +91,18 @@ export class AuthApi {
     if (body.error) {
       throw new Error(body.error);
     }
+
+    return this.secondStepOf(body);
+  }
+
+  /** Answer the passkey step with the assertion the device's sheet gave. */
+  async answerPasskey(assertion: PasskeyAssertion): Promise<SignInSecondStepAnswer> {
+    return await this.answerSecondStep({ passkey: assertion });
+  }
+
+  /** Answer the add step with the registration of the account's first passkey. */
+  async answerAddPasskey(registration: PasskeyRegistration): Promise<SignInSecondStepAnswer> {
+    return await this.answerSecondStep({ addPasskey: registration });
   }
 
   /**
@@ -115,6 +160,62 @@ export class AuthApi {
     if (response.status !== 200) {
       throw new Error(await this.reason(response, 'Failed to reset password'));
     }
+  }
+
+  /**
+   * One answer to the passkey step, posted to the sign-in door itself — the step's cookie rides
+   * the request and names its challenge; the body carries no address. The door answers one of
+   * three shapes on a 200: `{}`, `{ error, secondStep }` or `{ error, restart: true }`. Anything
+   * else — the limit in front of the door, a step that failed on the server (answered by no JSON),
+   * a proxy's page — means the step is over, and reads as restart.
+   */
+  private async answerSecondStep(body: object): Promise<SignInSecondStepAnswer> {
+    let response: Response;
+    try {
+      response = await this.post(body);
+    } catch (error: unknown) {
+      if (AuthApi.isTooManyAttempts(error)) {
+        return { status: 'restart', line: AuthApi.TOO_MANY_ATTEMPTS };
+      }
+      throw error;
+    }
+    if (response.status !== 200) {
+      return { status: 'restart', line: await this.reason(response, AuthApi.STEP_OVER) };
+    }
+
+    let answer: any;
+    try {
+      answer = await response.json();
+    } catch {
+      return { status: 'restart', line: AuthApi.STEP_OVER };
+    }
+    const line = typeof answer?.error === 'string' && answer.error.trim() ? answer.error : undefined;
+    const secondStep = this.secondStepOf(answer);
+    if (secondStep) {
+      return { status: 'again', line: line ?? AuthApi.STEP_OVER, secondStep };
+    }
+    if (line || answer?.restart) {
+      return { status: 'restart', line: line ?? AuthApi.STEP_OVER };
+    }
+
+    return { status: 'done' };
+  }
+
+  /** The passkey step an answer of the door carries, when it carries one in the step's shape. */
+  private secondStepOf(answer: any): SignInSecondStep | undefined {
+    const step = answer?.secondStep;
+    const known = step?.kind === 'passkey' || step?.kind === 'addPasskey';
+    return known && typeof step.options === 'object' && step.options !== null ? step : undefined;
+  }
+
+  /** One request at the sign-in door. */
+  private async post(body: object): Promise<Response> {
+    return await this.send(routes.login.path, {
+      method: routes.login.method,
+      body: JSON.stringify(body),
+      redirect: 'follow',
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 
   /**

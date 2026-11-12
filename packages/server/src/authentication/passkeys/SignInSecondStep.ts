@@ -65,10 +65,13 @@ export class SignInSecondStep {
   /** How many assertions one password buys: the first, and one more for each of two refusals. */
   private static readonly ATTEMPTS = 3;
 
-  /** What the person is told. The page may say it in its own words; these are the door's. */
+  /**
+   * What the person is told — the door's lines, which the login page shows as they arrive, in the
+   * page's own verb ("Log in").
+   */
   private static readonly TRY_AGAIN = 'That didn’t work. Try again.';
-  private static readonly REFUSED = 'That didn’t work. Sign in again.';
-  private static readonly TOO_LONG = 'That took too long. Sign in again.';
+  private static readonly REFUSED = 'That didn’t work. Log in again.';
+  private static readonly TOO_LONG = 'That took too long. Log in again.';
 
   private readonly challenges = new AuthChallenges();
   private readonly passkeys = new UserPasskeys();

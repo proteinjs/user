@@ -18,6 +18,11 @@
  *
  * Assertions are OUTCOMES on `window.location`: `replace('/')` was called, and `href` was never
  * assigned (an href assignment is the push this bug rests on).
+ *
+ * THE PASSKEY STEP rides the same page and the same landing (the last describe): for an account
+ * that must use a passkey the door answers the password with a step, and the page changes in
+ * place — nobody is in the app until the step passes. The device's sheet is a stand-in here
+ * (`PasskeyCeremonies`, stubbed at the package boundary): no browser authenticator runs.
  */
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
@@ -36,9 +41,19 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const initializeSignup = jest.fn<Promise<InitializeSignupResponse>, [string | undefined]>();
 
+/** The device's passkey sheet, as the page reaches it: what each ceremony came to is set per case. */
+const sheet = {
+  supported: jest.fn<Promise<boolean>, []>(),
+  authenticate: jest.fn<Promise<unknown>, [unknown]>(),
+  register: jest.fn<Promise<unknown>, [unknown]>(),
+};
+
 jest.mock('@proteinjs/user', () => ({
   ...jest.requireActual('@proteinjs/user'),
   getSignupService: () => ({ initializeSignup }),
+  PasskeyCeremonies: function PasskeyCeremonies() {
+    return sheet;
+  },
 }));
 
 const EMAIL = 'ada@example.com';
@@ -72,6 +87,8 @@ function installLocationSpy() {
 beforeEach(() => {
   realLocation = window.location;
   initializeSignup.mockReset();
+  Object.values(sheet).forEach((ceremony) => ceremony.mockReset());
+  sheet.supported.mockResolvedValue(true);
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -133,6 +150,173 @@ describe('signing in lands in the app by replacing the login page', () => {
     expect(locationSpy.replace).toHaveBeenCalledWith('/');
     // An href assignment would keep /login one entry behind home (the bug).
     expect(locationSpy.hrefSets).toEqual([]);
+  });
+});
+
+describe('signing in with a passkey step: the page changes in place, and lands in the app only when the step passes', () => {
+  const STEP = { kind: 'passkey', options: { challenge: 'the-first-challenge' } };
+  const NEXT = { kind: 'passkey', options: { challenge: 'the-next-challenge' } };
+  const ADD = { kind: 'addPasskey', options: { challenge: 'a-creation-challenge' } };
+  const ASSERTION = { id: 'a-credential', type: 'public-key' };
+  const REGISTRATION = { id: 'a-new-credential', type: 'public-key' };
+
+  /** The door: answers each POST in turn (the last answer again after that) and keeps every body it was sent. */
+  function mockDoor(...answers: object[]) {
+    const sent: any[] = [];
+    (global as any).fetch = jest.fn(async (_path: string, init: { body: string }) => {
+      sent.push(JSON.parse(init.body));
+      const answer = answers[Math.min(sent.length, answers.length) - 1];
+      return { status: 200, statusText: 'OK', json: async () => answer };
+    });
+    return sent;
+  }
+
+  /** What stands on the page, read as a person would find it. */
+  const page = () => ({
+    fields: Array.from(container.querySelectorAll('input')).map((input) => input.type),
+    // The one standing line under the title, when there is one (an error line and the message seat carry a role).
+    address: container.querySelector('p:not([role])')?.textContent ?? null,
+    acts: container.querySelectorAll('[data-signin-act] button').length,
+    line: container.querySelector('[role="alert"]')?.textContent ?? null,
+    seat: container.querySelector('[role="status"]')?.textContent ?? null,
+  });
+
+  async function settle() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  async function signInWithPassword() {
+    await renderPage(loginPage.component, '/login');
+    fillSilently(field('Email'), EMAIL);
+    fillSilently(field('Password'), PASSWORD);
+    await submit();
+    await settle();
+  }
+
+  async function tap(selector: string) {
+    await act(async () => {
+      (container.querySelector(selector) as HTMLButtonElement).click();
+    });
+    await settle();
+  }
+  const tapTheStep = () => tap('[data-signin-act] button');
+
+  it('the second state shows the address just typed and one button, and no field; its tap hands the door what the sheet answered, and only then is the person in the app', async () => {
+    const sent = mockDoor({ secondStep: STEP }, {});
+    sheet.authenticate.mockResolvedValue({ status: 'done', response: ASSERTION });
+    await signInWithPassword();
+
+    expect(page()).toMatchObject({ fields: [], address: EMAIL, acts: 1, line: null });
+    // The password alone landed nobody anywhere, and the sheet waits for the tap.
+    expect(locationSpy.replace).not.toHaveBeenCalled();
+    expect(sheet.authenticate).not.toHaveBeenCalled();
+
+    await tapTheStep();
+
+    expect(sheet.authenticate).toHaveBeenCalledWith(STEP.options);
+    expect(sent).toEqual([{ email: EMAIL, password: PASSWORD }, { passkey: ASSERTION }]);
+    expect(locationSpy.replace).toHaveBeenCalledWith('/');
+    expect(locationSpy.hrefSets).toEqual([]);
+  });
+
+  it('a sheet the person closes makes no request and the same step is presented again; a refusal arrives with a new step, which the next tap presents', async () => {
+    const sent = mockDoor({ secondStep: STEP }, { error: 'the door’s line for a refusal', secondStep: NEXT }, {});
+    sheet.authenticate.mockResolvedValueOnce({ status: 'cancelled' });
+    sheet.authenticate.mockResolvedValue({ status: 'done', response: ASSERTION });
+    await signInWithPassword();
+
+    await tapTheStep();
+    expect(sent).toHaveLength(1);
+    expect(page()).toMatchObject({ fields: [], acts: 1 });
+    expect(page().line).toBeTruthy();
+
+    await tapTheStep();
+    expect(sheet.authenticate.mock.calls.map(([options]) => options)).toEqual([STEP.options, STEP.options]);
+    expect(sent).toHaveLength(2);
+    expect(page()).toMatchObject({ fields: [], acts: 1, line: 'the door’s line for a refusal' });
+    expect(locationSpy.replace).not.toHaveBeenCalled();
+
+    await tapTheStep();
+    expect(sheet.authenticate).toHaveBeenLastCalledWith(NEXT.options);
+    expect(locationSpy.replace).toHaveBeenCalledWith('/');
+  });
+
+  it('restart shows the password form again, with the door’s line in the message seat; so does a step the door did not answer; "use a different account" goes back with no line', async () => {
+    mockDoor({ secondStep: STEP }, { error: 'the door’s line for the end', restart: true });
+    sheet.authenticate.mockResolvedValue({ status: 'done', response: ASSERTION });
+    await signInWithPassword();
+    await tapTheStep();
+
+    expect(page()).toMatchObject({ fields: ['email', 'password'], acts: 0, seat: 'the door’s line for the end' });
+    expect(locationSpy.replace).not.toHaveBeenCalled();
+
+    // A step that failed on the server: no 200, no JSON.
+    (global as any).fetch = jest
+      .fn()
+      .mockResolvedValueOnce({ status: 200, json: async () => ({ secondStep: STEP }) })
+      .mockResolvedValue({
+        status: 404,
+        json: async () => {
+          throw new SyntaxError('Unexpected token < in JSON');
+        },
+      });
+    fillSilently(field('Email'), EMAIL);
+    fillSilently(field('Password'), PASSWORD);
+    await submit();
+    await settle();
+    expect(page()).toMatchObject({ fields: [], acts: 1, seat: null });
+    await tapTheStep();
+    expect(page().fields).toEqual(['email', 'password']);
+    expect(page().seat).toBeTruthy();
+    expect(locationSpy.replace).not.toHaveBeenCalled();
+
+    // The person's own way back.
+    mockDoor({ secondStep: STEP });
+    fillSilently(field('Email'), EMAIL);
+    fillSilently(field('Password'), PASSWORD);
+    await submit();
+    await settle();
+    await tap('[data-signin-link="other-account"]');
+    expect(page()).toMatchObject({ fields: ['email', 'password'], acts: 0, seat: null, line: null });
+  });
+
+  it('where a passkey cannot start, no button stands — only a line and the way back; when the device only finds out at the tap, the line appears above the same button', async () => {
+    mockDoor({ secondStep: STEP });
+    sheet.supported.mockResolvedValue(false);
+    await signInWithPassword();
+    expect(page()).toMatchObject({ fields: [], acts: 0 });
+    expect(page().line).toBeTruthy();
+    expect(container.querySelectorAll('[data-signin-link="other-account"]')).toHaveLength(1);
+
+    await tap('[data-signin-link="other-account"]');
+    const sent = mockDoor({ secondStep: STEP });
+    sheet.supported.mockResolvedValue(true);
+    sheet.authenticate.mockResolvedValue({ status: 'unavailable' });
+    fillSilently(field('Email'), EMAIL);
+    fillSilently(field('Password'), PASSWORD);
+    await submit();
+    await settle();
+    expect(page()).toMatchObject({ acts: 1, line: null });
+    await tapTheStep();
+    expect(page().acts).toBe(1);
+    expect(page().line).toBeTruthy();
+    expect(sent).toHaveLength(1);
+  });
+
+  it('an account with no passkey yet is asked to add one: a title and one button, with no sentence standing under the title; the registration goes to the door and the person is in the app', async () => {
+    const sent = mockDoor({ secondStep: ADD }, {});
+    sheet.register.mockResolvedValue({ status: 'done', response: REGISTRATION });
+    await signInWithPassword();
+
+    expect(page()).toEqual({ fields: [], address: null, acts: 1, line: null, seat: null });
+    expect(sheet.register).not.toHaveBeenCalled();
+
+    await tapTheStep();
+    expect(sheet.register).toHaveBeenCalledWith(ADD.options);
+    expect(sent).toEqual([{ email: EMAIL, password: PASSWORD }, { addPasskey: REGISTRATION }]);
+    expect(locationSpy.replace).toHaveBeenCalledWith('/');
   });
 });
 

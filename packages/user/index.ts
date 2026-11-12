@@ -10,6 +10,9 @@ export * from './src/services/UpdateUserInfoService';
 export * from './src/services/UserAccountAdminService';
 export * from './src/services/UserPresenceService';
 
+// The two passkey ceremonies a page runs on a person's device, and the wire's types for them.
+export * from './src/passkeys/PasskeyCeremonies';
+
 export * from './src/tables/AccessGrantTable';
 export * from './src/tables/AccessInviteTable';
 export * from './src/tables/AccountDeletionTable';

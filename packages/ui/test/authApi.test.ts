@@ -55,6 +55,85 @@ describe('AuthApi.login', () => {
  * server's rules refuse: "That password is too common", and for a link no longer live) — and the
  * api throws THAT line; the generic words stand only for an answer with no line in it.
  */
+/**
+ * The passkey step of a sign-in. For an account that must use a passkey the door answers the
+ * password with a step instead of a session; the page runs it on the device and posts what the
+ * device's sheet answered to the same door, whose answer is one of three: the session is open, a
+ * new step with a line, or the step is over with a line. Anything else the step's answer could be
+ * — the limit in front of the door, a step that failed on the server — means it is over.
+ */
+describe('AuthApi — the passkey step of a sign-in', () => {
+  const STEP = { kind: 'passkey', options: { challenge: 'the-first-challenge', rpId: 'example.test' } };
+  const NEXT = { kind: 'passkey', options: { challenge: 'the-next-challenge', rpId: 'example.test' } };
+  const ADD = { kind: 'addPasskey', options: { challenge: 'a-creation-challenge', rp: { name: 'Example' } } };
+  const assertion = { id: 'a-credential', type: 'public-key' } as never;
+  const registration = { id: 'a-new-credential', type: 'public-key' } as never;
+  const posted = (fetchMock: jest.Mock) => fetchMock.mock.calls.map(([path, init]) => [path, JSON.parse(init.body)]);
+
+  it('login resolves with the step when the door answers one, and with nothing when the session is open', async () => {
+    mockFetch({ body: { secondStep: STEP } });
+    await expect(new AuthApi().login('ada@example.com', 'hunter22')).resolves.toEqual(STEP);
+    mockFetch({ body: { secondStep: ADD } });
+    await expect(new AuthApi().login('ada@example.com', 'hunter22')).resolves.toEqual(ADD);
+    mockFetch({ body: {} });
+    await expect(new AuthApi().login('ada@example.com', 'hunter22')).resolves.toBeUndefined();
+    // A step in no shape the page can run is no step.
+    mockFetch({ body: { secondStep: { kind: 'somethingElse', options: {} } } });
+    await expect(new AuthApi().login('ada@example.com', 'hunter22')).resolves.toBeUndefined();
+  });
+
+  it("the passkey's response and the registration post to the sign-in door itself, each under its own name, and an open session resolves done", async () => {
+    const fetchMock = mockFetch({ body: {} });
+    await expect(new AuthApi().answerPasskey(assertion)).resolves.toEqual({ status: 'done' });
+    await expect(new AuthApi().answerAddPasskey(registration)).resolves.toEqual({ status: 'done' });
+    expect(posted(fetchMock)).toEqual([
+      [routes.login.path, { passkey: assertion }],
+      [routes.login.path, { addPasskey: registration }],
+    ]);
+    expect(fetchMock.mock.calls.map(([, init]) => [init.method, init.credentials])).toEqual([
+      [routes.login.method, 'same-origin'],
+      [routes.login.method, 'same-origin'],
+    ]);
+  });
+
+  it("an answer carrying a new step resolves with it and the door's line; restart resolves as restart with the door's line", async () => {
+    mockFetch({ body: { error: 'the door’s line for a refusal', secondStep: NEXT } });
+    await expect(new AuthApi().answerPasskey(assertion)).resolves.toEqual({
+      status: 'again',
+      line: 'the door’s line for a refusal',
+      secondStep: NEXT,
+    });
+    mockFetch({ body: { error: 'the door’s line for the end', restart: true } });
+    await expect(new AuthApi().answerPasskey(assertion)).resolves.toEqual({
+      status: 'restart',
+      line: 'the door’s line for the end',
+    });
+  });
+
+  it('an answer that is none of the three is the end of the step: no 200, no JSON, the limit in front of the door — each resolves as restart, never as an open session', async () => {
+    const outcomes = [];
+    // A step that failed on the server is answered by the framework's own page: no 200, no JSON.
+    mockFetch({ status: 404, statusText: 'Not Found', notJson: true });
+    outcomes.push(await new AuthApi().answerPasskey(assertion));
+    mockFetch({ status: 500, statusText: 'Internal Server Error', body: { error: 'a line on a failure' } });
+    outcomes.push(await new AuthApi().answerAddPasskey(registration));
+    mockFetch({ status: 200, notJson: true });
+    outcomes.push(await new AuthApi().answerPasskey(assertion));
+    mockFetch({ status: 429 });
+    outcomes.push(await new AuthApi().answerPasskey(assertion));
+    // Not a 200, with a body that reads like an open session: still the end of the step.
+    mockFetch({ status: 502, statusText: 'Bad Gateway', body: {} });
+    outcomes.push(await new AuthApi().answerPasskey(assertion));
+
+    expect(outcomes.map((outcome) => outcome.status)).toEqual(['restart', 'restart', 'restart', 'restart', 'restart']);
+    expect((outcomes[1] as { line: string }).line).toBe('a line on a failure');
+    expect((outcomes[3] as { line: string }).line).toBe(AuthApi.TOO_MANY_ATTEMPTS);
+    for (const outcome of outcomes) {
+      expect((outcome as { line: string }).line).toBeTruthy();
+    }
+  });
+});
+
 describe("AuthApi — a refusal's own line is what the form is told", () => {
   it("sign-up: a refused answer's line, whatever its status", async () => {
     mockFetch({ status: 400, statusText: 'Bad Request', body: { error: 'Use at least 8 characters' } });
