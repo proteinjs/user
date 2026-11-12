@@ -60,7 +60,8 @@ describe('AuthApi.login', () => {
  * password with a step instead of a session; the page runs it on the device and posts what the
  * device's sheet answered to the same door, whose answer is one of three: the session is open, a
  * new step with a line, or the step is over with a line. Anything else the step's answer could be
- * — the limit in front of the door, a step that failed on the server — means it is over.
+ * — the limit in front of the door, a step that failed on the server, a 200 that is not the door's
+ * own empty answer — means it is over: the session is open on `{}` and on nothing else.
  */
 describe('AuthApi — the passkey step of a sign-in', () => {
   const STEP = { kind: 'passkey', options: { challenge: 'the-first-challenge', rpId: 'example.test' } };
@@ -131,6 +132,48 @@ describe('AuthApi — the passkey step of a sign-in', () => {
     for (const outcome of outcomes) {
       expect((outcome as { line: string }).line).toBeTruthy();
     }
+  });
+
+  /** The door answers 200 with exactly `body` — whatever it is, nothing included. */
+  const doorAnswers = (body: unknown) => {
+    (global as any).fetch = jest.fn().mockResolvedValue({ status: 200, statusText: 'OK', json: async () => body });
+  };
+
+  it("a 200 that carries the door's line and nothing beside it — no step, no restart — is the end of the step with that line, never an open session", async () => {
+    doorAnswers({ error: 'the door’s line, alone' });
+    await expect(new AuthApi().answerPasskey(assertion)).resolves.toEqual({
+      status: 'restart',
+      line: 'the door’s line, alone',
+    });
+    await expect(new AuthApi().answerAddPasskey(registration)).resolves.toEqual({
+      status: 'restart',
+      line: 'the door’s line, alone',
+    });
+  });
+
+  it("a 200 in no shape the door sends is the end of the step — nothing, a list, text, a step of a kind the page cannot run, an answer with something else in it: each resolves as restart, and only the door's own empty answer as an open session", async () => {
+    const strangers: unknown[] = [
+      null,
+      [],
+      [{}],
+      'ok',
+      true,
+      { secondStep: { kind: 'somethingElse', options: {} } },
+      { secondStep: { kind: 'passkey' } },
+      { restart: false },
+      { ok: true },
+      { error: '   ' },
+    ];
+    for (const stranger of strangers) {
+      doorAnswers(stranger);
+      expect([stranger, await new AuthApi().answerPasskey(assertion)]).toEqual([
+        stranger,
+        { status: 'restart', line: AuthApi.STEP_OVER },
+      ]);
+    }
+
+    doorAnswers({});
+    await expect(new AuthApi().answerPasskey(assertion)).resolves.toEqual({ status: 'done' });
   });
 });
 

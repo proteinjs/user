@@ -165,9 +165,15 @@ export class AuthApi {
   /**
    * One answer to the passkey step, posted to the sign-in door itself — the step's cookie rides
    * the request and names its challenge; the body carries no address. The door answers one of
-   * three shapes on a 200: `{}`, `{ error, secondStep }` or `{ error, restart: true }`. Anything
-   * else — the limit in front of the door, a step that failed on the server (answered by no JSON),
-   * a proxy's page — means the step is over, and reads as restart.
+   * three shapes on a 200: `{}`, `{ error, secondStep }` or `{ error, restart: true }`.
+   *
+   * It is read closed. The session is open (`done`) on the door's own empty answer and on nothing
+   * else; an answer that carries a step the page can run is that step (`again`); and everything
+   * else is the end of the step (`restart`) — the door's restart, a line with nothing beside it, a
+   * 200 in no shape the door sends (nothing, a list, a step of a kind this page cannot run), the
+   * limit in front of the door, a step that failed on the server (answered by no JSON), a proxy's
+   * page. A request that never got an answer at all (no network) is not an answer: it throws, as
+   * every other call here does, and the page says so.
    */
   private async answerSecondStep(body: object): Promise<SignInSecondStepAnswer> {
     let response: Response;
@@ -194,11 +200,16 @@ export class AuthApi {
     if (secondStep) {
       return { status: 'again', line: line ?? AuthApi.STEP_OVER, secondStep };
     }
-    if (line || answer?.restart) {
-      return { status: 'restart', line: line ?? AuthApi.STEP_OVER };
+    if (this.isEmptyAnswer(answer)) {
+      return { status: 'done' };
     }
 
-    return { status: 'done' };
+    return { status: 'restart', line: line ?? AuthApi.STEP_OVER };
+  }
+
+  /** Whether `answer` is the door's own empty answer, `{}` — the one shape that says the session is open. */
+  private isEmptyAnswer(answer: unknown): boolean {
+    return typeof answer === 'object' && answer !== null && !Array.isArray(answer) && Object.keys(answer).length === 0;
   }
 
   /** The passkey step an answer of the door carries, when it carries one in the step's shape. */

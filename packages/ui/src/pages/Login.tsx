@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Box, Link, Typography } from '@mui/material';
 import { Page } from '@proteinjs/ui';
 import { PasskeyCeremonies, PasskeyCeremonyOutcome, uiRoutes } from '@proteinjs/user';
@@ -60,7 +60,13 @@ const WORDS = {
  * A sheet the person closes makes no request, and the same button presents the same step again. A
  * refusal arrives from the door with a new step and its line. When the step is over (five
  * minutes, a third refusal, a failure) the page returns to the password form with the door's line
- * in its message seat. "Use a different account" goes back to the password form at any time.
+ * in its message seat. A request that never reached the door (no network) is a line above the same
+ * button, and the next tap tries again.
+ *
+ * "Use a different account" goes back to the password form at any time — also while a tap is still
+ * out, its sheet up or its request on the way: the form is free at once, a sheet that answers
+ * afterwards is handed to nobody, and whatever the door answers a request already sent — an open
+ * session, a new step — changes nothing on the page the person went back to.
  */
 const LoginComponent: React.FC = () => {
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors<LoginField>>({});
@@ -69,7 +75,15 @@ const LoginComponent: React.FC = () => {
   const [step, setStep] = useState<PasskeyStep | undefined>();
   /** The line a passkey step that ended sent the person back with; it takes the message seat. */
   const [returnedWith, setReturnedWith] = useState<string | undefined>();
-  const message = returnedWith ?? arrivalMessage(useLocation().state);
+  // Read on a line of its own, on every render, and chosen between afterwards: a hook is never
+  // called on one side of a choice.
+  const arrival = arrivalMessage(useLocation().state);
+  const message = returnedWith ?? arrival;
+  /**
+   * The tap whose outcome the page is waiting for, while one is out. Leaving the step forgets it,
+   * and a tap that is no longer this one changes nothing when its sheet or its request ends.
+   */
+  const awaited = useRef<object | undefined>();
 
   const clearFieldError = (name: LoginField) =>
     setFieldErrors((errors) => (errors[name] ? { ...errors, [name]: undefined } : errors));
@@ -123,34 +137,50 @@ const LoginComponent: React.FC = () => {
       return;
     }
 
+    const tap = {};
+    awaited.current = tap;
+    const stillAwaited = () => awaited.current === tap;
     setError(undefined);
     setBusy(true);
+    let outcome: StepOutcome | 'failed';
     try {
-      const answer = await answerStep(step.secondStep);
-      if (answer === 'cancelled' || answer === 'unavailable') {
-        // Nothing was sent: the same step stands, and the same button presents it again.
-        setError(answer === 'unavailable' ? WORDS.unavailable : WORDS.tryAgain);
-      } else if (answer.status === 'done') {
-        enter();
-        return;
-      } else if (answer.status === 'again') {
-        setStep({ ...step, secondStep: answer.secondStep });
-        setError(answer.line);
-      } else {
-        leaveStep(answer.line);
-      }
+      outcome = await answerStep(step.secondStep, stillAwaited);
     } catch {
       // The request itself failed (no network): whether the door saw it is not known, and the
       // next tap finds out — a step the door has spent answers restart.
-      setError(WORDS.tryAgain);
+      outcome = 'failed';
+    }
+    if (!stillAwaited()) {
+      // The person left the step while this tap was out: the password form is theirs again, and
+      // what the tap came to — a session the door opened, a new step, a failure — changes nothing.
+      return;
+    }
+
+    awaited.current = undefined;
+    if (outcome === 'cancelled' || outcome === 'unavailable' || outcome === 'failed') {
+      // Nothing came of it: the same step stands, and the same button presents it again.
+      setError(outcome === 'unavailable' ? WORDS.unavailable : WORDS.tryAgain);
+    } else if (outcome.status === 'done') {
+      enter();
+      return;
+    } else if (outcome.status === 'again') {
+      setStep({ ...step, secondStep: outcome.secondStep });
+      setError(outcome.line);
+    } else {
+      leaveStep(outcome.line);
     }
     setBusy(false);
   };
 
-  /** Back to the password form, with the line the step ended on — none when the person chose to leave. */
+  /**
+   * Back to the password form, with the line the step ended on — none when the person chose to
+   * leave. The form is free at once: a tap still out is forgotten, and so is its busy mark.
+   */
   const leaveStep = (line?: string) => {
+    awaited.current = undefined;
     setStep(undefined);
     setError(undefined);
+    setBusy(false);
     setReturnedWith(line);
   };
 
@@ -267,22 +297,34 @@ const LoginComponent: React.FC = () => {
   );
 };
 
+/** What one tap of the step's button came to: the door's answer, or how the ceremony ended when nothing was sent. */
+type StepOutcome = SignInSecondStepAnswer | Exclude<PasskeyCeremonyOutcome<unknown>['status'], 'done'>;
+
 /**
  * Run one passkey step: the ceremony its kind names, on the device, and — when the sheet answered
- * — the door's answer to it. Resolves to how the ceremony ended when nothing was sent.
+ * — the door's answer to it. Resolves to how the ceremony ended when nothing was sent. A sheet
+ * that answers once its tap is no longer `wanted` (the person left the step while it was up) is
+ * handed to nobody: nothing is sent, and it reads as a sheet that came to nothing.
  */
-async function answerStep(
-  secondStep: SignInSecondStep
-): Promise<SignInSecondStepAnswer | Exclude<PasskeyCeremonyOutcome<unknown>['status'], 'done'>> {
+async function answerStep(secondStep: SignInSecondStep, wanted: () => boolean): Promise<StepOutcome> {
   const ceremonies = new PasskeyCeremonies();
   const api = new AuthApi();
+  let handToTheDoor: () => Promise<SignInSecondStepAnswer>;
   if (secondStep.kind === 'passkey') {
     const sheet = await ceremonies.authenticate(secondStep.options);
-    return sheet.status === 'done' ? await api.answerPasskey(sheet.response) : sheet.status;
+    if (sheet.status !== 'done') {
+      return sheet.status;
+    }
+    handToTheDoor = () => api.answerPasskey(sheet.response);
+  } else {
+    const sheet = await ceremonies.register(secondStep.options);
+    if (sheet.status !== 'done') {
+      return sheet.status;
+    }
+    handToTheDoor = () => api.answerAddPasskey(sheet.response);
   }
 
-  const sheet = await ceremonies.register(secondStep.options);
-  return sheet.status === 'done' ? await api.answerAddPasskey(sheet.response) : sheet.status;
+  return wanted() ? await handToTheDoor() : 'cancelled';
 }
 
 export const loginPage: Page = {

@@ -22,7 +22,9 @@
  * THE PASSKEY STEP rides the same page and the same landing (the last describe): for an account
  * that must use a passkey the door answers the password with a step, and the page changes in
  * place — nobody is in the app until the step passes. The device's sheet is a stand-in here
- * (`PasskeyCeremonies`, stubbed at the package boundary): no browser authenticator runs.
+ * (`PasskeyCeremonies`, stubbed at the package boundary): no browser authenticator runs. A step's
+ * request that never reaches the door is a line above the same button; and a person who goes back
+ * to the password form while a tap is still out has the form at once, whatever that tap comes to.
  */
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
@@ -203,6 +205,17 @@ describe('signing in with a passkey step: the page changes in place, and lands i
   }
   const tapTheStep = () => tap('[data-signin-act] button');
 
+  /** Whether the page's one act — the step's button, or the password form's — can be pressed. */
+  const actIsFree = () =>
+    !(container.querySelector('[data-signin-act] button, button[type="submit"]') as HTMLButtonElement).disabled;
+
+  async function typeThePasswordAgain() {
+    fillSilently(field('Email'), EMAIL);
+    fillSilently(field('Password'), PASSWORD);
+    await submit();
+    await settle();
+  }
+
   it('the second state shows the address just typed and one button, and no field; its tap hands the door what the sheet answered, and only then is the person in the app', async () => {
     const sent = mockDoor({ secondStep: STEP }, {});
     sheet.authenticate.mockResolvedValue({ status: 'done', response: ASSERTION });
@@ -280,6 +293,97 @@ describe('signing in with a passkey step: the page changes in place, and lands i
     await settle();
     await tap('[data-signin-link="other-account"]');
     expect(page()).toMatchObject({ fields: ['email', 'password'], acts: 0, seat: null, line: null });
+  });
+
+  it('a step whose request never reaches the door — no network at the tap — is a line above the same button, which is free again; nothing is thrown, nobody is in the app, and the next tap tries again', async () => {
+    const sent: any[] = [];
+    (global as any).fetch = jest.fn(async (_path: string, init: { body: string }) => {
+      sent.push(JSON.parse(init.body));
+      if (sent.length === 2) {
+        throw new TypeError('Failed to fetch');
+      }
+      return { status: 200, statusText: 'OK', json: async () => (sent.length === 1 ? { secondStep: STEP } : {}) };
+    });
+    sheet.authenticate.mockResolvedValue({ status: 'done', response: ASSERTION });
+    await signInWithPassword();
+
+    // A rejection nobody handled would fail this case where it happened: the runner reports it.
+    await tapTheStep();
+
+    expect(sent).toHaveLength(2);
+    expect(page()).toMatchObject({ fields: [], address: EMAIL, acts: 1, seat: null });
+    expect(page().line).toBeTruthy();
+    expect(actIsFree()).toBe(true);
+    expect(locationSpy.replace).not.toHaveBeenCalled();
+
+    await tapTheStep();
+    expect(sent).toEqual([{ email: EMAIL, password: PASSWORD }, { passkey: ASSERTION }, { passkey: ASSERTION }]);
+    expect(locationSpy.replace).toHaveBeenCalledWith('/');
+  });
+
+  it('"use a different account" pressed while a tap is still out: the password form is free at once, and what the tap comes to afterwards changes nothing — an open session lands nobody in the app, a new step is not put back, and a sheet that answers late is handed to nobody', async () => {
+    /** The door answers the password with the step at once, and holds its answer to the step until `release`. */
+    const doorHolding = (late: object) => {
+      const sent: any[] = [];
+      let release = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      (global as any).fetch = jest.fn(async (_path: string, init: { body: string }) => {
+        const body = JSON.parse(init.body);
+        sent.push(body);
+        if ('email' in body) {
+          return { status: 200, statusText: 'OK', json: async () => ({ secondStep: STEP }) };
+        }
+        await held;
+        return { status: 200, statusText: 'OK', json: async () => late };
+      });
+      return { sent, release };
+    };
+    const thePasswordFormFree = { fields: ['email', 'password'], acts: 0, seat: null, line: null };
+    sheet.authenticate.mockResolvedValue({ status: 'done', response: ASSERTION });
+    await renderPage(loginPage.component, '/login');
+
+    for (const late of [{}, { error: 'the door’s line for a refusal', secondStep: NEXT }]) {
+      const door = doorHolding(late);
+      await typeThePasswordAgain();
+      await tapTheStep();
+      // The request is out, and the step waits on it.
+      expect(door.sent).toHaveLength(2);
+      expect(actIsFree()).toBe(false);
+
+      await tap('[data-signin-link="other-account"]');
+      expect(page()).toMatchObject(thePasswordFormFree);
+      expect(actIsFree()).toBe(true);
+      expect(field('Email').disabled).toBe(false);
+
+      door.release();
+      await settle();
+      expect(locationSpy.replace).not.toHaveBeenCalled();
+      expect(page()).toMatchObject(thePasswordFormFree);
+      expect(actIsFree()).toBe(true);
+    }
+
+    // The sheet still up across the press: when it answers, nothing is sent.
+    let answerTheSheet = (_answer: unknown) => {};
+    sheet.authenticate.mockReturnValue(
+      new Promise((resolve) => {
+        answerTheSheet = resolve;
+      })
+    );
+    const door = doorHolding({});
+    door.release();
+    await typeThePasswordAgain();
+    await tapTheStep();
+    await tap('[data-signin-link="other-account"]');
+    expect(page()).toMatchObject(thePasswordFormFree);
+    expect(actIsFree()).toBe(true);
+
+    answerTheSheet({ status: 'done', response: ASSERTION });
+    await settle();
+    expect(door.sent).toEqual([{ email: EMAIL, password: PASSWORD }]);
+    expect(locationSpy.replace).not.toHaveBeenCalled();
+    expect(page()).toMatchObject(thePasswordFormFree);
   });
 
   it('where a passkey cannot start, no button stands — only a line and the way back; when the device only finds out at the tap, the line appears above the same button', async () => {
