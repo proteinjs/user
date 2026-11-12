@@ -98,6 +98,14 @@ describe('UserAuth — registered repo behavior is unchanged', () => {
     expect(UserAuth.hasRoles(['ops', 'dev'])).toBe(false);
     expect(UserAuth.hasRoles(['ops', 'dev'], 'at least one')).toBe(true);
   });
+
+  it('an empty roles list admits nobody at-least-one — the admin included (a door declared with no role is closed to everyone)', () => {
+    setUser(['ops']);
+    expect(UserAuth.hasRoles([], 'at least one')).toBe(false);
+
+    setUser(['admin']);
+    expect(UserAuth.hasRoles([], 'at least one')).toBe(false);
+  });
 });
 
 describe('UserAuth.hasPermission — permission indirection through the consumer mapping', () => {
