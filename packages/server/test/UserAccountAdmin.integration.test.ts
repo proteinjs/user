@@ -2,6 +2,7 @@ import { createServer } from 'http';
 import moment from 'moment';
 import { Db, getDbAsSystem } from '@proteinjs/db';
 import { EmailSender, MailSink } from '@proteinjs/email-server';
+import { Logger } from '@proteinjs/logger';
 import { SourceRepository } from '@proteinjs/reflection';
 import { SocketIOServerRepo } from '@proteinjs/server';
 import { Session } from '@proteinjs/server-api';
@@ -954,6 +955,48 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
         )?.[1];
       expect(accountOn('Passkey added')).toMatch(/^[0-9a-f]{16}$/);
       expect(accountOn('Passkey added')).toBe(accountOn('Passkey mail failed to send'));
+    });
+
+    it('a mail that cannot be sent, whose error line cannot be written either, is thrown nowhere: the telling still ends, on one bare line that carries nothing of the error', async () => {
+      const owner = await person('passkey.mail.unwritable', ['admin']);
+      objectCache()[PASSKEY_MAIL_KEY] = [
+        {
+          getConfig: () => {
+            throw new Error(`no words today for ${owner.email}`);
+          },
+        },
+      ];
+      const writeLine = Logger.prototype.error;
+      const lineFails = jest.spyOn(Logger.prototype, 'error').mockImplementation(function (this: Logger, entry) {
+        if (entry.message === 'Passkey mail failed to send') {
+          throw new Error(`the line could not be written for ${owner.email}`);
+        }
+        return writeLine.call(this, entry);
+      });
+      // What an act starts and does not await: were it to reject, nothing would catch it.
+      let told: unknown;
+      let log: LogCapture;
+      try {
+        log = await LogCapture.during(async () => {
+          told = await new PasskeyEmails().tell(owner.id, 'added').then(
+            () => 'ended',
+            (thrown) => thrown
+          );
+        });
+      } finally {
+        lineFails.mockRestore();
+        objectCache()[PASSKEY_MAIL_KEY] = [passkeyMail];
+      }
+
+      expect(told).toBe('ended');
+      expect(log.linesContaining('Passkey mail').lines).toHaveLength(1);
+      expect(log.addresses).toEqual([]);
+      expect(log.text).not.toContain('no words today');
+      expect(
+        MailSink.get()
+          .list()
+          .filter((mail) => mail.to.includes(owner.email))
+      ).toEqual([]);
     });
 
     it('a session holds at most one open step per act: twenty begins leave one, and only the last confirms; a step that cannot be written leaves the open one standing; a begin that will be refused — a reset’s by a person who may not reset among them — leaves none', async () => {
