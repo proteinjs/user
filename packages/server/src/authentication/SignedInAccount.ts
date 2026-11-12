@@ -15,13 +15,23 @@ export class SignedInAccount {
    * (a guest; the built-in default admin, which has none) and for a call that rides no session.
    */
   async read(): Promise<{ account: User; sessionId: string }> {
-    const sessionUser = new UserRepo().getUser();
-    const account = sessionUser?.id ? await getDbAsSystem().get(tables.User, { id: sessionUser.id }) : undefined;
+    const account = await this.account();
     const sessionId = Session.getData()?.sessionId;
     if (!account || typeof sessionId !== 'string' || sessionId.length === 0) {
       throw new Error('Sign in to manage passkeys.');
     }
 
     return { account, sessionId };
+  }
+
+  /**
+   * The caller's account row, read fresh; undefined for a caller with no account row (a guest; the
+   * built-in default admin). For a question about the caller that has an answer without a row —
+   * whether the caller may reset a person's passkeys (`PasskeyAdmin.count`) is no for one; an act
+   * on the caller's own sign-in asks `read`, which refuses one.
+   */
+  async account(): Promise<User | undefined> {
+    const sessionUser = new UserRepo().getUser();
+    return sessionUser?.id ? await getDbAsSystem().get(tables.User, { id: sessionUser.id }) : undefined;
   }
 }

@@ -1070,6 +1070,40 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       expect(await openSteps(owner)).toEqual(open);
     });
 
+    it('count: one answer per account — how many passkeys it holds, whether it must use one (the gate’s rule) and whether the caller may reset them (the reset’s rule): an administrative account with two, an account that need not use one, a declared machine account, the caller’s own; the built-in default admin, which has no account row, is answered and may reset nobody', async () => {
+      const locked = await person('passkey.count.locked', ['roles-desk']);
+      const lost = await addFirst();
+      await addAnother(lost);
+      const ordinary = await testEnv.createUser({
+        name: 'Ordinary',
+        email: 'passkey.count.ordinary@test.local',
+        roles: ['people-desk'],
+      });
+      const machine = await testEnv.createUser({ name: 'Machine', email: 'passkey.count.machine@test.local' });
+      await getDbAsSystem().update(tables.User, { id: machine.id, isLoadedFromSource: true, roles: ['admin'] });
+      const admin = await person('passkey.count.admin', ['admin']);
+      await addFirst();
+      const count = (userId: string) => new PasskeyAdmin().count(userId);
+
+      expect(await count(locked.id)).toEqual({ count: 2, required: true, mayReset: true });
+      expect(await count(ordinary.id)).toEqual({ count: 0, required: false, mayReset: true });
+      expect(await count(machine.id)).toEqual({ count: 0, required: false, mayReset: false });
+      expect(await count(admin.id)).toEqual({ count: 1, required: true, mayReset: false });
+
+      // The built-in default admin holds `admin` with no account row: the door admits it, and the
+      // answer is whole — but the reset itself refuses a caller with no row, so it may reset nobody.
+      const credentials = DefaultAdminCredentials as unknown as {
+        CREDENTIALS?: { username: string; password: string };
+      };
+      credentials.CREDENTIALS = { username: 'built-in.admin@test.local', password: 'a-bootstrap-password' };
+      try {
+        testEnv.actAs(DefaultAdminCredentials.identityOf('built-in.admin@test.local')!);
+        expect(await count(locked.id)).toEqual({ count: 2, required: true, mayReset: false });
+      } finally {
+        credentials.CREDENTIALS = undefined;
+      }
+    });
+
     it('reset: the admin is refused on their own account and on a declared machine account, where its confirmation is begun and at the reset itself, with nothing written or spent; on another person it deletes the passkeys, ends that person’s sessions and nobody else’s, and writes one audit row', async () => {
       const locked = await person('passkey.reset.locked', ['roles-desk']);
       const lost = await addFirst();
@@ -1082,7 +1116,7 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       await db.insert(tables.Session, sessionRow('passkey-reset-locked-phone', locked));
       await db.insert(tables.Session, sessionRow('passkey-reset-locked-laptop', locked));
       await db.insert(tables.Session, sessionRow('passkey-reset-admin', admin));
-      expect(await new PasskeyAdmin().count(locked.id)).toBe(2);
+      expect(await new PasskeyAdmin().count(locked.id)).toMatchObject({ count: 2 });
 
       // The admin's own account and a machine account are refused where the confirmation is begun,
       // with no step written — and again at the reset itself, before a confirmation is spent: the
@@ -1101,7 +1135,7 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       await new PasskeyAdmin().reset(locked.id, forLocked);
 
       expect(await passkeyRows(locked)).toEqual([]);
-      expect(await new PasskeyAdmin().count(locked.id)).toBe(0);
+      expect(await new PasskeyAdmin().count(locked.id)).toMatchObject({ count: 0 });
       expect(await sessionIdsOf(locked)).toEqual([]);
       expect(await sessionIdsOf(admin)).toEqual(['passkey-reset-admin']);
       expect(await passkeyRows(admin)).toHaveLength(1);

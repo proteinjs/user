@@ -15,7 +15,9 @@ export type SecondFactorRecord = { method: 'passkey' | 'dev'; passkeyId?: string
 /**
  * The ONE owner of "must this account use a second factor, and has this session met it". Both
  * questions are answered here and nowhere else, and the deployment's relying-party declaration is
- * read here and nowhere else: the sign-in door and the per-request check ask `mustUse`, and the
+ * read here and nowhere else: the sign-in door and the per-request check ask `mustUse`, the
+ * passkey services hand its answer to a page (`required`: a person's own, `PasskeysService.list`;
+ * another person's, `PasskeyAdminService.count`) so no page keeps a copy of the rule, and the
  * passkey step takes the values its ceremonies run against from `relyingParty`.
  *
  * WHO MUST. An account must use a passkey when all three hold:

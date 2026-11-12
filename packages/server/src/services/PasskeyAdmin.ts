@@ -1,15 +1,21 @@
 import { getDbAsSystem } from '@proteinjs/db';
 import { Logger } from '@proteinjs/logger';
 import { Service } from '@proteinjs/service';
-import { PasskeyAdminService, PasskeyConfirmation, User, tables } from '@proteinjs/user';
+import { PasskeyAdminService, PasskeyConfirmation, PasskeyCount, User, tables } from '@proteinjs/user';
+import { SecondFactorGate } from '../authentication/SecondFactorGate';
 import { SignedInAccount } from '../authentication/SignedInAccount';
 import { PasskeyResetGuard } from '../authorization/PasskeyResetGuard';
 import { PasskeyConfirmations } from '../authentication/passkeys/PasskeyConfirmations';
 import { UserPasskeys } from '../authentication/passkeys/UserPasskeys';
 
 /**
- * An admin's acts on another person's passkeys (`PasskeyAdminService`): the count the account
- * page shows, and the reset that is the recovery road when a person has lost every passkey.
+ * An admin's acts on another person's passkeys (`PasskeyAdminService`): what the account page
+ * shows of them, and the reset that is the recovery road when a person has lost every passkey.
+ *
+ * What the page shows is one answer (`count`): how many passkeys the person holds, whether their
+ * account must use one, and whether the caller may reset them — each from its one owner (the
+ * rows' `UserPasskeys`, `SecondFactorGate.mustUse`, `PasskeyResetGuard`), over the one read of the
+ * person's row, so the page keeps no copy of either rule.
  *
  * Admin-only by explicit scope, the door of `SetUserStatus`: a reset leaves an administrative
  * account on its password alone until its next sign-in, so the door is the break-glass role, not
@@ -30,9 +36,14 @@ export class PasskeyAdmin implements PasskeyAdminService {
     },
   };
 
-  async count(userId: string): Promise<number> {
+  async count(userId: string): Promise<PasskeyCount> {
     const account = await this.account(userId);
-    return await new UserPasskeys().count(account.id);
+    const caller = await new SignedInAccount().account();
+    return {
+      count: await new UserPasskeys().count(account.id),
+      required: new SecondFactorGate().mustUse(account),
+      mayReset: new PasskeyResetGuard().mayReset(caller, account),
+    };
   }
 
   async reset(userId: string, confirmation: PasskeyConfirmation): Promise<void> {
