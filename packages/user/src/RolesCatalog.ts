@@ -61,4 +61,15 @@ export class RolesCatalog {
   static isKnownRole(role: string): boolean {
     return !!RolesCatalog.getEntry(role);
   }
+
+  /**
+   * Whether `role` is administrative: break-glass, or admin-grant-only — the catalog's two marks of
+   * a power beyond the people-management trust. An account holding one is guarded past the
+   * `users` door: its sign-in address changes by an admin's hand alone (user-server
+   * `UserAccountAdmin.setEmail`). A role the catalog does not know (a retired one) is not.
+   */
+  static isAdministrative(role: string): boolean {
+    const entry = RolesCatalog.getEntry(role);
+    return entry?.breakGlass === true || entry?.adminGrantOnly === true;
+  }
 }

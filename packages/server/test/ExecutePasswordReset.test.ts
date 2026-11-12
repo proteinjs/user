@@ -319,13 +319,14 @@ describe('executePasswordReset route', () => {
     expect((await userRow(user.id)).password).toBe(before);
   });
 
-  it('a blank new password is refused without consuming the token', async () => {
+  it(`a blank new password, or one that is no text at all, is refused in the policy's blank words without consuming the token`, async () => {
     const { user, token } = await armResetToken('reset-blank@test.local');
     const before = (await userRow(user.id)).password;
 
     for (const newPassword of ['', undefined, 42]) {
       const outcome = await invokeExecute({ token, newPassword });
       expect(outcome.status).toBe(400);
+      expect(outcome.body).toEqual({ error: PasswordPolicy.BLANK });
     }
 
     const row = await userRow(user.id);

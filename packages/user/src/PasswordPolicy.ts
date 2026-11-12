@@ -7,10 +7,18 @@
  * The rule is length alone — no composition classes: NIST SP 800-63B §5.1.1.2 discourages them
  * (they lower usability without raising strength). The server adds the one check a client cannot
  * make without the list: a password among the most common ones is refused with {@link TOO_COMMON}.
+ *
+ * Every sentence the server's check answers lives here, so {@link isRefusal} knows each of them:
+ * a refusal the server adds without its sentence here would reach a form as a failure of its own.
  */
 export class PasswordPolicy {
   /** The fewest characters a password may have. */
   static readonly MIN_LENGTH = 8;
+  /**
+   * What a new password that is blank, or no text at all, is told (the server's check, first of
+   * its rules; a form refuses an empty field before it sends, in its own words).
+   */
+  static readonly BLANK = 'New password cannot be blank';
   /** What a too-short password is told, on the client and from the server alike. */
   static readonly TOO_SHORT = `Use at least ${PasswordPolicy.MIN_LENGTH} characters`;
   /** What a password on the common-passwords list is told (the server's check; a client passes it through). */
@@ -23,6 +31,8 @@ export class PasswordPolicy {
 
   /** Whether `message` is one of this policy's refusals — a client shows it as it is, never as its own failure. */
   static isRefusal(message: string | undefined): boolean {
-    return message === PasswordPolicy.TOO_SHORT || message === PasswordPolicy.TOO_COMMON;
+    return (
+      message === PasswordPolicy.BLANK || message === PasswordPolicy.TOO_SHORT || message === PasswordPolicy.TOO_COMMON
+    );
   }
 }

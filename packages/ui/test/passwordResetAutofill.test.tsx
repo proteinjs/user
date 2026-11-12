@@ -15,6 +15,7 @@
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
+import { AuthApi } from '../src/auth/AuthApi';
 import { passwordResetPage } from '../src/pages/PasswordReset';
 
 declare global {
@@ -87,6 +88,24 @@ describe('password reset form', () => {
 
     expect(document.body.textContent).toContain('This reset link is invalid');
     expect(document.getElementById('auth-field-Email')).toBeNull();
+    expect(document.getElementById('auth-field-New password')).toBeNull();
+  });
+
+  // The limit in front of the door answers the check with its own page (a 429, no JSON): the link
+  // was never judged, so the person reads the limit's words and can try the same link again.
+  it(`a link check the limit refused reads as the limit's words, with the same link to try again — never the invalid-link state`, async () => {
+    (global as any).fetch = jest.fn().mockResolvedValue({
+      status: 429,
+      statusText: '',
+      json: async () => {
+        throw new SyntaxError('Unexpected token < in JSON');
+      },
+    });
+    await renderPasswordReset('/login/reset-password?token=reset-token-2');
+
+    expect(document.body.textContent).toContain(AuthApi.TOO_MANY_ATTEMPTS);
+    expect(document.body.textContent).not.toContain('This reset link is invalid');
+    expect(document.querySelector('a[href*="token=reset-token-2"]')).not.toBeNull();
     expect(document.getElementById('auth-field-New password')).toBeNull();
   });
 });

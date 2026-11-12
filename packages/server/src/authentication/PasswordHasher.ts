@@ -51,10 +51,13 @@ export class PasswordHasher {
 
   /**
    * Format-discriminating verify. `storedHash` absent means the row has no credential yet
-   * (a machine row before its first mint) — no password matches it.
+   * (a machine row before its first mint) — no password matches it. A presented password that is
+   * no text at all (a JSON number, an object, nothing — whatever a request carried) matches
+   * nothing either: it is refused here, on every road that checks a credential, never handed to
+   * argon2 or the digest, which throw on it.
    */
-  async verify(storedHash: string | null | undefined, password: string): Promise<boolean> {
-    if (!storedHash) {
+  async verify(storedHash: string | null | undefined, password: unknown): Promise<boolean> {
+    if (!storedHash || typeof password !== 'string') {
       return false;
     }
 
@@ -69,9 +72,14 @@ export class PasswordHasher {
    * Spends what verifying a human credential spends, and matches nothing: the refusal for an
    * address with no account pays the same argon2 verification a wrong password pays, so how
    * long a refusal takes says nothing about whether the address has an account. (The stand-in
-   * hash is minted on the first call; that one call also pays a hash.)
+   * hash is minted on the first call; that one call also pays a hash.) A password that is no text
+   * at all is refused at once, as `verify` refuses it — the two answer it alike.
    */
-  async verifyAgainstNothing(password: string): Promise<false> {
+  async verifyAgainstNothing(password: unknown): Promise<false> {
+    if (typeof password !== 'string') {
+      return false;
+    }
+
     if (!PasswordHasher.standIn) {
       PasswordHasher.standIn = argon2.hash(randomBytes(32).toString('hex'), PasswordHasher.ARGON2_OPTIONS);
     }

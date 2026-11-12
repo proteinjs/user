@@ -11,16 +11,14 @@ import { CommonPasswords } from './CommonPasswords';
  * What arrives is whatever the request carried, so the check takes it untyped: a value that is no
  * text at all (a JSON number, an object, nothing) is refused here as blank, before any rule reads
  * it — on every road that hands this check a password, present or future, never a failure inside
- * the rules.
+ * the rules. Every refusal is one of `PasswordPolicy`'s sentences (the blank one included), so a
+ * form that asks `PasswordPolicy.isRefusal` shows each as it is.
  */
 export class PasswordRules {
-  /** What a new password that is blank, or no text at all, is told. */
-  static readonly BLANK = 'New password cannot be blank';
-
   /** The refusal `password` earns, or undefined when it may be set: blank (or not text) first, then too short, then too common. */
   check(password: unknown): string | undefined {
     if (!PasswordRules.isGiven(password)) {
-      return PasswordRules.BLANK;
+      return PasswordPolicy.BLANK;
     }
 
     return PasswordPolicy.tooShort(password) ?? (CommonPasswords.has(password) ? PasswordPolicy.TOO_COMMON : undefined);

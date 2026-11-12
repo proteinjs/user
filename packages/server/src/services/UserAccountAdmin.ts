@@ -1,7 +1,15 @@
 import { getDbAsSystem } from '@proteinjs/db';
 import { Logger } from '@proteinjs/logger';
 import { Service } from '@proteinjs/service';
-import { tables, User, UserAccountAdminService, UserRepo, USER_PERMISSIONS } from '@proteinjs/user';
+import {
+  RolesCatalog,
+  tables,
+  User,
+  UserAccountAdminService,
+  UserAuth,
+  UserRepo,
+  USER_PERMISSIONS,
+} from '@proteinjs/user';
 import { emailRegex } from '@proteinjs/util';
 import { RequestDigests } from '@proteinjs/util-node';
 import { AccountSessions } from '../authentication/AccountSessions';
@@ -23,6 +31,12 @@ type AccountCell = 'name' | 'email' | 'emailVerified';
  * and would otherwise resolve to nobody on its next request). A machine account's address is its
  * declaration's and is refused here. The door is the `users` permission — the trust that reads
  * these rows; the audit table opens to the same.
+ *
+ * Whoever holds an account's address holds the account (the reset link is mailed there), so the
+ * address of an account that holds an administrative role (`RolesCatalog.isAdministrative`:
+ * break-glass or admin-grant-only) is the `admin` role's to change, never the `users` door's
+ * alone — the refusal is the caller's to read and a log line's to keep, as the Roles service's
+ * refusals are; it writes nothing.
  */
 export class UserAccountAdmin implements UserAccountAdminService {
   public serviceMetadata: Service['serviceMetadata'] = {
@@ -60,6 +74,20 @@ export class UserAccountAdmin implements UserAccountAdminService {
           `Change the declaration instead.`
       );
     }
+
+    // Checked BEFORE the no-change return, so the refusal is always an error the caller sees.
+    const administrative = (user.roles ?? []).filter((role) => RolesCatalog.isAdministrative(role));
+    if (administrative.length > 0 && !UserAuth.hasRole('admin')) {
+      logger.warn({
+        message: 'Refused an address change on an administrative account',
+        obj: { actor: new UserRepo().getUser().id, target: userId, roles: administrative },
+      });
+      throw new Error(
+        `Only an admin can change the address of an account that holds an administrative role ` +
+          `('${administrative.join("', '")}') — the 'users' permission does not cover it.`
+      );
+    }
+
     if (user.email === address) {
       return;
     }

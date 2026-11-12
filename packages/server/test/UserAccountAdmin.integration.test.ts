@@ -1,8 +1,10 @@
 import moment from 'moment';
 import { getDbAsSystem } from '@proteinjs/db';
-import { tables, User, USER_PERMISSIONS } from '@proteinjs/user';
+import { SourceRepository } from '@proteinjs/reflection';
+import { RoleCatalogEntry, tables, User, UserRepo, USER_PERMISSIONS } from '@proteinjs/user';
 import { EmailVerificationToken } from '../src/authentication/EmailVerificationToken';
 import { UserAccountAdmin } from '../src/services/UserAccountAdmin';
+import { LogCapture } from './LogCapture';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 
 const testEnv = new UserServerTestEnvironment();
@@ -36,6 +38,15 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
 
   beforeAll(async () => {
     await testEnv.beforeAll();
+    const objectCache = (SourceRepository.get() as unknown as { objectCache: Record<string, unknown[]> }).objectCache;
+    // The caller's own roles resolve through UserAuth — the same session-backed repo the services use.
+    objectCache['@proteinjs/user-auth/AuthenticatedUserRepo'] = [new UserRepo()];
+    // Beside the built-in break-glass admin, one consumer role the catalog marks admin-grant-only
+    // (the compliance-grant shape) and the people desk's ordinary one.
+    objectCache['@proteinjs/user/RoleCatalogEntry'] = [
+      { role: 'data-access', description: 'Compliance decrypt grant', adminGrantOnly: true } as RoleCatalogEntry,
+      { role: 'people-desk', description: 'Manage user records' } as RoleCatalogEntry,
+    ];
     actor = await testEnv.createUser({ name: 'People Desk', email: 'people.desk@test.local', roles: ['people-desk'] });
     testEnv.actAs(actor);
   });
@@ -101,6 +112,68 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
     expect((await row(machine.id)).email).toBe('machine@test.local');
     expect(await events(target.id)).toEqual([]);
     expect(await events(machine.id)).toEqual([]);
+  });
+
+  /**
+   * Whoever holds an account's address holds the account — the reset link is mailed there. So the
+   * address of an account that holds an administrative role (the catalog's break-glass or
+   * admin-grant-only mark) is an admin's to change: a `users` holder is refused in words, nothing
+   * is written and its sessions stand, and the refusal is kept in a log line naming the actor and
+   * the target, never an address.
+   */
+  it(`setEmail on an account that holds an administrative role: a users holder is refused and nothing is written; an admin changes it; a users holder still changes an ordinary account's`, async () => {
+    const breakGlass = await testEnv.createUser({
+      name: 'Break Glass',
+      email: 'break.glass@test.local',
+      roles: ['admin'],
+    });
+    const compliance = await testEnv.createUser({
+      name: 'Compliance',
+      email: 'compliance@test.local',
+      roles: ['data-access'],
+    });
+    const ordinary = await testEnv.createUser({
+      name: 'Ordinary',
+      email: 'ordinary@test.local',
+      roles: ['people-desk'],
+    });
+    const db = getDbAsSystem();
+    await db.insert(tables.Session, sessionRow('break-glass-phone', breakGlass));
+
+    const log = await LogCapture.during(async () => {
+      await expect(service().setEmail(breakGlass.id, 'taken.over@test.local')).rejects.toThrow(/only an admin/i);
+      await expect(service().setEmail(compliance.id, 'taken.over@test.local')).rejects.toThrow(/only an admin/i);
+    });
+
+    expect((await row(breakGlass.id)).email).toBe('break.glass@test.local');
+    expect((await row(breakGlass.id)).emailVerified).toBe(true);
+    expect((await row(compliance.id)).email).toBe('compliance@test.local');
+    expect(await events(breakGlass.id)).toEqual([]);
+    expect(await events(compliance.id)).toEqual([]);
+    expect(
+      (await db.query(tables.Session, { userEmail: breakGlass.email })).map((session) => session.sessionId)
+    ).toEqual(['break-glass-phone']);
+    const refusals = log.linesContaining('Refused an address change');
+    expect(refusals.lines).toHaveLength(2);
+    expect(refusals.text).toContain(actor.id);
+    expect(refusals.text).toContain(breakGlass.id);
+    expect(refusals.text).toContain(compliance.id);
+    expect(refusals.addresses).toEqual([]);
+
+    // An ordinary account's address stays the users door's.
+    await service().setEmail(ordinary.id, 'ordinary.moved@test.local');
+    expect((await row(ordinary.id)).email).toBe('ordinary.moved@test.local');
+
+    // An admin changes the administrative account's address, audited as any change.
+    const admin = await testEnv.createUser({ name: 'An Admin', email: 'an.admin@test.local', roles: ['admin'] });
+    testEnv.actAs(admin);
+    try {
+      await service().setEmail(compliance.id, 'compliance.moved@test.local');
+    } finally {
+      testEnv.actAs(actor);
+    }
+    expect((await row(compliance.id)).email).toBe('compliance.moved@test.local');
+    expect(await events(compliance.id)).toEqual([{ actor: admin.id, field: 'email', value: null }]);
   });
 
   it(`setEmailVerified writes the flag with its word as the row's value and clears the pending token; already so writes nothing`, async () => {

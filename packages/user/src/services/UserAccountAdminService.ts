@@ -17,15 +17,18 @@ export const getUserAccountAdminService = serviceFactory<UserAccountAdminService
  * with), and the person confirms the new address through the account page's re-send — the one
  * mailed road (`SignupService.resendEmailVerification`). The service sends no mail itself.
  *
- * The door is the `users` permission — the same trust that reads these rows.
+ * The door is the `users` permission — the same trust that reads these rows — except for the
+ * address of an account that holds an administrative role, which needs `admin` (see `setEmail`).
  */
 export interface UserAccountAdminService extends Service {
   /** Set an account's display name. A blank name is refused. Already that name: no change, no audit row. */
   setName(userId: string, name: string): Promise<void>;
   /**
    * Set an account's email address (lowercased). Refused when the address is not well formed, when
-   * another account holds it, or when the account is a machine account (its address is declared in
-   * code). Clears `emailVerified` and the verification token and ends the account's sessions.
+   * another account holds it, when the account is a machine account (its address is declared in
+   * code), or when the account holds an administrative role (`RolesCatalog.isAdministrative`) and
+   * the caller does not hold `admin` — whoever holds an account's address can take it through the
+   * reset link. Clears `emailVerified` and the verification token and ends the account's sessions.
    * Already that address: no change, no audit row.
    */
   setEmail(userId: string, email: string): Promise<void>;

@@ -71,6 +71,7 @@
     "packages/user/test/AccessGrantWellFormed.test.ts",
     "packages/user/test/CapabilityEnforcement.test.ts",
     "packages/user/test/ClientRootCreationBootstrap.test.ts",
+    "packages/user/test/RolesCatalog.test.ts",
     "packages/user/test/SharedRecord.test.ts",
     "packages/user/test/SharedRecordDuplicateModuleState.test.ts",
     "packages/user/test/SharedRecordNoPrincipal.test.ts",

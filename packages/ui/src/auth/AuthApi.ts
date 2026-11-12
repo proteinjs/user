@@ -16,20 +16,23 @@ export class AuthApi {
    */
   static readonly TOO_MANY_ATTEMPTS = 'Too many attempts. Try again in a few minutes.';
 
+  /** Whether `error` is the limit's refusal ({@link TOO_MANY_ATTEMPTS}) — a page that shows no form line asks this. */
+  static isTooManyAttempts(error: unknown): boolean {
+    return error instanceof Error && error.message === AuthApi.TOO_MANY_ATTEMPTS;
+  }
+
   /**
    * Signs up AND establishes the session in the same request (auto-login): on resolve the
    * caller navigates straight into the app — no bounce through the login form. Invited users
    * pass the invite `token` and no email (the invite carries it).
    */
   async signup(user: UserSignup, inviteToken?: string): Promise<void> {
-    const response = await fetch(routes.signup.path, {
+    const response = await this.send(routes.signup.path, {
       method: routes.signup.method,
       body: JSON.stringify({ ...user, token: inviteToken }),
       redirect: 'follow',
-      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
     });
-    this.refuseIfLimited(response);
     if (response.status != 200) {
       throw new Error(await this.reason(response, `Failed to sign up, error: ${response.statusText}`));
     }
@@ -41,14 +44,12 @@ export class AuthApi {
   }
 
   async login(email: string, password: string): Promise<void> {
-    const response = await fetch(routes.login.path, {
+    const response = await this.send(routes.login.path, {
       method: routes.login.method,
       body: JSON.stringify({ email, password }),
       redirect: 'follow',
-      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
     });
-    this.refuseIfLimited(response);
     if (response.status != 200) {
       throw new Error(await this.reason(response, `Failed to log in, error: ${response.statusText}`));
     }
@@ -64,14 +65,12 @@ export class AuthApi {
    * account or without — for the page to show as it is.
    */
   async initiatePasswordReset(email: string): Promise<string> {
-    const response = await fetch(routes.initiatePasswordReset.path, {
+    const response = await this.send(routes.initiatePasswordReset.path, {
       method: routes.initiatePasswordReset.method,
       body: JSON.stringify({ email }),
       redirect: 'follow',
-      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
     });
-    this.refuseIfLimited(response);
     if (response.status != 200) {
       throw new Error(`Failed to send the reset email. Please try again.`);
     }
@@ -87,14 +86,13 @@ export class AuthApi {
   /**
    * A valid token resolves with the account email the reset is for — the page renders it as
    * the read-only `autocomplete="username"` field so password managers can associate the
-   * updated password with the stored credential.
+   * updated password with the stored credential. A check the limit refused throws
+   * {@link TOO_MANY_ATTEMPTS}: the link was not judged, so it is no verdict on the link.
    */
   async validateResetToken(token: string): Promise<{ valid: true; email: string } | { valid: false; message: string }> {
-    const response = await fetch(`${routes.validateResetToken.path}?token=${token}`, {
+    const response = await this.send(`${routes.validateResetToken.path}?token=${token}`, {
       method: routes.validateResetToken.method,
-      credentials: 'same-origin',
     });
-    this.refuseIfLimited(response);
     const body = await response.json();
     if (!body.isValid) {
       return { valid: false, message: body.message || 'Invalid or expired token' };
@@ -109,27 +107,28 @@ export class AuthApi {
    * is what the person needs to act on.
    */
   async executePasswordReset(token: string, newPassword: string): Promise<void> {
-    const response = await fetch(routes.executePasswordReset.path, {
+    const response = await this.send(routes.executePasswordReset.path, {
       method: routes.executePasswordReset.method,
       body: JSON.stringify({ token, newPassword }),
-      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
     });
-    this.refuseIfLimited(response);
     if (response.status !== 200) {
       throw new Error(await this.reason(response, 'Failed to reset password'));
     }
   }
 
   /**
-   * A 429 is a per-address limit in front of the door: say so in the throttle's words. Every door
-   * reads the status here first, before any body: the limit's answer is the load balancer's page,
-   * never the door's JSON.
+   * Every door's request — the ONE fetch in this class, so no door can skip the limit's read. A 429
+   * is a per-address limit in front of the door: said in the throttle's words, before any body is
+   * read (the limit's answer is the load balancer's page, never the door's JSON).
    */
-  private refuseIfLimited(response: { status: number }): void {
+  private async send(path: string, init: RequestInit): Promise<Response> {
+    const response = await fetch(path, { ...init, credentials: 'same-origin' });
     if (response.status === 429) {
       throw new Error(AuthApi.TOO_MANY_ATTEMPTS);
     }
+
+    return response;
   }
 
   /**

@@ -80,7 +80,7 @@ describe('UpdateUserInfo.updateName — persists AND refreshes the server sessio
       sendEmail.mockClear();
     });
 
-    it(`refuses a password under the minimum, or on the common-passwords list, in the policy's words — nothing written, no mail`, async () => {
+    it(`refuses a blank password, one under the minimum, or one on the common-passwords list, each in a sentence the policy knows (a form shows it as it is) — nothing written, no mail`, async () => {
       const user = await withCurrentPassword('rules@test.local', 'current-password-1');
       const before = (await getDbAsSystem().get(tables.User, { id: user.id })).password;
 
@@ -92,6 +92,14 @@ describe('UpdateUserInfo.updateName — persists AND refreshes the server sessio
 
       const common = await new UpdateUserInfo().updatePassword('current-password-1', 'Password1');
       expect(common).toEqual({ updated: false, error: PasswordPolicy.TOO_COMMON });
+
+      // Every refusal the road answers is one the policy recognizes — the blank one included, which a
+      // consumer's form would otherwise file as a failure of its own.
+      const blank = await new UpdateUserInfo().updatePassword('current-password-1', '');
+      expect(blank.updated).toBe(false);
+      for (const refused of [short, common, blank]) {
+        expect(PasswordPolicy.isRefusal(refused.error)).toBe(true);
+      }
 
       expect((await getDbAsSystem().get(tables.User, { id: user.id })).password).toBe(before);
       expect(sendEmail).not.toHaveBeenCalled();
@@ -110,6 +118,27 @@ describe('UpdateUserInfo.updateName — persists AND refreshes the server sessio
       expect((await db.get(tables.User, { id: user.id })).password).toBe(before);
       expect((await db.query(tables.Session, { userEmail: user.email })).map((row) => row.sessionId)).toEqual([
         'not-text-phone',
+      ]);
+      expect(sendEmail).not.toHaveBeenCalled();
+    });
+
+    it(`a current password that is no text at all matches nothing — answered as a wrong one, nothing written, no session ended, no mail`, async () => {
+      const user = await withCurrentPassword('current-not-text@test.local', 'current-password-4');
+      const db = getDbAsSystem();
+      await db.insert(tables.Session, sessionRow('current-not-text-phone', user));
+      const before = (await db.get(tables.User, { id: user.id })).password;
+
+      const wrong = await new UpdateUserInfo().updatePassword('not-the-password', 'a new long password');
+      expect(wrong.updated).toBe(false);
+      // The service's signature says text; the wire carries whatever the caller sent.
+      for (const notText of [12345678, { password: 'current-password-4' }, null]) {
+        const outcome = await new UpdateUserInfo().updatePassword(notText as unknown as string, 'a new long password');
+        expect(outcome).toEqual(wrong);
+      }
+
+      expect((await db.get(tables.User, { id: user.id })).password).toBe(before);
+      expect((await db.query(tables.Session, { userEmail: user.email })).map((row) => row.sessionId)).toEqual([
+        'current-not-text-phone',
       ]);
       expect(sendEmail).not.toHaveBeenCalled();
     });

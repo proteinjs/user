@@ -28,6 +28,8 @@ const PasswordResetComponent: React.FC = () => {
   const [token] = useState(resetTokenFromUrl);
   const [validating, setValidating] = useState(!!token);
   const [invalid, setInvalid] = useState(!token);
+  // The check refused by the limit in front of the door: no verdict on the link at all.
+  const [limited, setLimited] = useState(false);
   const [email, setEmail] = useState('');
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors<PasswordResetField>>({});
   const [error, setError] = useState<string | undefined>();
@@ -52,8 +54,13 @@ const PasswordResetComponent: React.FC = () => {
           setInvalid(true);
         }
       })
-      .catch(() => {
-        if (active) {
+      .catch((error: unknown) => {
+        if (!active) {
+          return;
+        }
+        if (AuthApi.isTooManyAttempts(error)) {
+          setLimited(true);
+        } else {
           setInvalid(true);
         }
       })
@@ -101,6 +108,19 @@ const PasswordResetComponent: React.FC = () => {
           <Typography sx={{ fontSize: '0.875rem', color: 'inherit' }}>Checking your reset link…</Typography>
         </Box>
       </AuthLayout>
+    );
+  }
+
+  if (limited) {
+    // The limit refused the check, so the link was never judged: the person reads the limit's words
+    // and tries the same link again — never told a live link is dead.
+    return (
+      <AuthMessagePanel
+        title='Reset your password'
+        body={AuthApi.TOO_MANY_ATTEMPTS}
+        actionName='Try again'
+        actionHref={`/${uiRoutes.auth.passwordReset}?token=${encodeURIComponent(token)}`}
+      />
     );
   }
 
