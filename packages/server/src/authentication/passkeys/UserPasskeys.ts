@@ -45,8 +45,9 @@ export type PasskeyEnrollment = { passkey: UserPasskey } | { refused: 'not-first
  * a passkey's name is never copied into it), and the sessions the act ends (`AccountSessions`)
  * commit together or not at all, so the trail cannot diverge from the rows and no session outlives
  * the passkey whose removal was meant to end it. Once it has committed — and only then — the
- * account is told of it by mail (`PasskeyEmails`): an act that rolled back mails nothing, and a
- * mail that cannot be sent undoes nothing.
+ * account is told of it by mail (`PasskeyEmails`), and the act does not wait for the telling: an
+ * act that rolled back mails nothing, a mail that cannot be sent undoes nothing, and a mail
+ * transport that hangs holds no act's answer.
  */
 export class UserPasskeys {
   /** The transports of a roaming security key: a passkey that reports only these is named for what it is. */
@@ -228,13 +229,17 @@ export class UserPasskeys {
 
   /**
    * The record of an act on an account's passkeys: its audit row, written inside the act's
-   * transaction, and the mail that tells the account of it, queued to go once that transaction
-   * has committed. `actor` is the account itself for a person's own act.
+   * transaction, and the mail that tells the account of it, started once that transaction has
+   * committed and not awaited — the act's answer does not wait for a mail transport, and the
+   * telling never rejects (`PasskeyEmails.tell`). `actor` is the account itself for a person's
+   * own act.
    */
   private async record(act: PasskeyChange, actor: string, target: string): Promise<void> {
     const db = getDbAsSystem();
     await db.insert(tables.UserAccountEvent, { actor, target, field: 'passkeys', value: act });
-    await db.runAfterCommit(async () => await new PasskeyEmails().tell(target, act));
+    await db.runAfterCommit(async () => {
+      void new PasskeyEmails().tell(target, act);
+    });
   }
 
   /** The rows of ONE account — the scope condition every read and write of the table starts from. */

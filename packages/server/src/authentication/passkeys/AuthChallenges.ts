@@ -83,6 +83,9 @@ export type ClaimedSessionChallenge = SessionChallengeMemo & { challenge: string
  * A challenge made INSIDE A SESSION (`mintInSession`) is bound to that session as well: the row
  * remembers the SHA-256 of the session's id, and `claimInSession` answers it only to the same
  * account in the same session, for the same purpose. It lives five minutes from its minting.
+ * A SESSION HOLDS AT MOST ONE OF THEM PER PURPOSE: minting one removes, in the same transaction,
+ * whatever the session held for that purpose — so a signed-in account cannot pile rows up by
+ * beginning again and again, and a step a later one replaced claims nothing.
  */
 export class AuthChallenges {
   /** The life of a challenge made inside a session, from its minting. */
@@ -95,7 +98,9 @@ export class AuthChallenges {
 
   /**
    * Mint a challenge inside a session, for `holder` alone: `challenge` is the WebAuthn challenge
-   * the authenticator signs, `memo` what else the row remembers. Resolves to its token.
+   * the authenticator signs, `memo` what else the row remembers. It REPLACES what the session
+   * held for the same purpose, in one transaction: the earlier rows go and this one is written
+   * together, or neither happens. Resolves to its token.
    */
   async mintInSession(
     kind: AuthChallengeKind,
@@ -109,12 +114,15 @@ export class AuthChallenges {
       purpose: holder.purpose,
       session: this.sessionDigest(holder.sessionId),
     };
-    return await this.insert(
-      kind,
-      holder.userId,
-      payload,
-      moment().add(AuthChallenges.SESSION_LIFE_MINUTES, 'minutes')
-    );
+    return await getDbAsSystem().runTransaction(async () => {
+      await this.withdraw(kind, holder.userId, payload);
+      return await this.insert(
+        kind,
+        holder.userId,
+        payload,
+        moment().add(AuthChallenges.SESSION_LIFE_MINUTES, 'minutes')
+      );
+    });
   }
 
   /**
@@ -187,6 +195,33 @@ export class AuthChallenges {
       .getQueryBuilder(tables.AuthChallenge)
       .condition({ field: 'expiresAt', operator: '<=', value: moment() });
     return await db.delete(tables.AuthChallenge, lapsed);
+  }
+
+  /**
+   * Remove what a session holds for one purpose: every row of `kind` the account has that was made
+   * in the session `made` names, for the purpose it names — claimed or not, so the session holds
+   * one row for that purpose once the mint that asked has written its own. The session and the
+   * purpose live in the payload, so the account's rows of the kind are read (by their index) and
+   * matched here.
+   */
+  private async withdraw(kind: AuthChallengeKind, userId: string, made: SessionChallengePayload): Promise<void> {
+    const db = getDbAsSystem();
+    const ofTheKind = new QueryBuilderFactory()
+      .getQueryBuilder<AuthChallenge>(tables.AuthChallenge)
+      .condition({ field: 'userId', operator: '=', value: userId })
+      .condition({ field: 'kind', operator: '=', value: kind });
+    const held = (await db.query(tables.AuthChallenge, ofTheKind)).filter((row) => {
+      const payload = row.payload as Partial<SessionChallengePayload>;
+      return payload.session === made.session && payload.purpose === made.purpose;
+    });
+    if (held.length === 0) {
+      return;
+    }
+
+    const theHeld = new QueryBuilderFactory()
+      .getQueryBuilder<AuthChallenge>(tables.AuthChallenge)
+      .condition({ field: 'id', operator: 'IN', value: held.map((row) => row.id) });
+    await db.delete(tables.AuthChallenge, theHeld);
   }
 
   /** Write one challenge row; resolves to its token. */

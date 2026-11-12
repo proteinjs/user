@@ -1,5 +1,6 @@
 import { Logger } from '@proteinjs/logger';
 import { Service } from '@proteinjs/service';
+import { RequestDigests } from '@proteinjs/util-node';
 import {
   PasskeyAddStep,
   PasskeyConfirmation,
@@ -32,7 +33,9 @@ import { WebAuthnVerifier } from '../authentication/passkeys/WebAuthnVerifier';
  * transaction with its audit row (`UserPasskeys`).
  *
  * A refusal is thrown in words for the caller; none of them says whether a passkey id exists on
- * another account.
+ * another account. A step that will be refused is refused BEFORE its challenge is written: an
+ * account with no passkey to confirm with, and an account that need not use a passkey asking to
+ * add one, leave no row. Its lines name the account by its digest, as every passkey line does.
  */
 export class Passkeys implements PasskeysService {
   /** Any signed-in account: every method acts on the caller's own passkeys alone. */
@@ -52,6 +55,7 @@ export class Passkeys implements PasskeysService {
     'This account signs in with a passkey, so it keeps at least one. Add another before removing this one.';
 
   private readonly logger = new Logger({ name: 'Passkeys' });
+  private readonly digests = new RequestDigests();
   private readonly gate = new SecondFactorGate();
   private readonly passkeys = new UserPasskeys();
   private readonly confirmations = new PasskeyConfirmations();
@@ -65,6 +69,11 @@ export class Passkeys implements PasskeysService {
 
   async beginConfirmation(purpose: PasskeyConfirmationPurpose): Promise<PasskeyConfirmationStep> {
     const { account, sessionId } = await new SignedInAccount().read();
+    // A confirmation of an add opens an add: one that `beginAdd` would refuse is refused here.
+    if (purpose?.act === 'add') {
+      this.refuseUnlessOwed(account);
+    }
+
     const step = await this.confirmations.begin(account, sessionId, purpose);
     if (!step) {
       throw new Error('This account has no passkey to confirm with.');
@@ -110,7 +119,10 @@ export class Passkeys implements PasskeysService {
     const verifier = WebAuthnVerifier.forDeclaredRelyingParty();
     const verdict = await verifier.verifyRegistration(registration, claimed.challenge);
     if (!verdict.verified) {
-      this.logger.info({ message: 'Passkey add refused', obj: { account: account.id, reason: verdict.reason } });
+      this.logger.info({
+        message: 'Passkey add refused',
+        obj: { account: this.digests.account(account.email), reason: verdict.reason },
+      });
       throw new Error('That passkey could not be added. Start again.');
     }
 
@@ -125,7 +137,10 @@ export class Passkeys implements PasskeysService {
     }
 
     const { passkey } = enrollment;
-    this.logger.info({ message: 'Passkey added', obj: { account: account.id, passkey: passkey.id } });
+    this.logger.info({
+      message: 'Passkey added',
+      obj: { account: this.digests.account(account.email), passkey: passkey.id },
+    });
     return this.view(passkey);
   }
 
@@ -163,7 +178,10 @@ export class Passkeys implements PasskeysService {
       throw new Error(Passkeys.NO_SUCH_PASSKEY);
     }
 
-    this.logger.info({ message: 'Passkey removed', obj: { account: account.id, passkey: id } });
+    this.logger.info({
+      message: 'Passkey removed',
+      obj: { account: this.digests.account(account.email), passkey: id },
+    });
   }
 
   /** Adding a passkey is for an account that must use one; any other is refused in words. */

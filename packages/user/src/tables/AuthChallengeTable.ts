@@ -40,8 +40,9 @@ export class AuthChallengeTable extends Table<AuthChallenge> {
   };
   indexes = [
     { name: 'auth_challenge_token_hash_unique', columns: ['tokenHash'] as (keyof AuthChallenge)[], unique: true },
-    // An account's open challenges of one kind, voided together when the account enrolls its first
-    // passkey (user-server `AuthChallenges.voidOthers`).
+    // An account's challenges of one kind: the open ones voided together when the account enrolls
+    // its first passkey (user-server `AuthChallenges.voidOthers`), and the ones a session holds for
+    // a purpose, replaced when it begins that step again (`AuthChallenges.mintInSession`).
     { name: 'auth_challenge_user_id_kind', columns: ['userId', 'kind'] as (keyof AuthChallenge)[] },
     // The expiry sweep (user-server `AuthChallenges.sweep`, on the session store's interval).
     { name: 'auth_challenge_expires_at', columns: ['expiresAt'] as (keyof AuthChallenge)[] },

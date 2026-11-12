@@ -1,7 +1,7 @@
 import { createServer } from 'http';
 import moment from 'moment';
 import { Db, getDbAsSystem } from '@proteinjs/db';
-import { MailSink } from '@proteinjs/email-server';
+import { EmailSender, MailSink } from '@proteinjs/email-server';
 import { SourceRepository } from '@proteinjs/reflection';
 import { SocketIOServerRepo } from '@proteinjs/server';
 import { Session } from '@proteinjs/server-api';
@@ -22,6 +22,7 @@ import {
 } from '@proteinjs/user';
 import { AccountSessions } from '../src/authentication/AccountSessions';
 import { EmailVerificationToken } from '../src/authentication/EmailVerificationToken';
+import { PasskeyEmails } from '../src/emails/PasskeyEmails';
 import { SocketIOSessionWatcher } from '../src/authentication/SocketIOSessionWatcher';
 import { PasskeyAdmin } from '../src/services/PasskeyAdmin';
 import { Passkeys } from '../src/services/Passkeys';
@@ -257,10 +258,10 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
     const MAIL_SENDER_KEY = '@proteinjs/email-server/DefaultEmailConfigFactory';
     const PASSKEY_MAIL_KEY = '@proteinjs/user-server/DefaultPasskeyChangedEmailConfigFactory';
     const ORIGIN = { origin: RELYING_PARTY.origin };
-    // The app's seam: its own words for each change. Its options never redirect the mail.
+    // The app's seam: its own words for each change. Its options never redirect or copy the mail.
     const passkeyMail = {
       getConfig: () => ({
-        options: { to: 'elsewhere@test.local' },
+        options: { to: 'elsewhere@test.local', cc: 'copied@test.local', bcc: 'hidden@test.local' },
         getEmailContent: (change: string) => ({ subject: `passkey ${change}`, text: `A passkey was ${change}.` }),
       }),
     };
@@ -284,6 +285,36 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
     const sessionIdsOf = async (user: User) =>
       (await getDbAsSystem().query(tables.Session, { userEmail: user.email }))
         .map((session) => session.sessionId)
+        .sort();
+
+    /**
+     * An act answers without waiting for its mail, so a case that reads the sink or the log first
+     * waits for every telling the acts so far have started (each resolves when its send has ended).
+     */
+    let tellings: jest.SpyInstance<Promise<void>, Parameters<PasskeyEmails['tell']>>;
+    const mailsSettle = async () => {
+      await Promise.all(tellings.mock.results.map((telling) => telling.value));
+    };
+
+    /** What `act` came to inside two seconds: it answered, or it is still waiting. */
+    const within2s = async (act: Promise<unknown>): Promise<'answered' | 'still waiting'> => {
+      let stopWaiting = () => {};
+      const waited = new Promise<'still waiting'>((resolve) => {
+        const timer = setTimeout(() => resolve('still waiting'), 2000);
+        stopWaiting = () => clearTimeout(timer);
+      });
+      try {
+        return await Promise.race([act.then(() => 'answered' as const), waited]);
+      } finally {
+        stopWaiting();
+      }
+    };
+
+    /** The account's open challenges, by what each was made for. */
+    const openSteps = async (user: User) =>
+      (await getDbAsSystem().query(tables.AuthChallenge, { userId: user.id }))
+        .filter((challenge) => !challenge.consumedAt)
+        .map((challenge) => (challenge.payload as { purpose: string }).purpose)
         .sort();
 
     /** The session the next calls ride: the id a challenge is bound to and an act keeps. */
@@ -393,9 +424,11 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
         },
       ];
       objectCache()[PASSKEY_MAIL_KEY] = [passkeyMail];
+      tellings = jest.spyOn(PasskeyEmails.prototype, 'tell');
     });
 
     afterAll(() => {
+      tellings.mockRestore();
       objectCache()[RELYING_PARTY_KEY] = [];
       delete objectCache()[MAIL_SENDER_KEY];
       delete objectCache()[PASSKEY_MAIL_KEY];
@@ -766,6 +799,7 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       expect(await passkeyEvents(locked.id)).toEqual(before.locked);
       expect(await sessionIdsOf(admin)).toEqual(['passkey-atomic-admin-phone']);
       expect(await sessionIdsOf(locked)).toEqual(['passkey-atomic-locked-phone']);
+      await mailsSettle();
       expect(MailSink.get().list()).toEqual([]);
     });
 
@@ -816,21 +850,63 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
 
     it('each act on an account’s passkeys mails the account’s address once — a passkey added, one removed, all of them reset — and an act that is refused mails nothing', async () => {
       const locked = await person('passkey.mail.locked', ['roles-desk']);
+      await mailsSettle();
       MailSink.get().clear();
-      const first = await addFirst();
-      await addAnother(first);
-      const [, another] = await passkeyRows(locked);
-      await expect(passkeys().remove(another.id, undefined as unknown as PasskeyConfirmation)).rejects.toThrow();
-      expect(mailed(locked)).toEqual(['passkey added', 'passkey added']);
+      const wire = jest.spyOn(MailSink.get(), 'record');
+      try {
+        const first = await addFirst();
+        await addAnother(first);
+        const [, another] = await passkeyRows(locked);
+        await expect(passkeys().remove(another.id, undefined as unknown as PasskeyConfirmation)).rejects.toThrow();
+        await mailsSettle();
+        expect(mailed(locked)).toEqual(['passkey added', 'passkey added']);
 
-      await passkeys().remove(another.id, await confirm(first, { act: 'remove', passkeyId: another.id }));
-      const admin = await person('passkey.mail.admin', ['admin']);
-      const own = await addFirst();
-      await new PasskeyAdmin().reset(locked.id, await confirm(own, { act: 'reset', userId: locked.id }));
+        await passkeys().remove(another.id, await confirm(first, { act: 'remove', passkeyId: another.id }));
+        const admin = await person('passkey.mail.admin', ['admin']);
+        const own = await addFirst();
+        await new PasskeyAdmin().reset(locked.id, await confirm(own, { act: 'reset', userId: locked.id }));
+        await mailsSettle();
 
-      expect(mailed(locked)).toEqual(['passkey added', 'passkey added', 'passkey removed', 'passkey reset']);
-      expect(mailed(admin)).toEqual(['passkey added']);
-      expect(MailSink.get().list()).toHaveLength(5);
+        expect(mailed(locked)).toEqual(['passkey added', 'passkey added', 'passkey removed', 'passkey reset']);
+        expect(mailed(admin)).toEqual(['passkey added']);
+        expect(MailSink.get().list()).toHaveLength(5);
+        // The account's address is the mail's only recipient: the app's options add nobody.
+        expect(wire.mock.calls.map(([message]) => [message.cc, message.bcc])).toEqual(
+          Array.from({ length: 5 }, () => [undefined, undefined])
+        );
+      } finally {
+        wire.mockRestore();
+      }
+    });
+
+    it('an act does not wait for its mail: with a sender that never settles, an add, a removal and a reset each answer, and each has happened', async () => {
+      const locked = await person('passkey.waits.locked', ['roles-desk']);
+      await addFirst();
+      const admin = await person('passkey.waits.admin', ['admin']);
+      const neverSettles = jest
+        .spyOn(EmailSender.prototype, 'sendEmail')
+        .mockReturnValue(new Promise<void>(() => undefined));
+      const answered = { theAdd: '', theRemoval: '', theReset: '' };
+      try {
+        const own = new SoftwareAuthenticator();
+        answered.theAdd = await within2s(addFirst(own));
+        await within2s(addAnother(own));
+        const [, second] = await passkeyRows(admin);
+        answered.theRemoval = await within2s(
+          passkeys().remove(second.id, await confirm(own, { act: 'remove', passkeyId: second.id }))
+        );
+        answered.theReset = await within2s(
+          new PasskeyAdmin().reset(locked.id, await confirm(own, { act: 'reset', userId: locked.id }))
+        );
+      } finally {
+        neverSettles.mockRestore();
+        // Those tellings never end: the cases after this one wait only for their own.
+        tellings.mockClear();
+      }
+
+      expect(answered).toEqual({ theAdd: 'answered', theRemoval: 'answered', theReset: 'answered' });
+      expect(await passkeyRows(admin)).toHaveLength(1);
+      expect(await passkeyRows(locked)).toEqual([]);
     });
 
     it('a mail that cannot be sent is one error line that names the account by digest, never its address, and the act stands', async () => {
@@ -847,6 +923,7 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       try {
         log = await LogCapture.during(async () => {
           await addFirst();
+          await mailsSettle();
         });
       } finally {
         objectCache()[PASSKEY_MAIL_KEY] = [passkeyMail];
@@ -859,6 +936,65 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       expect(failures.lines).toHaveLength(1);
       expect(failures.addresses).toEqual([]);
       expect(log.addresses).toEqual([]);
+      // The passkey lines name the account by one name, its digest: the service's line and the mail's agree.
+      const accountOn = (marker: string) =>
+        /account: '([0-9a-f]{16})'/.exec(
+          log.linesContaining(marker).text.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '')
+        )?.[1];
+      expect(accountOn('Passkey added')).toMatch(/^[0-9a-f]{16}$/);
+      expect(accountOn('Passkey added')).toBe(accountOn('Passkey mail failed to send'));
+    });
+
+    it('a session holds at most one open step per act: twenty begins leave one, and only the last confirms; a step that cannot be written leaves the open one standing; a begin that will be refused leaves none', async () => {
+      const owner = await person('passkey.bound.owner', ['admin']);
+      const first = await addFirst();
+      const [row] = await passkeyRows(owner);
+      const answer = (step: Awaited<ReturnType<Passkeys['beginConfirmation']>>) => ({
+        token: step.token,
+        assertion: first.assert(step.options, ORIGIN),
+      });
+
+      const steps = [];
+      for (let begun = 0; begun < 20; begun++) {
+        steps.push(await passkeys().beginConfirmation({ act: 'add' }));
+      }
+      expect(await openSteps(owner)).toEqual(['confirm-add']);
+      await expect(passkeys().beginAdd(answer(steps[18]))).rejects.toThrow();
+
+      // Another session's step, and this session's step for another act, replace nothing.
+      ride('another-session');
+      await passkeys().beginConfirmation({ act: 'add' });
+      ride('test-session');
+      await passkeys().beginConfirmation({ act: 'remove', passkeyId: row.id });
+      expect(await openSteps(owner)).toEqual(['confirm-add', 'confirm-add', 'confirm-remove']);
+
+      // A new step that cannot be written replaces nothing: the open one still confirms.
+      const insert = Db.prototype.insert;
+      const stepFails = jest.spyOn(Db.prototype, 'insert').mockImplementation(function (this: any, table, ...rest) {
+        return table.name === tables.AuthChallenge.name
+          ? Promise.reject(new Error('the step could not be written'))
+          : insert.call(this, table, ...rest);
+      });
+      try {
+        await expect(passkeys().beginConfirmation({ act: 'add' })).rejects.toThrow();
+      } finally {
+        stepFails.mockRestore();
+      }
+      expect((await passkeys().beginAdd(answer(steps[19]))).token).toBeTruthy();
+
+      // A begin that will be refused writes no step: an account with no passkey to confirm with,
+      // and an account that need not use a passkey — whether or not it has one.
+      const bare = await person('passkey.bound.bare', ['admin']);
+      await expect(passkeys().beginConfirmation({ act: 'add' })).rejects.toThrow();
+      expect(await openSteps(bare)).toEqual([]);
+      const ordinary = await person('passkey.bound.ordinary', ['people-desk']);
+      await expect(passkeys().beginAdd()).rejects.toThrow();
+      expect(await openSteps(ordinary)).toEqual([]);
+      testEnv.actAs(owner);
+      await getDbAsSystem().update(tables.User, { id: owner.id, roles: [] });
+      const open = await openSteps(owner);
+      await expect(passkeys().beginConfirmation({ act: 'add' })).rejects.toThrow();
+      expect(await openSteps(owner)).toEqual(open);
     });
 
     it('reset: the admin is refused on their own account and on a declared machine account; on another person it deletes the passkeys, ends that person’s sessions and nobody else’s, and writes one audit row', async () => {

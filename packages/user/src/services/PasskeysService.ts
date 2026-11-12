@@ -37,7 +37,8 @@ export type PasskeyConfirmationPurpose =
 /**
  * A step the device's passkey sheet answers: `options` is what the sheet takes (as JSON), `token`
  * names the step's challenge and is handed back with the sheet's answer. A step is good once, in
- * the session that began it, for five minutes.
+ * the session that began it, for five minutes — and until that session begins another step for
+ * the same act: a session holds one open step per act, and the one a later begin replaced is over.
  */
 export type PasskeyConfirmationStep = { token: string; options: PublicKeyCredentialRequestOptionsJSON };
 export type PasskeyAddStep = { token: string; options: PublicKeyCredentialCreationOptionsJSON };
@@ -63,7 +64,11 @@ export type PasskeyConfirmation = { token: string; assertion: AuthenticationResp
 export interface PasskeysService extends Service {
   /** The caller's passkeys, oldest first, and whether the caller's account must use one. */
   list(): Promise<PasskeyList>;
-  /** Begin a confirmation for `purpose`: the step one of the caller's passkeys answers. Refused when the caller has none. */
+  /**
+   * Begin a confirmation for `purpose`: the step one of the caller's passkeys answers. Refused
+   * when the caller has no passkey, and — for adding one — when the caller's account need not use
+   * a passkey.
+   */
   beginConfirmation(purpose: PasskeyConfirmationPurpose): Promise<PasskeyConfirmationStep>;
   /**
    * Begin adding a passkey: the step the device's sheet answers by creating one. Needs a

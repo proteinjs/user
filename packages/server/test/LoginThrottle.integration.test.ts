@@ -7,6 +7,7 @@ import { User, routes, tables } from '@proteinjs/user';
 import { login } from '../src/routes/login';
 import { DefaultAdminCredentials } from '../src/authentication/DefaultAdminCredentials';
 import { PasswordHasher } from '../src/authentication/PasswordHasher';
+import { PasskeyEmails } from '../src/emails/PasskeyEmails';
 import { AccountDeletion } from '../src/services/AccountDeletion';
 import { createPassportRequest } from './passportSessionHarness';
 import { SoftwareAuthenticator } from './SoftwareAuthenticator';
@@ -488,11 +489,22 @@ const enroll = async (ip: string, email: string, authenticator = new SoftwareAut
 };
 
 describe('login route: the passkey step of an account that holds an administrative role', () => {
+  /**
+   * The door answers without waiting for the mail a first enrollment sends, so a case that reads
+   * the sink first waits for every telling begun so far (each resolves when its send has ended).
+   */
+  let tellings: jest.SpyInstance<Promise<void>, Parameters<PasskeyEmails['tell']>>;
+  const mailsSettle = async () => {
+    await Promise.all(tellings.mock.results.map((telling) => telling.value));
+  };
+
   beforeAll(() => {
     declareRelyingParty();
     sendMailToTheSink();
+    tellings = jest.spyOn(PasskeyEmails.prototype, 'tell');
   });
   afterAll(() => {
+    tellings.mockRestore();
     declareNoRelyingParty();
     restoreMail();
   });
@@ -554,6 +566,7 @@ describe('login route: the passkey step of an account that holds an administrati
   it('with no passkey the door answers the add step; the registration stores one passkey, writes one audit row, mails the account once and opens the session; after it a password alone is answered the passkey step, never the add step', async () => {
     const admin = await createAccount('passkey-add@test.local', ['admin']);
     const authenticator = new SoftwareAuthenticator();
+    await mailsSettle();
     MailSink.get().clear();
 
     const { jar, step, kind, options } = await passwordStep('198.18.3.1', admin.email);
@@ -571,6 +584,7 @@ describe('login route: the passkey step of an account that holds an administrati
     const audit = await getDbAsSystem().query(tables.UserAccountEvent, { target: admin.id });
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({ actor: admin.id, target: admin.id, field: 'passkeys', value: 'added' });
+    await mailsSettle();
     expect(
       MailSink.get()
         .list()
@@ -960,6 +974,7 @@ describe('login route: the passkey step of an account that holds an administrati
   it('the first enrollment is one transaction: when its audit row cannot be written, no passkey is stored and no session opens', async () => {
     const admin = await createAccount('passkey-atomic@test.local', ['admin']);
     const { jar, options } = await passwordStep('198.18.18.1', admin.email);
+    await mailsSettle();
     MailSink.get().clear();
     const insert = Db.prototype.insert;
     const auditFails = jest.spyOn(Db.prototype, 'insert').mockImplementation(function (this: any, table, ...rest) {
@@ -982,6 +997,7 @@ describe('login route: the passkey step of an account that holds an administrati
     expect(failed.saved).toEqual([]);
     expect(await passkeysOf(admin)).toEqual([]);
     expect(await getDbAsSystem().query(tables.UserAccountEvent, { target: admin.id })).toEqual([]);
+    await mailsSettle();
     expect(MailSink.get().list()).toEqual([]);
   });
 
