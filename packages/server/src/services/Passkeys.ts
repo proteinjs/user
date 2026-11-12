@@ -13,6 +13,7 @@ import {
 } from '@proteinjs/user';
 import { SecondFactorGate } from '../authentication/SecondFactorGate';
 import { SignedInAccount } from '../authentication/SignedInAccount';
+import { PasskeyResetGuard } from '../authorization/PasskeyResetGuard';
 import { AuthChallenges } from '../authentication/passkeys/AuthChallenges';
 import { PasskeyConfirmations } from '../authentication/passkeys/PasskeyConfirmations';
 import { UserPasskeys } from '../authentication/passkeys/UserPasskeys';
@@ -34,8 +35,10 @@ import { WebAuthnVerifier } from '../authentication/passkeys/WebAuthnVerifier';
  *
  * A refusal is thrown in words for the caller; none of them says whether a passkey id exists on
  * another account. A step that will be refused is refused BEFORE its challenge is written: an
- * account with no passkey to confirm with, and an account that need not use a passkey asking to
- * add one, leave no row. Its lines name the account by its digest, as every passkey line does.
+ * account with no passkey to confirm with, an account that need not use a passkey asking to add
+ * one, and a confirmation of a reset the reset itself would refuse (`PasskeyResetGuard`: a caller
+ * who may not reset, the caller's own account, a machine account) leave no row. Its lines name the
+ * account by its digest, as every passkey line does.
  */
 export class Passkeys implements PasskeysService {
   /** Any signed-in account: every method acts on the caller's own passkeys alone. */
@@ -72,6 +75,11 @@ export class Passkeys implements PasskeysService {
     // A confirmation of an add opens an add: one that `beginAdd` would refuse is refused here.
     if (purpose?.act === 'add') {
       this.refuseUnlessOwed(account);
+    }
+    // A confirmation of a reset opens a reset: one that the reset would refuse is refused here,
+    // by the reset's own owner.
+    if (purpose?.act === 'reset') {
+      await new PasskeyResetGuard().target(account, purpose.userId);
     }
 
     const step = await this.confirmations.begin(account, sessionId, purpose);

@@ -690,6 +690,7 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
     it('a confirmation made for one act is refused for another', async () => {
       const stranger = await person('passkey.purpose.stranger', ['admin']);
       const strangers = await addFirst();
+      const bystander = await testEnv.createUser({ name: 'Bystander', email: 'passkey.purpose.bystander@test.local' });
       const owner = await person('passkey.purpose.owner', ['admin']);
       const first = await addFirst();
       await addAnother(first);
@@ -704,7 +705,7 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       ).rejects.toThrow();
       await expect(passkeys().beginAdd(await confirm(first, { act: 'remove', passkeyId: two.id }))).rejects.toThrow();
       await expect(
-        new PasskeyAdmin().reset(stranger.id, await confirm(first, { act: 'reset', userId: owner.id }))
+        new PasskeyAdmin().reset(stranger.id, await confirm(first, { act: 'reset', userId: bystander.id }))
       ).rejects.toThrow();
       await expect(new PasskeyAdmin().reset(stranger.id, await confirm(first, { act: 'add' }))).rejects.toThrow();
       // The act itself is part of what was confirmed, not only what it names: a removal's
@@ -955,7 +956,7 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       expect(accountOn('Passkey added')).toBe(accountOn('Passkey mail failed to send'));
     });
 
-    it('a session holds at most one open step per act: twenty begins leave one, and only the last confirms; a step that cannot be written leaves the open one standing; a begin that will be refused leaves none', async () => {
+    it('a session holds at most one open step per act: twenty begins leave one, and only the last confirms; a step that cannot be written leaves the open one standing; a begin that will be refused — a reset’s by a person who may not reset among them — leaves none', async () => {
       const owner = await person('passkey.bound.owner', ['admin']);
       const first = await addFirst();
       const [row] = await passkeyRows(owner);
@@ -1000,6 +1001,12 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       const ordinary = await person('passkey.bound.ordinary', ['people-desk']);
       await expect(passkeys().beginAdd()).rejects.toThrow();
       expect(await openSteps(ordinary)).toEqual([]);
+      // Nor does a reset's confirmation begun by a person who may not reset — one who has a passkey
+      // to answer it with, and not the admin role: the right is asked before the step is written.
+      const desk = await person('passkey.bound.desk', ['roles-desk']);
+      await addFirst();
+      await expect(passkeys().beginConfirmation({ act: 'reset', userId: bare.id })).rejects.toThrow();
+      expect(await openSteps(desk)).toEqual([]);
       testEnv.actAs(owner);
       await getDbAsSystem().update(tables.User, { id: owner.id, roles: [] });
       const open = await openSteps(owner);
@@ -1007,7 +1014,7 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       expect(await openSteps(owner)).toEqual(open);
     });
 
-    it('reset: the admin is refused on their own account and on a declared machine account; on another person it deletes the passkeys, ends that person’s sessions and nobody else’s, and writes one audit row', async () => {
+    it('reset: the admin is refused on their own account and on a declared machine account, where its confirmation is begun and at the reset itself, with nothing written or spent; on another person it deletes the passkeys, ends that person’s sessions and nobody else’s, and writes one audit row', async () => {
       const locked = await person('passkey.reset.locked', ['roles-desk']);
       const lost = await addFirst();
       await addAnother(lost);
@@ -1021,18 +1028,21 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       await db.insert(tables.Session, sessionRow('passkey-reset-admin', admin));
       expect(await new PasskeyAdmin().count(locked.id)).toBe(2);
 
-      await expect(
-        new PasskeyAdmin().reset(admin.id, await confirm(own, { act: 'reset', userId: admin.id }))
-      ).rejects.toThrow();
-      await expect(
-        new PasskeyAdmin().reset(machine.id, await confirm(own, { act: 'reset', userId: machine.id }))
-      ).rejects.toThrow();
+      // The admin's own account and a machine account are refused where the confirmation is begun,
+      // with no step written — and again at the reset itself, before a confirmation is spent: the
+      // one made for the locked person is still good after both refusals.
+      const forLocked = await confirm(own, { act: 'reset', userId: locked.id });
+      for (const refused of [admin, machine]) {
+        await expect(passkeys().beginConfirmation({ act: 'reset', userId: refused.id })).rejects.toThrow();
+        await expect(new PasskeyAdmin().reset(refused.id, forLocked)).rejects.toThrow();
+      }
+      expect(await openSteps(admin)).toEqual(['confirm-reset']);
       await expect(new PasskeyAdmin().reset(locked.id, undefined as unknown as PasskeyConfirmation)).rejects.toThrow();
       expect(await passkeyRows(admin)).toHaveLength(1);
       expect(await passkeyRows(locked)).toHaveLength(2);
       expect(await sessionIdsOf(locked)).toEqual(['passkey-reset-locked-laptop', 'passkey-reset-locked-phone']);
 
-      await new PasskeyAdmin().reset(locked.id, await confirm(own, { act: 'reset', userId: locked.id }));
+      await new PasskeyAdmin().reset(locked.id, forLocked);
 
       expect(await passkeyRows(locked)).toEqual([]);
       expect(await new PasskeyAdmin().count(locked.id)).toBe(0);

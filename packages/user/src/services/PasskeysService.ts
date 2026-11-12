@@ -66,8 +66,10 @@ export interface PasskeysService extends Service {
   list(): Promise<PasskeyList>;
   /**
    * Begin a confirmation for `purpose`: the step one of the caller's passkeys answers. Refused
-   * when the caller has no passkey, and — for adding one — when the caller's account need not use
-   * a passkey.
+   * when the caller has no passkey; for adding one, when the caller's account need not use a
+   * passkey; and for a reset, whenever the reset itself would be refused (`PasskeyAdminService`):
+   * a caller who may not reset a person's passkeys, the caller's own account, a machine account.
+   * A refused begin writes no step.
    */
   beginConfirmation(purpose: PasskeyConfirmationPurpose): Promise<PasskeyConfirmationStep>;
   /**

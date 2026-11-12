@@ -3,6 +3,7 @@ import { Logger } from '@proteinjs/logger';
 import { Service } from '@proteinjs/service';
 import { PasskeyAdminService, PasskeyConfirmation, User, tables } from '@proteinjs/user';
 import { SignedInAccount } from '../authentication/SignedInAccount';
+import { PasskeyResetGuard } from '../authorization/PasskeyResetGuard';
 import { PasskeyConfirmations } from '../authentication/passkeys/PasskeyConfirmations';
 import { UserPasskeys } from '../authentication/passkeys/UserPasskeys';
 
@@ -15,34 +16,28 @@ import { UserPasskeys } from '../authentication/passkeys/UserPasskeys';
  * the `users` permission — whose holder could otherwise reset an admin's passkeys and then take
  * the account through its address.
  *
- * A reset asks again first: the admin's own passkey confirms it, for exactly that person
- * (`PasskeyConfirmations`). It is refused on the caller's own account (a person's own passkeys
- * are removed one at a time, and never the last) and on a declared machine account (it signs in
- * with its secret and holds no passkey) — both before the confirmation is spent. The reset itself
- * is one transaction: the passkeys deleted, the person's sessions ended, the audit row written
- * (`UserPasskeys.removeAll`).
+ * Who may reset whom is `PasskeyResetGuard`'s to say, and the reset asks it first — as the
+ * reset's confirmation did when it was begun: a caller who does not hold the role, the caller's
+ * own account and a declared machine account are refused before the confirmation is claimed, so
+ * a refused reset spends nothing. Then the reset asks again: the admin's own passkey confirms it,
+ * for exactly that person (`PasskeyConfirmations`). The reset itself is one transaction: the
+ * passkeys deleted, the person's sessions ended, the audit row written (`UserPasskeys.removeAll`).
  */
 export class PasskeyAdmin implements PasskeyAdminService {
   public serviceMetadata: Service['serviceMetadata'] = {
     auth: {
-      roles: ['admin'],
+      roles: [PasskeyResetGuard.ROLE],
     },
   };
 
   async count(userId: string): Promise<number> {
-    const target = await this.target(userId);
-    return await new UserPasskeys().count(target.id);
+    const account = await this.account(userId);
+    return await new UserPasskeys().count(account.id);
   }
 
   async reset(userId: string, confirmation: PasskeyConfirmation): Promise<void> {
     const { account: admin, sessionId } = await new SignedInAccount().read();
-    const target = await this.target(userId);
-    if (target.id === admin.id) {
-      throw new Error('You cannot reset your own passkeys. Remove one from your profile, or ask another admin.');
-    }
-    if (target.isLoadedFromSource === true) {
-      throw new Error('This is a machine account: it signs in with its secret and has no passkeys.');
-    }
+    const target = await new PasskeyResetGuard().target(admin, userId);
     if (
       !(await new PasskeyConfirmations().confirms(admin, sessionId, { act: 'reset', userId: target.id }, confirmation))
     ) {
@@ -56,8 +51,8 @@ export class PasskeyAdmin implements PasskeyAdminService {
     });
   }
 
-  /** The account an act targets; a missing one is a refusal in words. */
-  private async target(userId: string): Promise<User> {
+  /** The account a count is of; a missing one is a refusal in words. */
+  private async account(userId: string): Promise<User> {
     const user =
       typeof userId === 'string' && userId ? await getDbAsSystem().get(tables.User, { id: userId }) : undefined;
     if (!user) {
