@@ -1090,6 +1090,11 @@ describe(`UserAccountAdmin — another account's cells, audited`, () => {
       expect(await count(machine.id)).toEqual({ count: 0, required: false, mayReset: false });
       expect(await count(admin.id)).toEqual({ count: 1, required: true, mayReset: false });
 
+      // The caller's own row is read fresh: once it no longer holds `admin` (an administrative role of another kind
+      // left on it), the answer is whole and the caller may reset nobody.
+      await getDbAsSystem().update(tables.User, { id: admin.id, roles: ['roles-desk'] });
+      expect(await count(locked.id)).toEqual({ count: 2, required: true, mayReset: false });
+
       // The built-in default admin holds `admin` with no account row: the door admits it, and the
       // answer is whole — but the reset itself refuses a caller with no row, so it may reset nobody.
       const credentials = DefaultAdminCredentials as unknown as {
