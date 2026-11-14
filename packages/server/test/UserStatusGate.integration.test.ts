@@ -34,6 +34,30 @@ describe('user status gate — login refusal and session resolution', () => {
     });
   };
 
+  /**
+   * Every signed-in request finds its session by the session id (DbSessionStore.get), and the
+   * store saves, touches and ends it by the same id: the table answers those through an index on
+   * the id. Not a unique one — two saves of one new session can both insert a row, and the store's
+   * update and delete act on every row of an id, so a pair of rows must keep standing.
+   */
+  it('finds a session by its id through an index, and two rows of one id both stand', async () => {
+    const indexes = await testEnv.spannerDriver.getTableManager().schemaMetadata.getIndexes(tables.Session);
+    const onSessionId = Object.entries(indexes).filter(
+      ([, columns]) => columns.length === 1 && columns[0] === 'session_id'
+    );
+    expect(onSessionId.map(([name]) => name)).toEqual(['idx_session_session_id']);
+
+    const row = {
+      sessionId: 'one-id-two-rows',
+      session: '{}',
+      expires: new Date(Date.now() + 60_000),
+      userEmail: 'one-id-two-rows@test.local',
+    };
+    await getDbAsSystem().insert(tables.Session, row);
+    await getDbAsSystem().insert(tables.Session, row);
+    expect(await getDbAsSystem().query(tables.Session, { sessionId: 'one-id-two-rows' })).toHaveLength(2);
+  });
+
   it('refuses login for a deactivated account even with correct credentials', async () => {
     await createAccount('deactivated-login@test.local', 'correct-password', 'deactivated');
 

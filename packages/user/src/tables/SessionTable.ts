@@ -35,6 +35,14 @@ export class SessionTable extends Table<Session> {
       columns: ['userEmail', 'expires', 'sessionId'],
     },
   };
+  /**
+   * Every signed-in request finds its session by the session id (user-server DbSessionStore.get),
+   * and the store saves, touches and ends it by the same id — without an index each of those reads
+   * the whole table. NOT unique: two saves of one new session can both insert a row (the store's
+   * read-then-insert), and the store's update and delete act on every row of an id, so a pair must
+   * keep loading and keep being ended.
+   */
+  indexes: Table<Session>['indexes'] = [{ name: 'idx_session_session_id', columns: ['sessionId'] }];
   columns: Table<Session>['columns'] = withRecordColumns<Session>({
     sessionId: new StringColumn('session_id'),
     session: new StringColumn('serialized_session', {}, 4000),

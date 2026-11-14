@@ -1,0 +1,18 @@
+{
+  "branch": "fix/session-found-by-its-id-through-an-index",
+  "packages": ["server", "user"],
+  "suites": [
+    "packages/server/test/UserStatusGate.integration.test.ts",
+    "packages/user/test/AccessGrantWellFormed.test.ts",
+    "packages/user/test/CapabilityEnforcement.test.ts",
+    "packages/user/test/ClientRootCreationBootstrap.test.ts",
+    "packages/user/test/SharedRecord.test.ts",
+    "packages/user/test/SharedRecordDuplicateModuleState.test.ts",
+    "packages/user/test/SharedRecordNoPrincipal.test.ts",
+    "packages/user/test/auditTrailsDurable.test.ts",
+    "packages/user/test/recordTableDeclarations.test.ts",
+    "packages/user/test/sessionTableAuth.test.ts",
+    "packages/user/test/tablesAuth.test.ts"
+  ],
+  "removes": []
+}
