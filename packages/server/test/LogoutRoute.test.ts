@@ -1,5 +1,6 @@
 import { routes } from '@proteinjs/user';
 import { logout } from '../src/routes/logout';
+import * as logoutRoutes from '../src/routes/logout';
 import { createPassportRequest } from './passportSessionHarness';
 
 /**
@@ -35,5 +36,45 @@ describe('logout route', () => {
     expect(request.session.passport?.user).toBeUndefined();
     expect(request.user).toBeNull();
     expect(redirect).toBe('/login');
+  });
+
+  it('a GET at the sign-out path is refused with 405 and ends nothing', async () => {
+    // The route a GET at the path meets, found as the server matches it: by method and path. A page
+    // built before sign-out became a POST still signs out with a GET; answered 200 by the app's
+    // page, it would show the login screen while the session stood.
+    const refusal = Object.values(logoutRoutes).find(
+      (route) => route.method === 'get' && route.path === routes.logout.path
+    );
+    expect(refusal).toBeDefined();
+
+    const { request } = await createPassportRequest();
+    await new Promise<void>((resolve, reject) =>
+      request.login('user@test.local', (error: unknown) => (error ? reject(error) : resolve()))
+    );
+    const session = request.session;
+
+    const answer: { status?: number; headers: Record<string, string> } = { headers: {} };
+    const response: any = {
+      status: (code: number) => {
+        answer.status = code;
+        return response;
+      },
+      set: (name: string, value: string) => {
+        answer.headers[name.toLowerCase()] = value;
+        return response;
+      },
+      setHeader: (name: string, value: string) => response.set(name, value),
+      end: () => response,
+      send: () => response,
+      redirect: (path: string) => response.status(302).set('Location', path),
+    };
+    await refusal!.onRequest(request as never, response as never);
+
+    expect(answer.status).toBe(405);
+    expect(answer.headers.allow).toBe('POST');
+    // Ends nothing: the same session, its user still bound.
+    expect(request.session).toBe(session);
+    expect(request.session.passport.user).toBe('user@test.local');
+    expect(request.user).toBe('user@test.local');
   });
 });

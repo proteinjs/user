@@ -21,3 +21,19 @@ export const logout: Route = {
     response.redirect('/login');
   },
 };
+
+/**
+ * A GET at the sign-out path is refused: 405 with `Allow: POST`, and nothing of the session is
+ * touched (a link or an image tag still cannot sign a person out). Unrefused, a GET here falls
+ * through to whatever answers an unknown path, in an app its own page with a 200, and a page built
+ * before sign-out became a POST (still sending a GET) took that 200 as signed out and showed the
+ * login screen while the session stood. Refused, that page's sign-out fails in plain sight, and its
+ * next reload brings the POST.
+ */
+export const logoutRefusesGet: Route = {
+  path: routes.logout.path,
+  method: 'get',
+  onRequest: async (_request, response): Promise<void> => {
+    response.set('Allow', routes.logout.method.toUpperCase()).status(405).end();
+  },
+};
