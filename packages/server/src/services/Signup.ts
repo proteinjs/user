@@ -47,6 +47,11 @@ export const EMAIL_VERIFICATION_RESEND_GAP_MINUTES = 5;
 
 export interface InviteConfig {
   isInviteOnly: boolean;
+  /**
+   * The sentence a person reads when an invite is required of them. Without it, the library's own
+   * (`SIGNUP_CLOSED_SENTENCE`).
+   */
+  inviteRequiredSentence?: string;
 }
 
 /**
@@ -57,6 +62,12 @@ export type InviteLookup = { status: 'valid'; invite: Invite } | { status: 'expi
 
 export interface DefaultInviteConfigFactory extends Loadable {
   getConfig(): InviteConfig;
+  /**
+   * The rule for one address, asked of a sign-up that carries no invite before anything else is asked
+   * of it (`Signup.inviteRequiredOf`). Optional: a product that registers only `getConfig` is asked
+   * `getConfig` there, as it is everywhere else.
+   */
+  getConfigFor?(email: string): InviteConfig | Promise<InviteConfig>;
 }
 
 export const getDefaultInviteConfigFactory = (): DefaultInviteConfigFactory => {
@@ -181,6 +192,20 @@ export class Signup implements SignupService {
     }
     logger.info({ message: `Created user`, obj: { account: new RequestDigests().account(email) } });
     return { outcome: 'created', email };
+  }
+
+  /**
+   * Whether an invite is required of this address, asked by the sign-up route of a sign-up that carries
+   * no invite, before the throwaway-mail list and the product's guard. The product's rule for one
+   * address (`DefaultInviteConfigFactory.getConfigFor`) when it registers one, else its rule for
+   * everyone. Answers the sentence the person reads when an invite is required, and undefined when it
+   * is not. Not RPC-reachable (absent from the SignupService interface, as `createUser` is); a rule
+   * that rejects rejects here, for the route to answer as it answers `createUser`'s failure.
+   */
+  async inviteRequiredOf(email: string): Promise<string | undefined> {
+    const factory = getDefaultInviteConfigFactory();
+    const config = factory.getConfigFor ? await factory.getConfigFor(email) : factory.getConfig();
+    return config.isInviteOnly ? config.inviteRequiredSentence ?? SIGNUP_CLOSED_SENTENCE : undefined;
   }
 
   /**

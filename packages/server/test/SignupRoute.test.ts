@@ -35,6 +35,7 @@ jest.mock('@proteinjs/email-server', () => ({
 
 import { getDbAsSystem, Reference } from '@proteinjs/db';
 import { SourceRepository } from '@proteinjs/reflection';
+import { Session } from '@proteinjs/server-api';
 import { MachineAccount, tables, UserRepo } from '@proteinjs/user';
 import { BlankCredentials } from '../src/authentication/BlankCredentials';
 import { signup } from '../src/routes/signup';
@@ -44,6 +45,7 @@ import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 const testEnv = new UserServerTestEnvironment();
 
 const INVITE_CONFIG_KEY = '@proteinjs/user-server/DefaultInviteConfigFactory';
+const GUARD_KEY = '@proteinjs/user-server/DefaultSignupGuard';
 
 type ObjectCache = { objectCache: Record<string, unknown[]> };
 type NamedObjectCache = {
@@ -127,6 +129,9 @@ describe('signup route — auto-login after signup', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     setInviteConfig([]);
+    (SourceRepository.get() as unknown as ObjectCache).objectCache[GUARD_KEY] = [];
+    // Every case starts signed out (the signed-in case leaves its person on the session).
+    Session.setData({ sessionId: 'test-session', user: 'guest', data: {} });
     setDeclarations([]);
     const db = getDbAsSystem();
     await db.delete(tables.Invite, {});
@@ -322,5 +327,45 @@ describe('signup route — auto-login after signup', () => {
     } finally {
       delete objectCache['@proteinjs/user-auth/AuthenticatedUserRepo'];
     }
+  });
+
+  it("a sign-up without an invite is asked of the invite rule with its address before anything else; where it requires an invite, the rule's sentence answers with no account, session or mail, and neither the throwaway-mail list nor the check was asked; an invited sign-up is not asked about its address", async () => {
+    const RULE_SENTENCE = 'Only the listed may sign up here.';
+    const askedAbout: string[] = [];
+    setInviteConfig([
+      {
+        getConfig: () => ({ isInviteOnly: false }),
+        getConfigFor: async (email: string) => {
+          askedAbout.push(email);
+          return { isInviteOnly: true, inviteRequiredSentence: RULE_SENTENCE };
+        },
+      },
+    ]);
+    // The check refuses with words of its own: had it been asked first, its sentence would answer.
+    (SourceRepository.get() as unknown as ObjectCache).objectCache[GUARD_KEY] = [
+      { check: () => ({ verdict: 'refuse', sentence: 'The check answered first.' }) },
+    ];
+
+    // A throwaway address: had the list been asked first, its own sentence would answer.
+    const refused = await invokeSignup({ email: 'Someone@Mailinator.com', password: 'pw-rule-1' });
+
+    expect(refused.body).toEqual({ error: RULE_SENTENCE });
+    expect(askedAbout).toEqual(['someone@mailinator.com']);
+    expect(refused.loggedInAs).toBeUndefined();
+    expect(refused.sessionEvents).toEqual([]);
+    expect(await getUserRow('someone@mailinator.com')).toBeUndefined();
+    expect(sendEmail).not.toHaveBeenCalled();
+
+    await getDbAsSystem().insert(tables.Invite, {
+      email: 'rule.invited@test.local',
+      token: 'invite-token-rule',
+      tokenExpiresAt: moment().add(1, 'day'),
+      invitedBy: new Reference(tables.User.name, 'inviter-1'),
+    });
+    const invited = await invokeSignup({ name: 'Invited', password: 'pw-rule-2', token: 'invite-token-rule' });
+
+    expect(invited.body).toEqual({});
+    expect(invited.loggedInAs).toBe('rule.invited@test.local');
+    expect(askedAbout).toEqual(['someone@mailinator.com']);
   });
 });

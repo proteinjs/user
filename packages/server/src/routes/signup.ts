@@ -45,8 +45,9 @@ type SignupSubmission = Partial<UserSignup> & {
  * the invite form sends them. A request that is already signed in and carries no invite makes no
  * account and keeps its session: it is answered as a success, so the page lands on Home.
  *
- * The NO-INVITE road passes two doors before any write, in this order: the throwaway-mail list
- * (`DisposableEmailDomains`, refused with its one sentence) and the consumer's registered
+ * The NO-INVITE road passes three doors before any write, in this order: the product's invite rule
+ * asked about the address (`Signup.inviteRequiredOf`, refused with the rule's own sentence), the
+ * throwaway-mail list (`DisposableEmailDomains`, refused with its one sentence) and the consumer's registered
  * `DefaultSignupGuard`, handed the submission's facts (`SignupGuardFacts`) — `refuse` answers
  * `{ error: sentence }`, `drop` answers exactly as success, and neither writes an account or
  * mints a session. The invite road passes neither: an invited address was chosen by an admin.
@@ -74,6 +75,19 @@ export const signup: Route = {
         return;
       }
 
+      let inviteRequired: string | undefined;
+      try {
+        inviteRequired = await new Signup().inviteRequiredOf(email.toLowerCase());
+      } catch (error: any) {
+        answerFailure(response, digests, error);
+        return;
+      }
+      if (inviteRequired) {
+        logger.info({ message: 'Signup refused: an invite is required', obj: { account: digests.account(email) } });
+        response.send({ error: inviteRequired });
+        return;
+      }
+
       if (new DisposableEmailDomains().isDisposable(email)) {
         logger.info({ message: 'Signup refused: throwaway-mail domain', obj: { account: digests.account(email) } });
         response.send({ error: DisposableEmailDomains.REFUSAL });
@@ -97,12 +111,7 @@ export const signup: Route = {
     try {
       result = await new Signup().createUser({ name: body.name, email, password: body.password }, body.token);
     } catch (error: any) {
-      // createUser throws plain-words errors deliberately (invite expired / invite required /
-      // email missing); the message is the user-facing contract, same as the RPC layer's. The log
-      // gets the error through the digest door: a concurrent double sign-up's unique-index refusal
-      // names the address in the database's own words.
-      logger.error({ message: 'Signup failed', error: digests.redactError(error) });
-      response.send({ error: error instanceof Error ? error.message : 'Sign up failed.' });
+      answerFailure(response, digests, error);
       return;
     }
 
@@ -122,3 +131,14 @@ const signupFacts = (request: any, body: SignupSubmission, email: string): Signu
   clientDevice: new RequestDigests().coarseIp(new ClientAddress().of(request)),
   hasUserAgent: Boolean(request.headers?.['user-agent']),
 });
+
+/**
+ * A failure of `createUser` or of the invite rule: createUser throws plain-words errors deliberately
+ * (invite expired / invite required / email missing); the message is the user-facing contract, same as
+ * the RPC layer's. The log gets the error through the digest door: a concurrent double sign-up's
+ * unique-index refusal names the address in the database's own words.
+ */
+const answerFailure = (response: any, digests: RequestDigests, error: unknown): void => {
+  logger.error({ message: 'Signup failed', error: digests.redactError(error) });
+  response.send({ error: error instanceof Error ? error.message : 'Sign up failed.' });
+};
