@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Box, Link, Typography } from '@mui/material';
 import { Page } from '@proteinjs/ui';
-import { uiRoutes } from '@proteinjs/user';
+import { uiRoutes, UserAuth } from '@proteinjs/user';
 import { Helmet } from 'react-helmet';
-import { useLocation } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { AuthLayout } from '../auth/AuthLayout';
 import { AuthTextField } from '../auth/AuthTextField';
 import { AuthButton } from '../auth/AuthButton';
@@ -87,6 +87,11 @@ const LoginComponent: React.FC = () => {
       setBusy(false);
     }
   };
+
+  // A signed-in person never sees this page: Home replaces it before anything of the form renders.
+  if (UserAuth.isLoggedIn()) {
+    return <Navigate to='/' replace />;
+  }
 
   return (
     <>

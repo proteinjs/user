@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Skeleton, Stack } from '@mui/material';
 import { Page } from '@proteinjs/ui';
-import { getSignupService, SIGNUP_CLOSED_SENTENCE, uiRoutes } from '@proteinjs/user';
+import { getSignupService, SIGNUP_CLOSED_SENTENCE, uiRoutes, UserAuth } from '@proteinjs/user';
 import { Helmet } from 'react-helmet';
+import { Navigate } from 'react-router-dom';
 import { AuthLayout } from '../auth/AuthLayout';
 import { AuthTextField } from '../auth/AuthTextField';
 import { AuthButton } from '../auth/AuthButton';
@@ -27,12 +28,17 @@ function inviteTokenFromUrl(): string {
 /**
  * Without an invite the page renders at once from what the server wrote into the page at load
  * (SignInPageFacts): the form where sign-up is open, the closed panel where it is not, with no call and
- * nothing gray first. An invite link keeps its own road (InvitedSignup): the invite is checked on load.
+ * nothing gray first; a signed-in person is on Home instead. An invite link keeps its own road
+ * (InvitedSignup): the invite is checked on load.
  */
 const SignupComponent: React.FC = () => {
   const [token] = useState(inviteTokenFromUrl);
   if (token) {
     return <InvitedSignup token={token} />;
+  }
+  // A signed-in person never sees this page (an invite link is the one exception, as before): Home replaces it.
+  if (UserAuth.isLoggedIn()) {
+    return <Navigate to='/' replace />;
   }
   if (!SignInPageFacts.signupOpen()) {
     return <SignupClosedPanel body={AuthPageProducts.registered()?.signupClosedSentence ?? SIGNUP_CLOSED_SENTENCE} />;

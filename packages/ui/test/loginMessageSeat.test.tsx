@@ -1,7 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
-import { SIGN_IN_PAGE_FACTS_SCRIPT_KEY } from '@proteinjs/user';
+import { SIGN_IN_PAGE_FACTS_SCRIPT_KEY, UserAuth } from '@proteinjs/user';
 import { loginPage } from '../src/pages/Login';
 
 /**
@@ -22,12 +22,15 @@ function renderLogin(state?: unknown) {
 const SENTENCE = 'You were signed out. Sign in whenever you are ready.';
 
 describe('the login page message seat', () => {
-  // The page says sign-up is open (user-server SignInPageFactsScript), so no product registration is asked for.
+  // A signed-out person, on a page that says sign-up is open (user-server SignInPageFactsScript), so no product
+  // registration is asked for.
   beforeEach(() => {
+    jest.spyOn(UserAuth, 'isLoggedIn').mockReturnValue(false);
     (globalThis as any).proteinjs = { [SIGN_IN_PAGE_FACTS_SCRIPT_KEY]: { signupOpen: true } };
   });
 
   afterEach(() => {
+    jest.restoreAllMocks();
     delete (globalThis as any).proteinjs;
   });
 

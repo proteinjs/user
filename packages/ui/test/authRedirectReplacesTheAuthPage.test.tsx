@@ -22,8 +22,8 @@
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
-import { MemoryRouter } from 'react-router-dom';
-import { routes, SIGN_IN_PAGE_FACTS_SCRIPT_KEY } from '@proteinjs/user';
+import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
+import { routes, SIGN_IN_PAGE_FACTS_SCRIPT_KEY, UserAuth } from '@proteinjs/user';
 import type { InitializeSignupResponse } from '@proteinjs/user';
 import { loginPage } from '../src/pages/Login';
 import { signupPage } from '../src/pages/Signup';
@@ -86,6 +86,7 @@ afterEach(async () => {
   Object.defineProperty(window, 'location', { configurable: true, value: realLocation });
   delete (global as any).fetch;
   delete (globalThis as any).proteinjs;
+  jest.restoreAllMocks();
 });
 
 /** Answers every auth POST 200 with no error, so a submit runs through to the redirect. */
@@ -152,5 +153,50 @@ describe('signing up lands in the app by replacing the signup page', () => {
 
     expect(locationSpy.replace).toHaveBeenCalledWith('/');
     expect(locationSpy.hrefSets).toEqual([]);
+  });
+});
+
+describe('a signed-in person never sees the log-in or sign-up page', () => {
+  /** Where the router is after the page rendered, and how it got there. */
+  let arrived: { pathname: string; how: string } | undefined;
+
+  function HomeProbe() {
+    arrived = { pathname: useLocation().pathname, how: useNavigationType() };
+    return null;
+  }
+
+  async function open(Component: React.ComponentType<any>, url: string) {
+    arrived = undefined;
+    window.history.replaceState({}, '', url);
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={[url]}>
+          <Routes>
+            <Route path={url} element={<Component urlParams={{}} />} />
+            <Route path='/' element={<HomeProbe />} />
+          </Routes>
+        </MemoryRouter>
+      );
+    });
+  }
+
+  it('a signed-in person who opens Log in, or Sign up without an invite, is replaced to Home and no form renders', async () => {
+    jest.spyOn(UserAuth, 'isLoggedIn').mockReturnValue(true);
+    const formsSeen: Element[] = [];
+    const watcher = new MutationObserver(() => formsSeen.push(...Array.from(container.querySelectorAll('form'))));
+    watcher.observe(container, { childList: true, subtree: true });
+
+    for (const [page, url] of [
+      [loginPage, '/login'],
+      [signupPage, '/signup'],
+    ] as const) {
+      await open(page.component, url);
+      expect(arrived).toEqual({ pathname: '/', how: 'REPLACE' });
+    }
+
+    watcher.disconnect();
+    expect(formsSeen).toEqual([]);
+    expect(locationSpy.hrefSets).toEqual([]);
+    expect(initializeSignup).not.toHaveBeenCalled();
   });
 });
