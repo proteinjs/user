@@ -1,7 +1,8 @@
 import { Route } from '@proteinjs/server-api';
 import { Logger } from '@proteinjs/logger';
 import { RequestDigests } from '@proteinjs/util-node';
-import { UserSignup, routes } from '@proteinjs/user';
+import { UserAuth, UserSignup, routes } from '@proteinjs/user';
+import { BlankCredentials } from '../authentication/BlankCredentials';
 import { establishSession } from '../authentication/establishSession';
 import { DisposableEmailDomains } from '../services/DisposableEmailDomains';
 import { Signup } from '../services/Signup';
@@ -38,6 +39,12 @@ type SignupSubmission = Partial<UserSignup> & {
  * create; the caller falls through to the login screen exactly as before. Existence is reported
  * to the mailbox owner by email, never to the caller.
  *
+ * Without an invite the email and the password are asked (the name is not: the account is made with
+ * an empty name, which the person may set later), and a blank one is answered with the log-in
+ * route's own sentence (`BlankCredentials`); with an invite the name and the password are asked, as
+ * the invite form sends them. A request that is already signed in and carries no invite makes no
+ * account and keeps its session: it is answered as a success, so the page lands on Home.
+ *
  * The NO-INVITE road passes two doors before any write, in this order: the throwaway-mail list
  * (`DisposableEmailDomains`, refused with its one sentence) and the consumer's registered
  * `DefaultSignupGuard`, handed the submission's facts (`SignupGuardFacts`) — `refuse` answers
@@ -49,14 +56,24 @@ export const signup: Route = {
   method: routes.signup.method,
   onRequest: async (request: any, response): Promise<void> => {
     const body: SignupSubmission = request.body ?? {};
-    if (!body.name || !body.password) {
-      response.send({ error: 'Name and password cannot be blank' });
+    const email = typeof body.email === 'string' ? body.email.trim() : undefined;
+    if (body.token) {
+      if (!body.name || !body.password) {
+        response.send({ error: 'Name and password cannot be blank' });
+        return;
+      }
+    } else if (!email || !body.password) {
+      response.send({ error: BlankCredentials.REFUSAL });
       return;
     }
 
     const digests = new RequestDigests();
-    const email = typeof body.email === 'string' ? body.email.trim() : undefined;
     if (!body.token && email) {
+      if (UserAuth.isLoggedIn()) {
+        response.send({});
+        return;
+      }
+
       if (new DisposableEmailDomains().isDisposable(email)) {
         logger.info({ message: 'Signup refused: throwaway-mail domain', obj: { account: digests.account(email) } });
         response.send({ error: DisposableEmailDomains.REFUSAL });

@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { getDbAsSystem } from '@proteinjs/db';
 import { tables } from '@proteinjs/user';
 import { login } from '../src/routes/login';
+import { BlankCredentials } from '../src/authentication/BlankCredentials';
 import { PasswordHasher } from '../src/authentication/PasswordHasher';
 import { createPassportRequest } from './passportSessionHarness';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
@@ -30,7 +31,7 @@ const testEnv = new UserServerTestEnvironment();
 
 const WRONG = 'User name or password incorrect';
 const THROTTLED = 'Too many attempts. Try again in a few minutes.';
-const BLANK = 'Email and password cannot be blank';
+const BLANK = BlankCredentials.REFUSAL;
 const RIGHT_PASSWORD = 'the right horse battery';
 
 type Attempt = { sent: any; signedInAs?: string };

@@ -4,7 +4,7 @@ import { getDbAsSystem } from '@proteinjs/db';
 import { SourceRecordSyncRunner } from '@proteinjs/db/source';
 import { EmailSender, MailSink } from '@proteinjs/email-server';
 import { SourceRepository } from '@proteinjs/reflection';
-import { MachineAccount, RoleCatalogEntry, UserRepo, tables } from '@proteinjs/user';
+import { MachineAccount, RoleCatalogEntry, UserRepo, guestUser, tables } from '@proteinjs/user';
 import { RequestDigests } from '@proteinjs/util-node';
 import { authenticate } from '../src/authentication/authenticate';
 import { PasswordHasher } from '../src/authentication/PasswordHasher';
@@ -273,6 +273,9 @@ describe('no e-mail address reaches the server log', () => {
       return hashed;
     });
     const body = { name: 'Racer', email: 'Logs-Race@test.local', password: 'a-password' };
+    // A sign-up comes from a signed-out request (an earlier case left the inviter signed in, and a
+    // signed-in request makes no account).
+    testEnv.actAs(guestUser);
 
     let outcomes: (RouteOutcome & { loggedInAs?: string })[] = [];
     const log = await LogCapture.during(async () => {

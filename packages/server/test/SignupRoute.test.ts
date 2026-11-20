@@ -35,7 +35,8 @@ jest.mock('@proteinjs/email-server', () => ({
 
 import { getDbAsSystem, Reference } from '@proteinjs/db';
 import { SourceRepository } from '@proteinjs/reflection';
-import { MachineAccount, tables } from '@proteinjs/user';
+import { MachineAccount, tables, UserRepo } from '@proteinjs/user';
+import { BlankCredentials } from '../src/authentication/BlankCredentials';
 import { signup } from '../src/routes/signup';
 import { createPassportRequest } from './passportSessionHarness';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
@@ -261,15 +262,53 @@ describe('signup route — auto-login after signup', () => {
     expect(await getUserRow('no.invite@test.local')).toBeUndefined();
   });
 
-  it('a blank name or password is refused before any write', async () => {
-    const missingName = await invokeSignup({ email: 'blank@test.local', password: 'pw-blank-1' });
+  it('without an invite a blank email or password is refused before any write; with an invite a blank name is refused, as today', async () => {
+    const missingPassword = await invokeSignup({ email: 'blank@test.local' });
+    expect(missingPassword.body).toEqual({ error: BlankCredentials.REFUSAL });
+    expect(missingPassword.sessionEvents).toEqual([]);
+
+    const missingEmail = await invokeSignup({ password: 'pw-blank-1' });
+    expect(missingEmail.body).toEqual({ error: BlankCredentials.REFUSAL });
+    expect(missingEmail.sessionEvents).toEqual([]);
+
+    await getDbAsSystem().insert(tables.Invite, {
+      email: 'blank.invited@test.local',
+      token: 'invite-token-blank',
+      tokenExpiresAt: moment().add(1, 'day'),
+      invitedBy: new Reference(tables.User.name, 'inviter-1'),
+    });
+    const missingName = await invokeSignup({ password: 'pw-blank-2', token: 'invite-token-blank' });
     expect(missingName.body?.error).toBeTruthy();
     expect(missingName.sessionEvents).toEqual([]);
 
-    const missingPassword = await invokeSignup({ name: 'Blank', email: 'blank@test.local' });
-    expect(missingPassword.body?.error).toBeTruthy();
-    expect(missingPassword.sessionEvents).toEqual([]);
+    expect((await getDbAsSystem().query(tables.User, {})).length).toBe(0);
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
 
-    expect(await getUserRow('blank@test.local')).toBeUndefined();
+  it('a sign-up with an email and a password and no name makes the account, its name empty, and its session', async () => {
+    const outcome = await invokeSignup({ email: 'no.name@test.local', password: 'pw-no-name-1' });
+
+    expect(outcome.body).toEqual({});
+    expect(outcome.loggedInAs).toBe('no.name@test.local');
+    const created = await getUserRow('no.name@test.local');
+    expect(created).toBeDefined();
+    expect(created!.name).toBe('');
+  });
+
+  it('a request that is already signed in and carries no invite makes no account and keeps its session', async () => {
+    const signedIn = await testEnv.createUser({ name: 'Signed In', email: 'signed.in@test.local' });
+    const objectCache = (SourceRepository.get() as unknown as ObjectCache).objectCache;
+    objectCache['@proteinjs/user-auth/AuthenticatedUserRepo'] = [new UserRepo()];
+    testEnv.actAs(signedIn);
+    try {
+      const outcome = await invokeSignup({ email: 'second.account@test.local', password: 'pw-second-1' });
+
+      expect(outcome.body).toEqual({});
+      expect(outcome.sessionEvents).toEqual([]);
+      expect(await getUserRow('second.account@test.local')).toBeUndefined();
+      expect(sendEmail).not.toHaveBeenCalled();
+    } finally {
+      delete objectCache['@proteinjs/user-auth/AuthenticatedUserRepo'];
+    }
   });
 });

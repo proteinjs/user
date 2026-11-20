@@ -136,7 +136,7 @@ export class Signup implements SignupService {
     const emailSender = new EmailSender();
 
     const creation = await this.createAccount({
-      name: user.name,
+      name: user.name ?? '',
       email,
       password: user.password,
       emailVerified: invite ? true : false, // because we retrieved the email from the invite record

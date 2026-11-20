@@ -21,9 +21,14 @@ export type ResendEmailVerificationResponse = {
   sent: boolean;
 };
 
-/** The signup route's request body (`routes.signup`). `email` is required if no token is provided. */
-export type UserSignup = Pick<User, 'name' | 'password'> & {
+/**
+ * The signup route's request body (`routes.signup`). Without an invite token: `email` and `password`;
+ * the account is made with an empty name. With an invite token: `name` and `password` (the invite
+ * carries the email).
+ */
+export type UserSignup = Pick<User, 'password'> & {
   email?: User['email'];
+  name?: User['name'];
 };
 
 /**

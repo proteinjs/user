@@ -2,6 +2,7 @@ import { Route } from '@proteinjs/server-api';
 import { routes } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
 import { authenticate, checkPassword } from '../authentication/authenticate';
+import { BlankCredentials } from '../authentication/BlankCredentials';
 import { establishSession } from '../authentication/establishSession';
 import { AccountDeletion } from '../services/AccountDeletion';
 import { ClientAddress } from '../throttle/ClientAddress';
@@ -40,7 +41,7 @@ export const login: Route = {
     }
 
     if (!email || !password || !account) {
-      const error = `Email and password cannot be blank`;
+      const error = BlankCredentials.REFUSAL;
       logger.info({ message: 'Sign-in refused', obj: { ...fields, reason: error } });
       response.send({ error });
       return;
