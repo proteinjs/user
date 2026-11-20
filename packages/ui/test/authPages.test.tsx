@@ -35,12 +35,10 @@ let registered: AuthPageProduct | undefined;
 
 beforeEach(() => {
   registered = undefined;
-  jest
-    .spyOn(SourceRepository, 'get')
-    .mockReturnValue({
-      object: (type: string) => (type === '@proteinjs/user-ui/AuthPageProduct' ? registered : undefined),
-      objects: () => [],
-    } as unknown as SourceRepository);
+  jest.spyOn(SourceRepository, 'get').mockReturnValue({
+    object: (type: string) => (type === '@proteinjs/user-ui/AuthPageProduct' ? registered : undefined),
+    objects: () => [],
+  } as unknown as SourceRepository);
 });
 
 afterEach(() => {
@@ -77,7 +75,7 @@ describe('auth pages', () => {
     expect(html.toLowerCase()).toContain('autocomplete="current-password"');
   });
 
-  it('the log-in page shows the open line when the page says open, the product\'s closed line when closed, and no line when closed with none registered', () => {
+  it("the log-in page shows the open line when the page says open, the product's closed line when closed, and no line when closed with none registered", () => {
     const Login = loginPage.component;
     registered = PRODUCT;
 
@@ -122,7 +120,7 @@ describe('auth pages', () => {
     expect(html).not.toContain('type="submit"');
   });
 
-  it('without an invite the sign-up page renders at once: the form when open, the closed panel with the product\'s sentence when closed', () => {
+  it("without an invite the sign-up page renders at once: the form when open, the closed panel with the product's sentence when closed", () => {
     window.history.replaceState({}, '', '/signup');
     const Signup = signupPage.component;
 
