@@ -161,17 +161,23 @@ export class Signup implements SignupService {
     }
 
     // An invited address was proved by the invite mail; a plain sign-up's welcome carries the
-    // link that confirms it (the account works meanwhile — nothing waits on the tap).
+    // link that confirms it (the account works meanwhile — nothing waits on the tap). A welcome that
+    // cannot be sent does not fail the sign-up: the account exists, and its person is signed in.
     const verification = invite ? undefined : await this.mintEmailVerification(email);
     try {
       await this.emailWelcome(emailSender, email, config, verification && { verifyEmailLink: verification.link });
-    } catch (error) {
+    } catch (error: any) {
+      const digests = new RequestDigests();
+      logger.error({
+        message: `Failed to send the welcome mail`,
+        obj: { account: digests.account(email) },
+        error: digests.redactError(error),
+      });
       // The link never reached the account: withdraw the token, so the account page's re-send
       // is not held by the gap between mails.
       if (verification) {
         await new EmailVerificationToken().revoke(verification.user, verification.token);
       }
-      throw error;
     }
     logger.info({ message: `Created user`, obj: { account: new RequestDigests().account(email) } });
     return { outcome: 'created', email };

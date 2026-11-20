@@ -295,6 +295,18 @@ describe('signup route — auto-login after signup', () => {
     expect(created!.name).toBe('');
   });
 
+  it("a welcome mail that cannot be sent still leaves the person signed in to the new account, with the link's token withdrawn", async () => {
+    sendEmail.mockRejectedValueOnce(new Error('transport refused'));
+
+    const outcome = await invokeSignup({ email: 'mail.down@test.local', password: 'pw-mail-down-1' });
+
+    expect(outcome.body).toEqual({});
+    expect(outcome.loggedInAs).toBe('mail.down@test.local');
+    const created = await getUserRow('mail.down@test.local');
+    expect(created).toBeDefined();
+    expect(created!.emailVerificationToken ?? null).toBeNull();
+  });
+
   it('a request that is already signed in and carries no invite makes no account and keeps its session', async () => {
     const signedIn = await testEnv.createUser({ name: 'Signed In', email: 'signed.in@test.local' });
     const objectCache = (SourceRepository.get() as unknown as ObjectCache).objectCache;
