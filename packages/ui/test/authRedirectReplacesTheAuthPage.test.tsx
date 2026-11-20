@@ -170,7 +170,8 @@ describe('a signed-in person never sees the log-in or sign-up page', () => {
     window.history.replaceState({}, '', url);
     await act(async () => {
       root.render(
-        <MemoryRouter initialEntries={[url]}>
+        // Keyed by the address: each page opens in a router of its own, never one left at Home by the last.
+        <MemoryRouter key={url} initialEntries={[url]}>
           <Routes>
             <Route path={url} element={<Component urlParams={{}} />} />
             <Route path='/' element={<HomeProbe />} />
