@@ -16,6 +16,7 @@
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
+import { SourceRepository } from '@proteinjs/reflection';
 import type { InitializeSignupResponse } from '@proteinjs/user';
 import { SIGN_IN_PAGE_FACTS_SCRIPT_KEY } from '@proteinjs/user';
 import { signupPage } from '../src/pages/Signup';
@@ -40,6 +41,14 @@ let root: Root;
 
 beforeEach(() => {
   initializeSignup.mockReset();
+  // No product registered (the suites load src, never the reflection graph): the sign-up form asks for the
+  // product's sentence, and the graph's lookup answers none; every other lookup is the repository's own.
+  const repository = SourceRepository.get();
+  const lookup = repository.object.bind(repository);
+  jest
+    .spyOn(repository, 'object')
+    .mockImplementation(((type: string) =>
+      type === '@proteinjs/user-ui/AuthPageProduct' ? undefined : lookup(type)) as typeof repository.object);
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -48,6 +57,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  jest.restoreAllMocks();
 });
 
 async function renderSignup(url: string) {
@@ -116,6 +126,6 @@ describe('plain signup', () => {
     const email = field('Email');
     expect(email.readOnly).toBe(false);
     expect(email.getAttribute('autocomplete')).toBe('username');
-    expect(field('Name').getAttribute('autocomplete')).toBe('name');
+    expect(field('Password').getAttribute('autocomplete')).toBe('new-password');
   });
 });

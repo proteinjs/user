@@ -22,6 +22,7 @@ import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { MemoryRouter } from 'react-router-dom';
+import { SourceRepository } from '@proteinjs/reflection';
 import { routes } from '@proteinjs/user';
 import type { InitializeSignupResponse } from '@proteinjs/user';
 import { SIGN_IN_PAGE_FACTS_SCRIPT_KEY } from '@proteinjs/user';
@@ -67,6 +68,7 @@ afterEach(async () => {
   container.remove();
   delete (global as any).fetch;
   delete (globalThis as any).proteinjs;
+  jest.restoreAllMocks();
 });
 
 /**
@@ -302,19 +304,26 @@ describe('password-reset form', () => {
 });
 
 describe('signup form', () => {
+  beforeEach(() => {
+    // No product registered (the suites load src, never the reflection graph): the sign-up form asks for the
+    // product's sentence, and the graph's lookup answers none; every other lookup is the repository's own.
+    const repository = SourceRepository.get();
+    const lookup = repository.object.bind(repository);
+    jest
+      .spyOn(repository, 'object')
+      .mockImplementation(((type: string) =>
+        type === '@proteinjs/user-ui/AuthPageProduct' ? undefined : lookup(type)) as typeof repository.object);
+  });
+
   it('an autofill that fires no event reaches the server with the values', async () => {
     mockServer();
     await renderPage(signupPage.component, '/signup');
 
-    fillSilently(field('Name'), 'Ada Lovelace');
     fillSilently(field('Email'), EMAIL);
     fillSilently(field('Password'), PASSWORD);
-    fillSilently(field('Confirm password'), PASSWORD);
     await submit();
 
-    expect(posts).toEqual([
-      { path: routes.signup.path, body: { name: 'Ada Lovelace', email: EMAIL, password: PASSWORD } },
-    ]);
+    expect(posts).toEqual([{ path: routes.signup.path, body: { email: EMAIL, password: PASSWORD } }]);
   });
 
   it('a blank submit never leaves the page: each empty field is marked', async () => {
@@ -324,7 +333,6 @@ describe('signup form', () => {
     await submit();
 
     expect(posts).toEqual([]);
-    expect(fieldError(field('Name'))).toBe('Enter your name');
     expect(fieldError(field('Email'))).toBe('Enter your email');
     expect(fieldError(field('Password'))).toBe('Enter a password');
   });

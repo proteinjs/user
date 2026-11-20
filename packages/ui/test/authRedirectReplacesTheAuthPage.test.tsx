@@ -23,6 +23,7 @@ import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
+import { SourceRepository } from '@proteinjs/reflection';
 import { routes, SIGN_IN_PAGE_FACTS_SCRIPT_KEY, UserAuth } from '@proteinjs/user';
 import type { InitializeSignupResponse } from '@proteinjs/user';
 import { loginPage } from '../src/pages/Login';
@@ -78,6 +79,14 @@ beforeEach(() => {
   installLocationSpy();
   // The page says sign-up is open (user-server SignInPageFactsScript): the sign-up form renders at once.
   (globalThis as any).proteinjs = { [SIGN_IN_PAGE_FACTS_SCRIPT_KEY]: { signupOpen: true } };
+  // No product registered (the suites load src, never the reflection graph): the sign-up form asks for the
+  // product's sentence, and the graph's lookup answers none; every other lookup is the repository's own.
+  const repository = SourceRepository.get();
+  const lookup = repository.object.bind(repository);
+  jest
+    .spyOn(repository, 'object')
+    .mockImplementation(((type: string) =>
+      type === '@proteinjs/user-ui/AuthPageProduct' ? undefined : lookup(type)) as typeof repository.object);
 });
 
 afterEach(async () => {
@@ -145,10 +154,8 @@ describe('signing up lands in the app by replacing the signup page', () => {
     mockServerAccepts();
     await renderPage(signupPage.component, '/signup');
 
-    fillSilently(field('Name'), 'Ada Lovelace');
     fillSilently(field('Email'), EMAIL);
     fillSilently(field('Password'), PASSWORD);
-    fillSilently(field('Confirm password'), PASSWORD);
     await submit();
 
     expect(locationSpy.replace).toHaveBeenCalledWith('/');

@@ -35,12 +35,25 @@ describe('AuthValidation.forgotPassword', () => {
 });
 
 describe('AuthValidation.signup', () => {
-  it('accepts a complete, matching signup', () => {
-    expect(AuthValidation.signup(validSignup, false)).toBeUndefined();
+  it('without an invite the form asks an email and a password and nothing else; with an invite it asks what it asks today', () => {
+    const typed = { name: '', email: 'ada@example.com', password: 'hunter22', confirmPassword: '' };
+    expect(AuthValidation.signup(typed, false)).toBeUndefined();
+    expect(AuthValidation.signup({ name: '', email: '', password: '', confirmPassword: '' }, false)).toEqual({
+      email: 'Enter your email',
+      password: 'Enter a password',
+    });
+    expect(AuthValidation.signup(typed, true)).toEqual({
+      name: 'Enter your name',
+      confirmPassword: 'Passwords do not match',
+    });
   });
 
-  it('requires a name', () => {
-    expect(AuthValidation.signup({ ...validSignup, name: '  ' }, false)).toEqual({ name: 'Enter your name' });
+  it('accepts a complete, matching invited signup', () => {
+    expect(AuthValidation.signup(validSignup, true)).toBeUndefined();
+  });
+
+  it('requires a name with an invite', () => {
+    expect(AuthValidation.signup({ ...validSignup, name: '  ' }, true)).toEqual({ name: 'Enter your name' });
   });
 
   it('requires an email when not invited', () => {
@@ -63,8 +76,8 @@ describe('AuthValidation.signup', () => {
     });
   });
 
-  it('marks a mismatched password confirmation on the confirmation', () => {
-    expect(AuthValidation.signup({ ...validSignup, confirmPassword: 'different' }, false)).toEqual({
+  it('marks a mismatched password confirmation on the confirmation, with an invite', () => {
+    expect(AuthValidation.signup({ ...validSignup, confirmPassword: 'different' }, true)).toEqual({
       confirmPassword: 'Passwords do not match',
     });
   });

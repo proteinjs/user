@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Skeleton, Stack } from '@mui/material';
+import { Box, Skeleton, Stack, Typography } from '@mui/material';
 import { Page } from '@proteinjs/ui';
 import { getSignupService, SIGNUP_CLOSED_SENTENCE, uiRoutes, UserAuth } from '@proteinjs/user';
 import { Helmet } from 'react-helmet';
@@ -14,6 +14,7 @@ import { AuthApi } from '../auth/AuthApi';
 import { AuthFormFields } from '../auth/AuthFormFields';
 import { SignInPageFacts } from '../auth/SignInPageFacts';
 import { AuthPageProducts } from '../auth/AuthPageProduct';
+import { AuthQuietLink } from '../auth/AuthQuietLink';
 
 type SignupField = 'name' | 'email' | 'password' | 'confirmPassword';
 
@@ -111,11 +112,16 @@ const SignupClosedPanel: React.FC<{ body: string }> = ({ body }) => (
   />
 );
 
-/** The sign-up form; with an invite's token the address is the invite's, shown and fixed. */
+/**
+ * The sign-up form. Without an invite (the sign-up plan's drawing F3): Email and Password, the product's sentence
+ * above Sign up, and "Have an account? Log in" under it; the account is made with an empty name. With an invite's
+ * token, as before: Name, the invite's address shown and fixed, Password and Confirm password.
+ */
 const SignupForm: React.FC<{ token: string; inviteEmail: string }> = ({ token, inviteEmail }) => {
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors<SignupField>>({});
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
+  const AgreementSentence = AuthPageProducts.registered()?.signupAgreementSentence;
 
   const clearFieldError = (name: SignupField) =>
     setFieldErrors((errors) => (errors[name] ? { ...errors, [name]: undefined } : errors));
@@ -123,7 +129,8 @@ const SignupForm: React.FC<{ token: string; inviteEmail: string }> = ({ token, i
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     // Read from the form at submit: a password manager's suggested password (or any autofill)
-    // may be in the DOM only. The invite path carries no email field; its read is ''.
+    // may be in the DOM only. The invite path carries no email field and the form without an invite
+    // no name or second password; a field the form does not carry reads ''.
     const form = event.currentTarget;
     const { name, email, password, confirmPassword } = AuthFormFields.read(form, [
       'name',
@@ -143,7 +150,7 @@ const SignupForm: React.FC<{ token: string; inviteEmail: string }> = ({ token, i
     try {
       // invited users don't enter an email (the invite token carries it); the request also
       // establishes the session (auto-login)
-      await new AuthApi().signup({ name, email: token ? undefined : email.trim(), password }, token || undefined);
+      await new AuthApi().signup(token ? { name, password } : { email: email.trim(), password }, token || undefined);
     } catch (error: any) {
       setError(error.message);
       setBusy(false);
@@ -165,14 +172,16 @@ const SignupForm: React.FC<{ token: string; inviteEmail: string }> = ({ token, i
       </Helmet>
       <AuthLayout title='Create your account'>
         <form onSubmit={onSubmit} noValidate>
-          <AuthTextField
-            label='Name'
-            name='name'
-            onChange={() => clearFieldError('name')}
-            error={fieldErrors.name}
-            autoComplete='name'
-            disabled={busy}
-          />
+          {token && (
+            <AuthTextField
+              label='Name'
+              name='name'
+              onChange={() => clearFieldError('name')}
+              error={fieldErrors.name}
+              autoComplete='name'
+              disabled={busy}
+            />
+          )}
           {token ? (
             // The invite fixes the email; render it read-only, tagged as the username. Without
             // an email field here, password managers captured the NAME field as the saved
@@ -200,18 +209,33 @@ const SignupForm: React.FC<{ token: string; inviteEmail: string }> = ({ token, i
             autoComplete='new-password'
             disabled={busy}
           />
-          <AuthTextField
-            label='Confirm password'
-            name='confirmPassword'
-            onChange={() => clearFieldError('confirmPassword')}
-            error={fieldErrors.confirmPassword}
-            password
-            autoComplete='new-password'
-            disabled={busy}
-          />
+          {token && (
+            <AuthTextField
+              label='Confirm password'
+              name='confirmPassword'
+              onChange={() => clearFieldError('confirmPassword')}
+              error={fieldErrors.confirmPassword}
+              password
+              autoComplete='new-password'
+              disabled={busy}
+            />
+          )}
+          {!token && AgreementSentence && (
+            <Typography
+              component='p'
+              sx={{ m: 0, mt: '6px', mb: '22px', fontSize: '0.875rem', lineHeight: '20px', color: 'text.secondary' }}
+            >
+              <AgreementSentence />
+            </Typography>
+          )}
           <AuthFormError message={error} />
           <AuthButton busy={busy}>Sign up</AuthButton>
         </form>
+        {!token && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+            <AuthQuietLink href={`/${uiRoutes.auth.login}`}>Have an account? Log in</AuthQuietLink>
+          </Box>
+        )}
       </AuthLayout>
     </>
   );

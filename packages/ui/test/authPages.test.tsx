@@ -29,6 +29,7 @@ function pageSays(signupOpen: boolean) {
 const PRODUCT: AuthPageProduct = {
   signupClosedLine: { words: 'New here? Ask the product', href: '/ask-the-product' },
   signupClosedSentence: 'This product is closed for now.',
+  signupAgreementSentence: () => <span data-product-agreement=''>By signing up you accept the product.</span>,
 };
 
 let registered: AuthPageProduct | undefined;
@@ -139,6 +140,33 @@ describe('auth pages', () => {
     registered = undefined;
     html = render(<Signup urlParams={{}} />);
     expect(html).toContain(SIGNUP_CLOSED_SENTENCE);
+  });
+
+  it("without an invite the sign-up page shows two fields, the product's sentence above Sign up, and Have an account? Log in under it", () => {
+    window.history.replaceState({}, '', '/signup');
+    pageSays(true);
+    registered = PRODUCT;
+    const Signup = signupPage.component;
+
+    let html = render(<Signup urlParams={{}} />);
+    const fields: string[] = [];
+    const input = /<input [^>]*name="([^"]*)"/g;
+    for (let match = input.exec(html); match; match = input.exec(html)) {
+      fields.push(match[1]);
+    }
+    expect(fields).toEqual(['email', 'password']);
+    const sentence = html.indexOf('data-product-agreement');
+    const button = html.indexOf('type="submit"');
+    const logIn = html.indexOf('href="/login"');
+    expect(sentence).toBeGreaterThan(-1);
+    expect(sentence).toBeLessThan(button);
+    expect(logIn).toBeGreaterThan(button);
+    expect(linkTargets(html)).toEqual(['/login']);
+
+    registered = undefined;
+    html = render(<Signup urlParams={{}} />);
+    expect(html).not.toContain('data-product-agreement');
+    expect(html).toContain('type="submit"');
   });
 
   it('a page that carries no fact is read as closed', () => {

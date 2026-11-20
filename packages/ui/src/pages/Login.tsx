@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Box, Link, Typography } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import { Page } from '@proteinjs/ui';
 import { uiRoutes, UserAuth } from '@proteinjs/user';
 import { Helmet } from 'react-helmet';
@@ -13,6 +13,7 @@ import { AuthFormFields } from '../auth/AuthFormFields';
 import { AuthFieldErrors, AuthValidation } from '../auth/AuthValidation';
 import { SignInPageFacts } from '../auth/SignInPageFacts';
 import { AuthPageProducts } from '../auth/AuthPageProduct';
+import { AuthQuietLink } from '../auth/AuthQuietLink';
 
 type LoginField = 'email' | 'password';
 
@@ -40,14 +41,6 @@ function newAccountLine(): { words: string; href: string } | undefined {
   }
   return AuthPageProducts.registered()?.signupClosedLine;
 }
-
-/** The quiet links under the form: 0.875rem in the secondary text color, a 44px tap target without visual bulk. */
-const quietLinkSx = {
-  fontSize: '0.875rem',
-  color: 'text.secondary',
-  py: '13px',
-  px: 2,
-} as const;
 
 const LoginComponent: React.FC = () => {
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors<LoginField>>({});
@@ -142,15 +135,11 @@ const LoginComponent: React.FC = () => {
           <AuthButton busy={busy}>Log in</AuthButton>
         </form>
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-          <Link href={`/${uiRoutes.auth.forgotPassword}`} underline='hover' sx={quietLinkSx}>
-            Forgot password?
-          </Link>
+          <AuthQuietLink href={`/${uiRoutes.auth.forgotPassword}`}>Forgot password?</AuthQuietLink>
         </Box>
         {accountLine && (
           <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-            <Link href={accountLine.href} underline='hover' sx={quietLinkSx}>
-              {accountLine.words}
-            </Link>
+            <AuthQuietLink href={accountLine.href}>{accountLine.words}</AuthQuietLink>
           </Box>
         )}
       </AuthLayout>

@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 
 /**
@@ -13,15 +14,21 @@ import { Loadable, SourceRepository } from '@proteinjs/reflection';
  * browser the same way a product's `RecordFormCustomization` is found by db-ui.
  *
  * Its shape: one object, members added as the pages need them, each read by the one page that shows it.
- * Today the closed state's words. Planned additions, not built here: the sign-up page's Terms sentence;
- * a way for the sign-up page to ask the product for a timing token; the descriptions of the provider
- * buttons. With no registration the pages show only the library's own words.
+ * Today the closed state's words and the sign-up page's agreement sentence. Planned additions, not built
+ * here: a way for the sign-up page to ask the product for a timing token; the descriptions of the
+ * provider buttons. With no registration the pages show only the library's own words.
  */
 export interface AuthPageProduct extends Loadable {
   /** The line under "Forgot password?" while sign-up is closed: its words and the address it opens. */
   signupClosedLine: { words: string; href: string };
   /** The sentence on the sign-up page's closed panel. */
   signupClosedSentence: string;
+  /**
+   * The sentence above the sign-up page's Sign up button (without an invite), rendered by the product so
+   * that the words a person taps open the product's own pages. The page sets its type size and color;
+   * with none registered there is no sentence and no space for one.
+   */
+  signupAgreementSentence?: ComponentType;
 }
 
 /** The product's registration, if one was made (the first found). */

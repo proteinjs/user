@@ -31,13 +31,16 @@ export class AuthValidation {
     return AuthValidation.outcome(errors);
   }
 
-  /** @param invited invited users don't enter an email (the invite token carries it) */
+  /**
+   * Without an invite the form asks an email and a password and nothing else. With an invite (the invite token
+   * carries the email) it asks a name, a password and the password again.
+   */
   static signup(
     fields: { name: string; email: string; password: string; confirmPassword: string },
     invited: boolean
   ): AuthFieldErrors<'name' | 'email' | 'password' | 'confirmPassword'> | undefined {
     const errors: AuthFieldErrors<'name' | 'email' | 'password' | 'confirmPassword'> = {};
-    if (!fields.name.trim()) {
+    if (invited && !fields.name.trim()) {
       errors.name = 'Enter your name';
     }
 
@@ -51,7 +54,7 @@ export class AuthValidation {
 
     if (!fields.password) {
       errors.password = 'Enter a password';
-    } else if (fields.password !== fields.confirmPassword) {
+    } else if (invited && fields.password !== fields.confirmPassword) {
       errors.confirmPassword = 'Passwords do not match';
     }
 
