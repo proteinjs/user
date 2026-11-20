@@ -1,6 +1,12 @@
 import { UserSignup, routes } from '@proteinjs/user';
 
 /**
+ * What a sign-up form without an invite sends for the product's check: its hidden field (`website`, which no
+ * person sees or reaches) and the product's timing token when the product gives one.
+ */
+export type SignupCheckFields = { website: string; formToken?: string };
+
+/**
  * The auth flows' server calls, in one place so the pages hold presentation only.
  * Methods resolve on success and throw an `Error` whose message is user-readable.
  */
@@ -16,12 +22,13 @@ export class AuthApi {
   /**
    * Signs up AND establishes the session in the same request (auto-login): on resolve the
    * caller navigates straight into the app — no bounce through the login form. Invited users
-   * pass the invite `token` and no email (the invite carries it).
+   * pass the invite `token` and no email (the invite carries it). A sign-up without an invite also
+   * carries what its form holds for the product's check (`SignupCheckFields`).
    */
-  async signup(user: UserSignup, inviteToken?: string): Promise<void> {
+  async signup(user: UserSignup, inviteToken?: string, checkFields?: SignupCheckFields): Promise<void> {
     const response = await fetch(routes.signup.path, {
       method: routes.signup.method,
-      body: JSON.stringify({ ...user, token: inviteToken }),
+      body: JSON.stringify({ ...user, token: inviteToken, ...checkFields }),
       redirect: 'follow',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },

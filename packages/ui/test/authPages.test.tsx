@@ -152,7 +152,10 @@ describe('auth pages', () => {
     const fields: string[] = [];
     const input = /<input [^>]*name="([^"]*)"/g;
     for (let match = input.exec(html); match; match = input.exec(html)) {
-      fields.push(match[1]);
+      // The fields a person reaches: the hidden field for the product's check is out of the tab order.
+      if (!/tabindex="-1"/.test(html.slice(match.index, html.indexOf('>', match.index)))) {
+        fields.push(match[1]);
+      }
     }
     expect(fields).toEqual(['email', 'password']);
     const sentence = html.indexOf('data-product-agreement');

@@ -30,6 +30,7 @@ import { loginPage } from '../src/pages/Login';
 import { forgotPasswordPage } from '../src/pages/ForgotPassword';
 import { passwordResetPage } from '../src/pages/PasswordReset';
 import { signupPage } from '../src/pages/Signup';
+import type { AuthPageProduct } from '../src/auth/AuthPageProduct';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -304,15 +305,19 @@ describe('password-reset form', () => {
 });
 
 describe('signup form', () => {
+  /** The product the graph's lookup answers for the sign-in pages; none unless a case registers one. */
+  let product: Partial<AuthPageProduct> | undefined;
+
   beforeEach(() => {
     // No product registered (the suites load src, never the reflection graph): the sign-up form asks for the
     // product's sentence, and the graph's lookup answers none; every other lookup is the repository's own.
+    product = undefined;
     const repository = SourceRepository.get();
     const lookup = repository.object.bind(repository);
     jest
       .spyOn(repository, 'object')
       .mockImplementation(((type: string) =>
-        type === '@proteinjs/user-ui/AuthPageProduct' ? undefined : lookup(type)) as typeof repository.object);
+        type === '@proteinjs/user-ui/AuthPageProduct' ? product : lookup(type)) as typeof repository.object);
   });
 
   it('an autofill that fires no event reaches the server with the values', async () => {
@@ -323,7 +328,55 @@ describe('signup form', () => {
     fillSilently(field('Password'), PASSWORD);
     await submit();
 
-    expect(posts).toEqual([{ path: routes.signup.path, body: { email: EMAIL, password: PASSWORD } }]);
+    expect(posts).toEqual([{ path: routes.signup.path, body: { email: EMAIL, password: PASSWORD, website: '' } }]);
+  });
+
+  it("the sign-up page sends its hidden field and the product's timing token with the sign-up, asks the product for a new token after a refusal, and sends neither with an invite", async () => {
+    let renewals = 0;
+    product = {
+      signupFormToken: () => ({
+        renew: () => {
+          renewals += 1;
+        },
+        forSubmit: async () => `timing-token-${renewals}`,
+      }),
+    };
+    mockServer();
+    await renderPage(signupPage.component, '/signup');
+
+    fillSilently(field('Email'), EMAIL);
+    fillSilently(field('Password'), PASSWORD);
+    await submit(); // refused by the server
+    await submit();
+
+    expect(posts).toEqual([
+      {
+        path: routes.signup.path,
+        body: { email: EMAIL, password: PASSWORD, website: '', formToken: 'timing-token-1' },
+      },
+      {
+        path: routes.signup.path,
+        body: { email: EMAIL, password: PASSWORD, website: '', formToken: 'timing-token-2' },
+      },
+    ]);
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    initializeSignup.mockResolvedValue({
+      isReady: true,
+      isInviteOnly: true,
+      invite: { email: EMAIL } as InitializeSignupResponse['invite'],
+    });
+    posts = [];
+    await renderPage(signupPage.component, '/signup?token=invite-token-1');
+    fillSilently(field('Name'), 'Ada');
+    fillSilently(field('Password'), PASSWORD);
+    fillSilently(field('Confirm password'), PASSWORD);
+    await submit();
+
+    expect(posts).toEqual([
+      { path: routes.signup.path, body: { name: 'Ada', password: PASSWORD, token: 'invite-token-1' } },
+    ]);
   });
 
   it('a blank submit never leaves the page: each empty field is marked', async () => {

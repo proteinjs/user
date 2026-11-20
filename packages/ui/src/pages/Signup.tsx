@@ -122,6 +122,11 @@ const SignupForm: React.FC<{ token: string; inviteEmail: string }> = ({ token, i
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const AgreementSentence = AuthPageProducts.registered()?.signupAgreementSentence;
+  // The product's timing token, for a sign-up without an invite only: asked for when the form opens.
+  const [timingToken] = useState(() => (token ? undefined : AuthPageProducts.registered()?.signupFormToken?.()));
+  useEffect(() => {
+    timingToken?.renew();
+  }, [timingToken]);
 
   const clearFieldError = (name: SignupField) =>
     setFieldErrors((errors) => (errors[name] ? { ...errors, [name]: undefined } : errors));
@@ -132,11 +137,12 @@ const SignupForm: React.FC<{ token: string; inviteEmail: string }> = ({ token, i
     // may be in the DOM only. The invite path carries no email field and the form without an invite
     // no name or second password; a field the form does not carry reads ''.
     const form = event.currentTarget;
-    const { name, email, password, confirmPassword } = AuthFormFields.read(form, [
+    const { name, email, password, confirmPassword, website } = AuthFormFields.read(form, [
       'name',
       'email',
       'password',
       'confirmPassword',
+      'website',
     ] as const);
     const invalid = AuthValidation.signup({ name, email, password, confirmPassword }, !!token);
     setFieldErrors(invalid ?? {});
@@ -150,10 +156,20 @@ const SignupForm: React.FC<{ token: string; inviteEmail: string }> = ({ token, i
     try {
       // invited users don't enter an email (the invite token carries it); the request also
       // establishes the session (auto-login)
-      await new AuthApi().signup(token ? { name, password } : { email: email.trim(), password }, token || undefined);
+      if (token) {
+        await new AuthApi().signup({ name, password }, token);
+      } else {
+        const formToken = timingToken && (await timingToken.forSubmit());
+        await new AuthApi().signup({ email: email.trim(), password }, undefined, {
+          website,
+          ...(formToken !== undefined && { formToken }),
+        });
+      }
     } catch (error: any) {
       setError(error.message);
       setBusy(false);
+      // A refused sign-up asks the product for a new token: the next tap carries a fresh one.
+      timingToken?.renew();
       return;
     }
 
@@ -227,6 +243,16 @@ const SignupForm: React.FC<{ token: string; inviteEmail: string }> = ({ token, i
             >
               <AgreementSentence />
             </Typography>
+          )}
+          {!token && (
+            // The hidden field: no person sees or reaches it (out of sight, out of the tab order), so a
+            // value in it is bot-shaped, for the product's check to judge.
+            <Box
+              aria-hidden='true'
+              sx={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)' }}
+            >
+              <input type='text' name='website' tabIndex={-1} autoComplete='off' defaultValue='' />
+            </Box>
           )}
           <AuthFormError message={error} />
           <AuthButton busy={busy}>Sign up</AuthButton>
