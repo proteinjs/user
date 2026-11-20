@@ -140,4 +140,31 @@ describe('auth pages', () => {
     html = render(<Signup urlParams={{}} />);
     expect(html).toContain(SIGNUP_CLOSED_SENTENCE);
   });
+
+  it('a page that carries no fact is read as closed', () => {
+    window.history.replaceState({}, '', '/signup');
+    registered = PRODUCT;
+    const Login = loginPage.component;
+    const Signup = signupPage.component;
+    const pages: Array<{ proteinjs?: unknown }> = [
+      {},
+      { proteinjs: {} },
+      { proteinjs: { [SIGN_IN_PAGE_FACTS_SCRIPT_KEY]: {} } },
+      { proteinjs: { [SIGN_IN_PAGE_FACTS_SCRIPT_KEY]: { somethingElse: true } } },
+    ];
+    for (const page of pages) {
+      if ('proteinjs' in page) {
+        (globalThis as any).proteinjs = page.proteinjs;
+      } else {
+        delete (globalThis as any).proteinjs;
+      }
+      expect(linkTargets(render(<Login urlParams={{}} />))).toEqual([
+        '/login/forgot-password',
+        PRODUCT.signupClosedLine.href,
+      ]);
+      const html = render(<Signup urlParams={{}} />);
+      expect(html).toContain(PRODUCT.signupClosedSentence);
+      expect(html).not.toContain('type="submit"');
+    }
+  });
 });
