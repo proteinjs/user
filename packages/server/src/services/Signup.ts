@@ -13,6 +13,7 @@ import {
   UserSignup,
   USER_PERMISSIONS,
   getMachineAccounts,
+  SIGNUP_CLOSED_SENTENCE,
 } from '@proteinjs/user';
 import moment from 'moment';
 import { lib } from 'crypto-js';
@@ -357,7 +358,7 @@ export class Signup implements SignupService {
       if (isInviteOnly) {
         return {
           isReady: false,
-          error: 'An invite is required to sign up.',
+          error: SIGNUP_CLOSED_SENTENCE,
           isInviteOnly,
         };
       }

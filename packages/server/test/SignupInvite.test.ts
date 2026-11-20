@@ -43,16 +43,20 @@ jest.mock('@proteinjs/email-server', () => ({
 
 // `merge` is kept real so the generated source graphs still load; only lookup is stubbed, so
 // `getDefaultInviteConfigFactory` falls back to its invite-optional default.
+// A case may register an invite rule here (the product's `DefaultInviteConfigFactory`); none by default.
+let mockRegisteredInviteRule: { getConfig: () => { isInviteOnly: boolean } } | undefined;
 jest.mock('@proteinjs/reflection', () => ({
   ...jest.requireActual('@proteinjs/reflection'),
   SourceRepository: {
     ...jest.requireActual('@proteinjs/reflection').SourceRepository,
-    get: () => ({ object: () => undefined }),
+    get: () => ({ object: () => mockRegisteredInviteRule }),
   },
 }));
 
 import { UserRepo } from '@proteinjs/user';
+import { SIGN_IN_PAGE_FACTS_SCRIPT_KEY } from '@proteinjs/user';
 import { INVITE_TOKEN_TTL_DAYS, Signup } from '../src/services/Signup';
+import { SignInPageFactsScript } from '../src/scripts/SignInPageFactsScript';
 
 const EXPECTED_TTL_DAYS = 90;
 
@@ -173,5 +177,26 @@ describe('expired invite user experience', () => {
     // Default config is invite-optional, so this is the open case.
     expect(response.isReady).toBe(true);
     expect(dbGet).not.toHaveBeenCalled();
+  });
+});
+
+describe('the fact written into the page for the sign-in pages', () => {
+  afterEach(() => {
+    mockRegisteredInviteRule = undefined;
+  });
+
+  /** Runs the script as the page runs it, against the page's `proteinjs` object, and reads the fact back. */
+  async function factWritten(): Promise<unknown> {
+    const proteinjs: Record<string, unknown> = {};
+    new Function('proteinjs', await new SignInPageFactsScript().script())(proteinjs);
+    return proteinjs[SIGN_IN_PAGE_FACTS_SCRIPT_KEY];
+  }
+
+  it('says open when no invite is required and closed when one is', async () => {
+    mockRegisteredInviteRule = { getConfig: () => ({ isInviteOnly: false }) };
+    expect(await factWritten()).toEqual({ signupOpen: true });
+
+    mockRegisteredInviteRule = { getConfig: () => ({ isInviteOnly: true }) };
+    expect(await factWritten()).toEqual({ signupOpen: false });
   });
 });

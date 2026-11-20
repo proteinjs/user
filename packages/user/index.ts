@@ -18,6 +18,7 @@ export * from './src/tables/UserTable';
 export * from './src/tables/SessionTable';
 export * from './src/tables/tables';
 export * from './src/routes';
+export * from './src/signInPageFacts';
 export * from './src/cacheKeys';
 export * from './src/permissions';
 export * from './src/MachineAccount';
