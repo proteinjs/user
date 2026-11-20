@@ -1,6 +1,9 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
+import { SourceRepository } from '@proteinjs/reflection';
+import { SIGN_IN_PAGE_FACTS_SCRIPT_KEY } from '@proteinjs/user';
+import type { AuthPageProduct } from '../src/auth/AuthPageProduct';
 import { loginPage } from '../src/pages/Login';
 import { forgotPasswordPage } from '../src/pages/ForgotPassword';
 import { passwordResetPage } from '../src/pages/PasswordReset';
@@ -8,6 +11,44 @@ import { signupPage } from '../src/pages/Signup';
 
 function render(node: React.ReactElement) {
   return renderToStaticMarkup(<MemoryRouter>{node}</MemoryRouter>);
+}
+
+/** What the server wrote into the page at load: whether sign-up is open (user-server SignInPageFactsScript). */
+function pageSays(signupOpen: boolean) {
+  (globalThis as any).proteinjs = { [SIGN_IN_PAGE_FACTS_SCRIPT_KEY]: { signupOpen } };
+}
+
+/** A product's registration, in words that are the test's own (the library carries no product's words). */
+const PRODUCT: AuthPageProduct = {
+  signupClosedLine: { words: 'New here? Ask the product', href: '/ask-the-product' },
+  signupClosedSentence: 'This product is closed for now.',
+};
+
+let registered: AuthPageProduct | undefined;
+
+beforeEach(() => {
+  registered = undefined;
+  jest
+    .spyOn(SourceRepository, 'get')
+    .mockReturnValue({
+      object: (type: string) => (type === '@proteinjs/user-ui/AuthPageProduct' ? registered : undefined),
+      objects: () => [],
+    } as unknown as SourceRepository);
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
+  delete (globalThis as any).proteinjs;
+});
+
+/** The addresses of the links a page renders. */
+function linkTargets(html: string): string[] {
+  const targets: string[] = [];
+  const anchor = /<a [^>]*href="([^"]*)"/g;
+  for (let match = anchor.exec(html); match; match = anchor.exec(html)) {
+    targets.push(match[1]);
+  }
+  return targets;
 }
 
 describe('auth pages', () => {
@@ -27,6 +68,24 @@ describe('auth pages', () => {
     expect(html.toLowerCase()).toContain('autocomplete="username"');
     expect(html.toLowerCase()).toContain('type="email"');
     expect(html.toLowerCase()).toContain('autocomplete="current-password"');
+  });
+
+  it('the log-in page shows the open line when the page says open, the product\'s closed line when closed, and no line when closed with none registered', () => {
+    const Login = loginPage.component;
+    registered = PRODUCT;
+
+    pageSays(true);
+    let html = render(<Login urlParams={{}} />);
+    expect(linkTargets(html)).toEqual(['/login/forgot-password', '/signup']);
+
+    pageSays(false);
+    html = render(<Login urlParams={{}} />);
+    expect(linkTargets(html)).toEqual(['/login/forgot-password', PRODUCT.signupClosedLine.href]);
+    expect(html).toContain(PRODUCT.signupClosedLine.words);
+
+    registered = undefined;
+    html = render(<Login urlParams={{}} />);
+    expect(linkTargets(html)).toEqual(['/login/forgot-password']);
   });
 
   it('forgot password renders the email field, the send action, and a way back to login', () => {

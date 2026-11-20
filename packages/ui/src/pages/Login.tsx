@@ -11,6 +11,8 @@ import { AuthFormError } from '../auth/AuthFormError';
 import { AuthApi } from '../auth/AuthApi';
 import { AuthFormFields } from '../auth/AuthFormFields';
 import { AuthFieldErrors, AuthValidation } from '../auth/AuthValidation';
+import { SignInPageFacts } from '../auth/SignInPageFacts';
+import { AuthPageProducts } from '../auth/AuthPageProduct';
 
 type LoginField = 'email' | 'password';
 
@@ -27,11 +29,32 @@ function arrivalMessage(state: unknown): string | undefined {
   return typeof message === 'string' && message.length > 0 ? message : undefined;
 }
 
+/**
+ * The line under "Forgot password?" that says how to get an account: the sign-up page where the page
+ * says sign-up is open; the product's own line (AuthPageProduct) where it is closed; none when closed and
+ * no product registered one.
+ */
+function newAccountLine(): { words: string; href: string } | undefined {
+  if (SignInPageFacts.signupOpen()) {
+    return { words: 'New here? Create your account', href: `/${uiRoutes.auth.signup}` };
+  }
+  return AuthPageProducts.registered()?.signupClosedLine;
+}
+
+/** The quiet links under the form: 0.875rem in the secondary text color, a 44px tap target without visual bulk. */
+const quietLinkSx = {
+  fontSize: '0.875rem',
+  color: 'text.secondary',
+  py: '13px',
+  px: 2,
+} as const;
+
 const LoginComponent: React.FC = () => {
   const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors<LoginField>>({});
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const message = arrivalMessage(useLocation().state);
+  const accountLine = newAccountLine();
 
   const clearFieldError = (name: LoginField) =>
     setFieldErrors((errors) => (errors[name] ? { ...errors, [name]: undefined } : errors));
@@ -114,20 +137,17 @@ const LoginComponent: React.FC = () => {
           <AuthButton busy={busy}>Log in</AuthButton>
         </form>
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-          <Link
-            href={`/${uiRoutes.auth.forgotPassword}`}
-            underline='hover'
-            sx={{
-              fontSize: '0.875rem',
-              color: 'text.secondary',
-              // 44px touch target without visual bulk.
-              py: '13px',
-              px: 2,
-            }}
-          >
+          <Link href={`/${uiRoutes.auth.forgotPassword}`} underline='hover' sx={quietLinkSx}>
             Forgot password?
           </Link>
         </Box>
+        {accountLine && (
+          <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+            <Link href={accountLine.href} underline='hover' sx={quietLinkSx}>
+              {accountLine.words}
+            </Link>
+          </Box>
+        )}
       </AuthLayout>
     </>
   );
