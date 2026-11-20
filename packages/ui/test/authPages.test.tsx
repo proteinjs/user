@@ -1,8 +1,15 @@
+/**
+ * @jest-environment jsdom
+ * @jest-environment-options {"customExportConditions": ["node", "node-addons"]}
+ *
+ * The page's own address matters to the sign-up page (an invite link carries `?token=`), so the pages
+ * render against a document whose address a case sets.
+ */
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { SourceRepository } from '@proteinjs/reflection';
-import { SIGN_IN_PAGE_FACTS_SCRIPT_KEY } from '@proteinjs/user';
+import { SIGN_IN_PAGE_FACTS_SCRIPT_KEY, SIGNUP_CLOSED_SENTENCE } from '@proteinjs/user';
 import type { AuthPageProduct } from '../src/auth/AuthPageProduct';
 import { loginPage } from '../src/pages/Login';
 import { forgotPasswordPage } from '../src/pages/ForgotPassword';
@@ -106,10 +113,33 @@ describe('auth pages', () => {
     expect(html).not.toContain('New password');
   });
 
-  it('signup renders its loading state before initialization resolves (no form flash)', () => {
+  it('signup with an invite link renders its loading state before initialization resolves (no form flash)', () => {
+    window.history.replaceState({}, '', '/signup?token=invite-token-1');
+    pageSays(true);
     const Signup = signupPage.component;
     const html = render(<Signup urlParams={{}} />);
     expect(html).toContain('Create your account');
     expect(html).not.toContain('type="submit"');
+  });
+
+  it('without an invite the sign-up page renders at once: the form when open, the closed panel with the product\'s sentence when closed', () => {
+    window.history.replaceState({}, '', '/signup');
+    const Signup = signupPage.component;
+
+    pageSays(true);
+    let html = render(<Signup urlParams={{}} />);
+    expect(html).toContain('type="submit"');
+    expect(html).toContain('name="email"');
+
+    pageSays(false);
+    registered = PRODUCT;
+    html = render(<Signup urlParams={{}} />);
+    expect(html).toContain(PRODUCT.signupClosedSentence);
+    expect(linkTargets(html)).toEqual(['/login']);
+    expect(html).not.toContain('type="submit"');
+
+    registered = undefined;
+    html = render(<Signup urlParams={{}} />);
+    expect(html).toContain(SIGNUP_CLOSED_SENTENCE);
   });
 });

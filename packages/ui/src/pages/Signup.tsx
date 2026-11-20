@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Skeleton, Stack } from '@mui/material';
 import { Page } from '@proteinjs/ui';
-import { getSignupService, uiRoutes } from '@proteinjs/user';
+import { getSignupService, SIGNUP_CLOSED_SENTENCE, uiRoutes } from '@proteinjs/user';
 import { Helmet } from 'react-helmet';
 import { AuthLayout } from '../auth/AuthLayout';
 import { AuthTextField } from '../auth/AuthTextField';
@@ -11,6 +11,8 @@ import { AuthMessagePanel } from '../auth/AuthMessagePanel';
 import { AuthFieldErrors, AuthValidation } from '../auth/AuthValidation';
 import { AuthApi } from '../auth/AuthApi';
 import { AuthFormFields } from '../auth/AuthFormFields';
+import { SignInPageFacts } from '../auth/SignInPageFacts';
+import { AuthPageProducts } from '../auth/AuthPageProduct';
 
 type SignupField = 'name' | 'email' | 'password' | 'confirmPassword';
 
@@ -22,14 +24,27 @@ function inviteTokenFromUrl(): string {
   return new URLSearchParams(window.location.search).get('token') || '';
 }
 
+/**
+ * Without an invite the page renders at once from what the server wrote into the page at load
+ * (SignInPageFacts): the form where sign-up is open, the closed panel where it is not, with no call and
+ * nothing gray first. An invite link keeps its own road (InvitedSignup): the invite is checked on load.
+ */
 const SignupComponent: React.FC = () => {
   const [token] = useState(inviteTokenFromUrl);
+  if (token) {
+    return <InvitedSignup token={token} />;
+  }
+  if (!SignInPageFacts.signupOpen()) {
+    return <SignupClosedPanel body={AuthPageProducts.registered()?.signupClosedSentence ?? SIGNUP_CLOSED_SENTENCE} />;
+  }
+  return <SignupForm token='' inviteEmail='' />;
+};
+
+/** An invite link: the invite is checked on load (four gray bars while it is), then the form with its address fixed. */
+const InvitedSignup: React.FC<{ token: string }> = ({ token }) => {
   const [initializing, setInitializing] = useState(true);
   const [initializationError, setInitializationError] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors<SignupField>>({});
-  const [error, setError] = useState<string | undefined>();
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -59,6 +74,42 @@ const SignupComponent: React.FC = () => {
       active = false;
     };
   }, [token]);
+
+  if (initializing) {
+    return (
+      <AuthLayout title='Create your account'>
+        <Stack spacing={2.5}>
+          <Skeleton variant='rounded' height={48} sx={{ borderRadius: '12px' }} />
+          <Skeleton variant='rounded' height={48} sx={{ borderRadius: '12px' }} />
+          <Skeleton variant='rounded' height={48} sx={{ borderRadius: '12px' }} />
+          <Skeleton variant='rounded' height={48} sx={{ borderRadius: '999px' }} />
+        </Stack>
+      </AuthLayout>
+    );
+  }
+
+  if (initializationError) {
+    return <SignupClosedPanel body={initializationError} />;
+  }
+
+  return <SignupForm token={token} inviteEmail={inviteEmail} />;
+};
+
+/** The panel for a sign-up that cannot go on: a sentence and the way back to Log in. */
+const SignupClosedPanel: React.FC<{ body: string }> = ({ body }) => (
+  <AuthMessagePanel
+    title='Sign up is not available'
+    body={body}
+    actionName='Go to log in'
+    actionHref={`/${uiRoutes.auth.login}`}
+  />
+);
+
+/** The sign-up form; with an invite's token the address is the invite's, shown and fixed. */
+const SignupForm: React.FC<{ token: string; inviteEmail: string }> = ({ token, inviteEmail }) => {
+  const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors<SignupField>>({});
+  const [error, setError] = useState<string | undefined>();
+  const [busy, setBusy] = useState(false);
 
   const clearFieldError = (name: SignupField) =>
     setFieldErrors((errors) => (errors[name] ? { ...errors, [name]: undefined } : errors));
@@ -100,30 +151,6 @@ const SignupComponent: React.FC = () => {
     // home could land on it. Replacing it makes home the base of their history.
     window.location.replace('/');
   };
-
-  if (initializing) {
-    return (
-      <AuthLayout title='Create your account'>
-        <Stack spacing={2.5}>
-          <Skeleton variant='rounded' height={48} sx={{ borderRadius: '12px' }} />
-          <Skeleton variant='rounded' height={48} sx={{ borderRadius: '12px' }} />
-          <Skeleton variant='rounded' height={48} sx={{ borderRadius: '12px' }} />
-          <Skeleton variant='rounded' height={48} sx={{ borderRadius: '999px' }} />
-        </Stack>
-      </AuthLayout>
-    );
-  }
-
-  if (initializationError) {
-    return (
-      <AuthMessagePanel
-        title='Sign up is not available'
-        body={initializationError}
-        actionName='Go to log in'
-        actionHref={`/${uiRoutes.auth.login}`}
-      />
-    );
-  }
 
   return (
     <>

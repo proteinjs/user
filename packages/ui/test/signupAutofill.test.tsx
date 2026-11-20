@@ -17,6 +17,7 @@ import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import type { InitializeSignupResponse } from '@proteinjs/user';
+import { SIGN_IN_PAGE_FACTS_SCRIPT_KEY } from '@proteinjs/user';
 import { signupPage } from '../src/pages/Signup';
 
 declare global {
@@ -100,12 +101,17 @@ describe('invited signup', () => {
 
 describe('plain signup', () => {
   beforeEach(() => {
-    initializeSignup.mockResolvedValue({ isReady: true, isInviteOnly: false });
+    // The page says sign-up is open (user-server SignInPageFactsScript); no invite is checked.
+    (globalThis as any).proteinjs = { [SIGN_IN_PAGE_FACTS_SCRIPT_KEY]: { signupOpen: true } };
+  });
+
+  afterEach(() => {
+    delete (globalThis as any).proteinjs;
   });
 
   it('renders an editable email field tagged as the username', async () => {
     await renderSignup('/signup');
-    expect(initializeSignup).toHaveBeenCalledWith(undefined);
+    expect(initializeSignup).not.toHaveBeenCalled();
 
     const email = field('Email');
     expect(email.readOnly).toBe(false);

@@ -23,7 +23,7 @@ import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { MemoryRouter } from 'react-router-dom';
-import { routes } from '@proteinjs/user';
+import { routes, SIGN_IN_PAGE_FACTS_SCRIPT_KEY } from '@proteinjs/user';
 import type { InitializeSignupResponse } from '@proteinjs/user';
 import { loginPage } from '../src/pages/Login';
 import { signupPage } from '../src/pages/Signup';
@@ -76,6 +76,8 @@ beforeEach(() => {
   document.body.appendChild(container);
   root = createRoot(container);
   installLocationSpy();
+  // The page says sign-up is open (user-server SignInPageFactsScript): the sign-up form renders at once.
+  (globalThis as any).proteinjs = { [SIGN_IN_PAGE_FACTS_SCRIPT_KEY]: { signupOpen: true } };
 });
 
 afterEach(async () => {
@@ -83,6 +85,7 @@ afterEach(async () => {
   container.remove();
   Object.defineProperty(window, 'location', { configurable: true, value: realLocation });
   delete (global as any).fetch;
+  delete (globalThis as any).proteinjs;
 });
 
 /** Answers every auth POST 200 with no error, so a submit runs through to the redirect. */
@@ -139,7 +142,6 @@ describe('signing in lands in the app by replacing the login page', () => {
 describe('signing up lands in the app by replacing the signup page', () => {
   it('replaces `/signup` with home — never pushes home on top of it', async () => {
     mockServerAccepts();
-    initializeSignup.mockResolvedValue({ isReady: true, isInviteOnly: false });
     await renderPage(signupPage.component, '/signup');
 
     fillSilently(field('Name'), 'Ada Lovelace');

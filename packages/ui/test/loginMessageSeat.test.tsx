@@ -1,6 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
+import { SIGN_IN_PAGE_FACTS_SCRIPT_KEY } from '@proteinjs/user';
 import { loginPage } from '../src/pages/Login';
 
 /**
@@ -21,6 +22,15 @@ function renderLogin(state?: unknown) {
 const SENTENCE = 'You were signed out. Sign in whenever you are ready.';
 
 describe('the login page message seat', () => {
+  // The page says sign-up is open (user-server SignInPageFactsScript), so no product registration is asked for.
+  beforeEach(() => {
+    (globalThis as any).proteinjs = { [SIGN_IN_PAGE_FACTS_SCRIPT_KEY]: { signupOpen: true } };
+  });
+
+  afterEach(() => {
+    delete (globalThis as any).proteinjs;
+  });
+
   it('renders the sentence the arriving navigation carried, once, above the fields', () => {
     const html = renderLogin({ message: SENTENCE });
     const seat = html.match(/<[^>]+role="status"[^>]*>([^<]*)</);

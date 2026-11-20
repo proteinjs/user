@@ -24,6 +24,7 @@ import { act } from 'react-dom/test-utils';
 import { MemoryRouter } from 'react-router-dom';
 import { routes } from '@proteinjs/user';
 import type { InitializeSignupResponse } from '@proteinjs/user';
+import { SIGN_IN_PAGE_FACTS_SCRIPT_KEY } from '@proteinjs/user';
 import { loginPage } from '../src/pages/Login';
 import { forgotPasswordPage } from '../src/pages/ForgotPassword';
 import { passwordResetPage } from '../src/pages/PasswordReset';
@@ -54,6 +55,8 @@ let posts: FetchCall[];
 beforeEach(() => {
   posts = [];
   initializeSignup.mockReset();
+  // The page says sign-up is open (user-server SignInPageFactsScript): the sign-up form renders at once.
+  (globalThis as any).proteinjs = { [SIGN_IN_PAGE_FACTS_SCRIPT_KEY]: { signupOpen: true } };
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -63,6 +66,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   delete (global as any).fetch;
+  delete (globalThis as any).proteinjs;
 });
 
 /**
@@ -300,7 +304,6 @@ describe('password-reset form', () => {
 describe('signup form', () => {
   it('an autofill that fires no event reaches the server with the values', async () => {
     mockServer();
-    initializeSignup.mockResolvedValue({ isReady: true, isInviteOnly: false });
     await renderPage(signupPage.component, '/signup');
 
     fillSilently(field('Name'), 'Ada Lovelace');
@@ -316,7 +319,6 @@ describe('signup form', () => {
 
   it('a blank submit never leaves the page: each empty field is marked', async () => {
     mockServer();
-    initializeSignup.mockResolvedValue({ isReady: true, isInviteOnly: false });
     await renderPage(signupPage.component, '/signup');
 
     await submit();
