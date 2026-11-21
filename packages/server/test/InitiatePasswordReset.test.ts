@@ -12,6 +12,7 @@ import { login } from '../src/routes/login';
 import { createPassportRequest } from './passportSessionHarness';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 import { LogCapture } from './LogCapture';
+import { productAsksForConfirmation } from './emailConfirmationHarness';
 
 const testEnv = new UserServerTestEnvironment();
 
@@ -175,6 +176,33 @@ describe('initiatePasswordReset route', () => {
     const row = await userRow('initiate-live@test.local');
     await expect(new PasswordHasher().verify(row.password, 'a new password')).resolves.toBe(true);
     expect(row.passwordResetToken).toBeNull();
+  });
+
+  it('Forgot password mails nothing to a waiting account and answers the same sentence', async () => {
+    // An account as a sign-up without an invite leaves it: its address not confirmed.
+    await getDbAsSystem().insert(tables.User, {
+      name: '',
+      email: 'initiate-waiting@test.local',
+      password: 'test',
+      emailVerified: false,
+      roles: [],
+    });
+    productAsksForConfirmation(true);
+    try {
+      const held = await invoke(initiatePasswordReset, { body: { email: 'initiate-waiting@test.local' } });
+
+      expect(held).toEqual({ status: 200, body: GENERIC });
+      expect(MailSink.get().list()).toEqual([]);
+      expect((await userRow('initiate-waiting@test.local')).passwordResetToken ?? null).toBeNull();
+    } finally {
+      productAsksForConfirmation(false);
+    }
+
+    // Where no product asks for the confirmation the same account is mailed, as before.
+    const mailed = await invoke(initiatePasswordReset, { body: { email: 'initiate-waiting@test.local' } });
+
+    expect(mailed).toEqual({ status: 200, body: GENERIC });
+    expect(MailSink.get().list()).toHaveLength(1);
   });
 
   it('a send that fails withdraws the token — asking again straight away mails a link', async () => {

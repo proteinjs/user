@@ -9,6 +9,7 @@ import {
   getDefaultPasswordResetEmailConfigFactory as getDefaultConfigFactory,
 } from '@proteinjs/email-server';
 import { PasswordResetToken } from '../authentication/PasswordResetToken';
+import { EmailConfirmation } from '../services/EmailConfirmation';
 import { ClientAddress } from '../throttle/ClientAddress';
 import { passwordResetThrottle } from '../throttle/PasswordResetThrottle';
 
@@ -27,7 +28,8 @@ const ONE_ANSWER = { message: 'If that address has an account, a reset link is o
  *
  * ONE ANSWER: every request with an address is answered `ONE_ANSWER` — BEFORE the address is
  * looked up — whether it has an account, is throttled (`PasswordResetThrottle`: per client and
- * per address), is inside the account's five-minute gap, or its mail fails; so neither the
+ * per address), is held back until its address is confirmed (`EmailConfirmation`: no mail goes),
+ * is inside the account's five-minute gap, or its mail fails; so neither the
  * words, the status nor the timing say whether an address has an account. The work runs after
  * the answer. Every request is one outcome line carrying the account digest and the coarse IP
  * hash (`RequestDigests`) — never the address.
@@ -65,6 +67,13 @@ export const initiatePasswordReset: Route = {
     const user = await db.get(tables.User, { email });
     if (!user) {
       logger.info({ message: `Password reset requested for non-existent user`, obj: fields });
+      return;
+    }
+    // Where the product holds an unconfirmed account back, its address gets no reset mail (the page's
+    // one answer does not change): a person who forgot their password before confirming signs up
+    // again, which starts the waiting account over (Signup.createAccount).
+    if (new EmailConfirmation().holdsBack(user)) {
+      logger.info({ message: `Password reset requested for an account whose email is not confirmed`, obj: fields });
       return;
     }
 

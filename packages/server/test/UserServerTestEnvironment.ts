@@ -57,6 +57,10 @@ export class UserServerTestEnvironment {
     // (the library's own default), as a deployment with no registration does — a suite that
     // registers one seeds this key itself.
     objectCache['@proteinjs/user-server/DefaultSignupGuard'] = [];
+    // No email-confirmation rule registered: the confirmation is not asked (the library's own
+    // default), as in a deployment with no registration — a suite that registers one seeds this key
+    // itself (emailConfirmationHarness).
+    objectCache['@proteinjs/user-server/DefaultEmailConfirmationConfigFactory'] = [];
     Session.setData({
       sessionId: 'test-session',
       user: 'guest',

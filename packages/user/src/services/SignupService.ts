@@ -16,9 +16,22 @@ export type InitializeSignupResponse = {
   invite?: Omit<Invite, 'token'>;
 };
 
-/** Whether a verification mail went out; `false` says nothing more (already verified, or too soon). */
-export type ResendEmailVerificationResponse = {
-  sent: boolean;
+/**
+ * Whether a link that confirms the address went out, and when none did, why not: `tooSoon` (one was
+ * mailed within the last few minutes, and it stands), `notSent` (the mail could not be sent) or
+ * `alreadyConfirmed` (the address is confirmed: there is nothing to send).
+ */
+export type ResendEmailVerificationResponse =
+  | { sent: true }
+  | { sent: false; whyNot: 'tooSoon' | 'notSent' | 'alreadyConfirmed' };
+
+/**
+ * Where the session's own account stands with the email confirmation: `waiting` while it is held back
+ * until its address is confirmed, `confirmed` once the session answers as its account, `nobody` when the
+ * session has no account to answer as (the account is gone or deactivated).
+ */
+export type EmailConfirmationStateResponse = {
+  state: 'waiting' | 'confirmed' | 'nobody';
 };
 
 /**
@@ -52,12 +65,19 @@ export interface SignupService extends Service {
   /** Deletes invite record associated with the email. */
   revokeInvite(email: string): Promise<void>;
   /**
-   * Mails the signed-in account a fresh link that confirms its email address (the welcome mail's
-   * shape, through the same config): the earlier link stops working. `{ sent: false }` when the
-   * address is already verified, when a link was minted within the last few minutes, or when
-   * the mail could not be sent — the caller is the account's own page, so nothing more is said.
+   * Mails the session's own account a fresh link that confirms its email address: the earlier link
+   * stops working. The account is the signed-in one, or, where the product holds an unconfirmed
+   * account back, the one that waits in this session. Not sent, with the reason, when the address is
+   * already confirmed, when a link was made within the last few minutes, or when the mail could not be
+   * sent. For a session that carries an address, never a visitor.
    */
   resendEmailVerification(): Promise<ResendEmailVerificationResponse>;
+  /**
+   * Whether the session's own account still waits for its address to be confirmed: asked by the
+   * confirmation's screen when it comes back to the front (the link may have been opened elsewhere).
+   * For a session that carries an address, never a visitor.
+   */
+  emailConfirmationState(): Promise<EmailConfirmationStateResponse>;
   /**
    * Initializes signup process, validating invite configuration and token if provided.
    * Invite configuration defaults to invite optional.

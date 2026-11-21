@@ -15,8 +15,10 @@ import moment from 'moment';
  *   is 'expired' with the flag unchanged; an unknown, malformed or missing token is 'invalid';
  *   no answer names an address;
  * - the signed-in account's re-send mints a fresh pair (the earlier link stops working) and sends
- *   one mail; inside the gap it sends nothing and the pair stands; a verified account gets
- *   `{ sent: false }` and no mail.
+ *   one mail; inside the gap it sends nothing and the pair stands; a verified account gets no mail;
+ *   each time nothing is sent the answer says why;
+ * - where the product asks for the confirmation, what a session whose account waits can still reach of
+ *   its own account: the re-send, the question on coming back, and the fact its page carries.
  * The mail transport and the config are doubled at the module boundary (SignupRoute.test.ts
  * pattern) — the config double records every context it is handed; the db stays real.
  */
@@ -44,10 +46,14 @@ jest.mock('@proteinjs/email-server', () => ({
 
 import { getDbAsSystem, Reference } from '@proteinjs/db';
 import { SourceRepository } from '@proteinjs/reflection';
-import { tables, uiRoutes, User } from '@proteinjs/user';
+import { Session } from '@proteinjs/server-api';
+import { SIGN_IN_PAGE_FACTS_SCRIPT_KEY, tables, uiRoutes, User, UserAuth, UserRepo } from '@proteinjs/user';
 import { EmailVerificationToken } from '../src/authentication/EmailVerificationToken';
 import { verifyEmail } from '../src/routes/verifyEmail';
+import { SignInPageFactsScript } from '../src/scripts/SignInPageFactsScript';
 import { EMAIL_VERIFICATION_RESEND_GAP_MINUTES, Signup } from '../src/services/Signup';
+import { DbTraffic } from './DbTraffic';
+import { productAsksForConfirmation, requestFrom } from './emailConfirmationHarness';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 
 const testEnv = new UserServerTestEnvironment();
@@ -105,6 +111,13 @@ const invokeVerify = async (query: Record<string, unknown>): Promise<RouteOutcom
   };
   await verifyEmail.onRequest({ query } as never, response as never);
   return outcome;
+};
+
+/** Runs the page's script as the page runs it, against the page's `proteinjs` object, and reads the sign-in pages' facts back. */
+const factsWritten = async (): Promise<unknown> => {
+  const proteinjs: Record<string, unknown> = {};
+  new Function('proteinjs', await new SignInPageFactsScript().script())(proteinjs);
+  return proteinjs[SIGN_IN_PAGE_FACTS_SCRIPT_KEY];
 };
 
 /** Moves an account's last mint back past the re-send gap, so only the flag can refuse. */
@@ -243,7 +256,7 @@ describe('email verification after sign-up', () => {
 
     // Inside the gap: no mail, the pair stands.
     const tooSoon = await new Signup().resendEmailVerification();
-    expect(tooSoon).toEqual({ sent: false });
+    expect(tooSoon).toEqual({ sent: false, whyNot: 'tooSoon' });
     expect(sendEmail).toHaveBeenCalledTimes(1);
     expect((await userRow(user.email)).emailVerificationToken).toBe(sha256Hex(first));
 
@@ -269,9 +282,9 @@ describe('email verification after sign-up', () => {
     expect(await invokeVerify({ token: first })).toEqual({ status: 200, body: { state: 'invalid' } });
     expect(await invokeVerify({ token: second })).toEqual({ status: 200, body: { state: 'confirmed' } });
 
-    // Verified now: the re-send refuses without a word and sends nothing.
+    // Verified now: the re-send sends nothing and says why.
     const verified = await new Signup().resendEmailVerification();
-    expect(verified).toEqual({ sent: false });
+    expect(verified).toEqual({ sent: false, whyNot: 'alreadyConfirmed' });
     expect(sendEmail).toHaveBeenCalledTimes(2);
     expect((await userRow(user.email)).emailVerificationToken).toBeNull();
   });
@@ -284,7 +297,7 @@ describe('email verification after sign-up', () => {
 
     const failed = await new Signup().resendEmailVerification();
 
-    expect(failed).toEqual({ sent: false });
+    expect(failed).toEqual({ sent: false, whyNot: 'notSent' });
     const withdrawn = await userRow(user.email);
     expect(withdrawn.emailVerificationToken).toBeNull();
     expect(withdrawn.emailVerified).toBe(false);
@@ -293,5 +306,78 @@ describe('email verification after sign-up', () => {
     const retried = await new Signup().resendEmailVerification();
     expect(retried).toEqual({ sent: true });
     expect(await invokeVerify({ token: mailedToken() })).toEqual({ status: 200, body: { state: 'confirmed' } });
+  });
+
+  describe('where the product asks for the confirmation', () => {
+    const REPO_KEY = '@proteinjs/user-auth/AuthenticatedUserRepo';
+
+    beforeAll(() => {
+      productAsksForConfirmation(true);
+      (SourceRepository.get() as unknown as ObjectCache).objectCache[REPO_KEY] = [new UserRepo()];
+    });
+
+    afterAll(() => {
+      productAsksForConfirmation(false);
+      delete (SourceRepository.get() as unknown as ObjectCache).objectCache[REPO_KEY];
+      Session.setData({ sessionId: 'test-session', user: 'guest', data: {} });
+    });
+
+    it("a re-send says sent, too soon, or could not be sent, for the session's own account while it waits", async () => {
+      const { user, token: first } = await signUp('waits-resend@test.local');
+      await requestFrom(user.email);
+      expect(UserAuth.isLoggedIn()).toBe(false);
+
+      // Inside the gap: no mail, and the link in the mailbox stands.
+      expect(await new Signup().resendEmailVerification()).toEqual({ sent: false, whyNot: 'tooSoon' });
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+      expect((await userRow(user.email)).emailVerificationToken).toBe(sha256Hex(first));
+
+      await ageLastMint(user);
+      sendEmail.mockRejectedValueOnce(new Error('transport refused'));
+      expect(await new Signup().resendEmailVerification()).toEqual({ sent: false, whyNot: 'notSent' });
+
+      expect(await new Signup().resendEmailVerification()).toEqual({ sent: true });
+      expect(sendEmail.mock.lastCall?.[0]).toMatchObject({ to: user.email });
+      expect((await userRow(user.email)).emailVerificationToken).toBe(sha256Hex(mailedToken()));
+      expect(mailedToken()).not.toBe(first);
+
+      // A visitor's request reaches no account: nothing is mailed.
+      const mailsSoFar = sendEmail.mock.calls.length;
+      await requestFrom(undefined);
+      await ageLastMint(user);
+      expect(await new Signup().resendEmailVerification()).toEqual({ sent: false, whyNot: 'notSent' });
+      expect(sendEmail).toHaveBeenCalledTimes(mailsSoFar);
+    });
+
+    it('the question on coming back answers waiting, confirmed once the link was opened, and nobody for a session with no account to answer as', async () => {
+      const { user, token } = await signUp('waits-asks@test.local');
+      await requestFrom(user.email);
+      expect(await new Signup().emailConfirmationState()).toEqual({ state: 'waiting' });
+
+      expect(await invokeVerify({ token })).toEqual({ status: 200, body: { state: 'confirmed' } });
+      await requestFrom(user.email);
+      expect(await new Signup().emailConfirmationState()).toEqual({ state: 'confirmed' });
+
+      // An account that waits and is deactivated has no session that answers, waiting or not.
+      const { user: deactivated } = await signUp('waits-deactivated@test.local');
+      await getDbAsSystem().update(tables.User, { id: deactivated.id, status: 'deactivated' });
+      await requestFrom(deactivated.email);
+      expect(await new Signup().emailConfirmationState()).toEqual({ state: 'nobody' });
+    });
+
+    it("a waiting session's page says that it waits and where the link was sent; once confirmed the page says neither and reads no row", async () => {
+      const { user, token } = await signUp('waits-page@test.local');
+      await requestFrom(user.email);
+      expect(await factsWritten()).toEqual({ signupOpen: true, awaitingEmailConfirmation: { sentTo: user.email } });
+
+      expect(await invokeVerify({ token })).toEqual({ status: 200, body: { state: 'confirmed' } });
+      await requestFrom(user.email);
+      const { result, traffic } = await DbTraffic.during(testEnv.spannerDriver, factsWritten);
+      expect(result).toEqual({ signupOpen: true });
+      expect(traffic).toEqual(DbTraffic.NONE);
+
+      await requestFrom(undefined);
+      expect(await factsWritten()).toEqual({ signupOpen: true });
+    });
   });
 });

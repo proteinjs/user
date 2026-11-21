@@ -2,6 +2,7 @@ import { getDbAsSystem, Reference } from '@proteinjs/db';
 import {
   SendInviteResponse,
   ResendEmailVerificationResponse,
+  EmailConfirmationStateResponse,
   tables,
   UserAuth,
   uiRoutes,
@@ -30,6 +31,7 @@ import {
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import { EmailVerificationToken } from '../authentication/EmailVerificationToken';
 import { PasswordHasher } from '../authentication/PasswordHasher';
+import { EmailConfirmation } from './EmailConfirmation';
 
 /**
  * How long an invite link stays usable. Deliberately generous: a legitimate invite that gets
@@ -105,10 +107,12 @@ export class Signup implements SignupService {
           return UserAuth.hasPermission(USER_PERMISSIONS.users);
         }
 
-        // The re-send is the signed-in account's own act: it reads the session's user and mails
-        // that account, nobody else's.
-        if (methodName === 'resendEmailVerification') {
-          return UserAuth.isLoggedIn();
+        // The re-send and the question on coming back are the session's own account's: each reads
+        // the account of the session's address and nobody else's. For a session that carries an
+        // address, never a visitor: where a product holds an unconfirmed account back, its session
+        // answers as nobody (UserAuth.isLoggedIn is false) and these two are what it can still ask.
+        if (methodName === 'resendEmailVerification' || methodName === 'emailConfirmationState') {
+          return new EmailConfirmation().sessionAddress() !== undefined;
         }
 
         return true;
@@ -209,19 +213,26 @@ export class Signup implements SignupService {
   }
 
   /**
-   * The signed-in account's own re-send: a fresh token replaces the one outstanding (the earlier
+   * The session's own account's re-send: a fresh token replaces the one outstanding (the earlier
    * link stops working) and the welcome-shaped mail goes out again with the new link, through the
-   * same config as the sign-up's. Refused without a word — `{ sent: false }` — when the address is
-   * already verified, when the last mint is inside the gap, or when the mail fails to send (the
-   * token is withdrawn then, so the next tap is not held by the gap). The account is the
-   * session's, read fresh from its row: a verification completed on another device is seen here.
+   * same config as the sign-up's. Not sent, with the reason, when the address is already confirmed,
+   * when the last mint is inside the gap, or when the mail fails to send (the token is withdrawn
+   * then, so the next tap is not held by the gap). The account is the session's, read fresh from its
+   * row (a confirmation completed on another device is seen here): the one that waits in this
+   * session where the product holds an unconfirmed account back (`EmailConfirmation.waitingAccount`),
+   * else the signed-in one. A session with neither is answered as a mail that could not be sent.
    */
   async resendEmailVerification(): Promise<ResendEmailVerificationResponse> {
     const logger = new Logger({ name: 'Signup.resendEmailVerification' });
     const digests = new RequestDigests();
-    const user = await getDbAsSystem().get(tables.User, { id: new UserRepo().getUser().id });
-    if (!user || user.emailVerified) {
-      return { sent: false };
+    const user =
+      (await new EmailConfirmation().waitingAccount()) ??
+      (await getDbAsSystem().get(tables.User, { id: new UserRepo().getUser().id }));
+    if (!user) {
+      return { sent: false, whyNot: 'notSent' };
+    }
+    if (user.emailVerified === true) {
+      return { sent: false, whyNot: 'alreadyConfirmed' };
     }
 
     const fields = { account: digests.account(user.email) };
@@ -229,7 +240,7 @@ export class Signup implements SignupService {
     const mintedAt = verification.mintedAt(user);
     if (mintedAt && moment().diff(mintedAt, 'minutes') < EMAIL_VERIFICATION_RESEND_GAP_MINUTES) {
       logger.info({ message: `Email verification re-send requested too soon`, obj: fields });
-      return { sent: false };
+      return { sent: false, whyNot: 'tooSoon' };
     }
 
     const token = await verification.mint(user);
@@ -244,11 +255,25 @@ export class Signup implements SignupService {
         error: digests.redactError(error),
       });
       await verification.revoke(user, token);
-      return { sent: false };
+      return { sent: false, whyNot: 'notSent' };
     }
 
     logger.info({ message: `Email verification link mailed`, obj: fields });
     return { sent: true };
+  }
+
+  /**
+   * The question the confirmation's screen asks when it comes back to the front: does this session's
+   * account still wait for its address to be confirmed? `waiting` while it is held back; `confirmed`
+   * once the session answers as its account (the link was opened, here or elsewhere); `nobody` when
+   * the session has no account to answer as.
+   */
+  async emailConfirmationState(): Promise<EmailConfirmationStateResponse> {
+    if (await new EmailConfirmation().waitingAccount()) {
+      return { state: 'waiting' };
+    }
+
+    return { state: UserAuth.isLoggedIn() ? 'confirmed' : 'nobody' };
   }
 
   async sendInvite(email: string): Promise<SendInviteResponse> {

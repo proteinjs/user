@@ -1,3 +1,4 @@
+import { Session } from '@proteinjs/server-api';
 import { guestUser, UserAuth } from '@proteinjs/user';
 import { Signup } from '../src/services/Signup';
 
@@ -69,13 +70,22 @@ describe('Signup service auth', () => {
     expect(canAccess('initializeSignup')).toBe(true);
   });
 
-  it(`admits resendEmailVerification for any signed-in account and refuses it to the guest (it mails the session's own account)`, () => {
-    setUser([]);
-    expect(canAccess('resendEmailVerification')).toBe(true);
+  it('admits the re-send and the question on coming back for a session that carries an address, never a visitor', () => {
+    const session = jest.spyOn(Session, 'getData');
+    try {
+      // A session whose account is held back until its address is confirmed: the request answers as nobody.
+      (UserAuth as unknown as UserAuthInternals).userRepo = {
+        getUser: () => ({ email: guestUser.email, roles: [] }),
+      };
+      session.mockReturnValue({ sessionId: 'a-session', user: 'someone@test.local', data: {} });
+      expect(canAccess('resendEmailVerification')).toBe(true);
+      expect(canAccess('emailConfirmationState')).toBe(true);
 
-    (UserAuth as unknown as UserAuthInternals).userRepo = {
-      getUser: () => ({ email: guestUser.email, roles: [] }),
-    };
-    expect(canAccess('resendEmailVerification')).toBe(false);
+      session.mockReturnValue({ sessionId: undefined, user: undefined, data: {} });
+      expect(canAccess('resendEmailVerification')).toBe(false);
+      expect(canAccess('emailConfirmationState')).toBe(false);
+    } finally {
+      session.mockRestore();
+    }
   });
 });

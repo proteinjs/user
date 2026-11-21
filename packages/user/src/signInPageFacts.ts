@@ -5,13 +5,21 @@
  * sign-up page's closed panel render at once, never after a call. The server decides in any case: a page
  * that says open does not let anyone past the invite rule (user-server Signup.initializeSignup).
  *
- * One fact today; a later piece adds which sign-in providers are on.
+ * Two facts today: whether sign-up is open, and, only for a session whose account waits for its email
+ * address to be confirmed, that it waits and where the link was sent. A later piece adds which sign-in
+ * providers are on.
  */
 export const SIGN_IN_PAGE_FACTS_SCRIPT_KEY = 'signInPageFacts';
 
 export type SignInPageFactsCopy = {
   /** True when an account can be made without an invite: the product's invite rule, turned around. */
   signupOpen: boolean;
+  /**
+   * Present only for a session whose account is held back until its email address is confirmed
+   * (user-server EmailConfirmation): where the link was sent. Such a session has one screen, the
+   * confirmation's, whatever address of the product it opens (user-ui pageAuth).
+   */
+  awaitingEmailConfirmation?: { sentTo: string };
 };
 
 /**
