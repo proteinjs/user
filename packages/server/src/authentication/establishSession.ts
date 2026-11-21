@@ -29,6 +29,10 @@
  * degrading into fixation-vulnerable, race-prone logins. The guard is a post-condition, not a
  * fallback — establishSession never does passport's regenerate/save itself.
  *
+ * EVERY SESSION CARRIES THE ADDRESS AS THE ACCOUNT'S ROW HOLDS IT: in lower case, however a door was
+ * handed it (the log-in route passes the address as typed). Whatever finds a session by its account's
+ * address, or compares a session's address to a row's, rests on this one line.
+ *
  * `request` is typed loosely because passport augments the express request at runtime; the
  * routes in this package share that convention. A login failure (regenerate/serialize/save
  * error) rejects — a door must never answer success for a session that did not commit.
@@ -36,7 +40,7 @@
 export async function establishSession(request: any, email: string): Promise<void> {
   const preLoginSession = request.session;
   await new Promise<void>((resolve, reject) =>
-    request.login(email, (error: unknown) => (error ? reject(error) : resolve()))
+    request.login(email.toLowerCase(), (error: unknown) => (error ? reject(error) : resolve()))
   );
   if (request.session === preLoginSession) {
     throw new Error(

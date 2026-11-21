@@ -47,6 +47,12 @@ const emailDomain = (address: string) => address.slice(address.lastIndexOf('@') 
  * sessions whose account was deleted AFTER minting; this ensures dev-minted sessions reference a
  * real account from the start.
  *
+ * The door's account is CONFIRMED: a new one is made with its address confirmed, and an existing one
+ * whose address is not confirmed is marked confirmed (its outstanding link withdrawn) before the
+ * session is made. Where a product holds an unconfirmed account back (`EmailConfirmation`), a dev
+ * session that answers as nobody is no use to a dev loop, and no local instance runs a product's own
+ * step that marks the accounts that exist.
+ *
  * First-admin door (`DEV_BOOTSTRAP_ADMIN_EMAIL`): a dev server on a FRESH real database has no
  * privileged account and no sanctioned raw write to make one. Behind the same two gates, when
  * the resolved address equals the variable exactly (case-normalized like every account email),
@@ -106,16 +112,25 @@ export const devLogin: Route = {
     // under an address a declaration owns: createAccount refuses that in words (a row the sync does
     // not own would make it refuse the declaration), and the door answers the way its other refusals
     // do — the words, no session, no row.
-    let creation: 'created' | 'exists';
-    if (await getDbAsSystem().get(tables.User, { email })) {
+    let creation: Awaited<ReturnType<Signup['createAccount']>>;
+    const existing = await getDbAsSystem().get(tables.User, { email });
+    if (existing) {
       creation = 'exists';
+      if (existing.emailVerified !== true) {
+        await getDbAsSystem().update(tables.User, {
+          id: existing.id,
+          emailVerified: true,
+          emailVerificationToken: null,
+          emailVerificationTokenExpiration: null,
+        });
+      }
     } else {
       try {
         creation = await new Signup().createAccount({
           name: email.slice(0, email.indexOf('@')),
           email,
           password: 'test',
-          emailVerified: false, // same shape an inviteless signup produces
+          emailVerified: true,
           invitedBy: null,
         });
       } catch (error) {

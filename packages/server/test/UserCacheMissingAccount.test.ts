@@ -1,7 +1,10 @@
+import { DefaultAdminCredentials } from '../src/authentication/DefaultAdminCredentials';
 import { userCache } from '../src/authorization/userCache';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 
 const testEnv = new UserServerTestEnvironment();
+
+type DefaultAdminCredentialsInternals = { CREDENTIALS: { username: string; password: string } | undefined };
 
 /**
  * Missing-account session crash, red-before-green: a session can outlive its account (user row
@@ -38,5 +41,19 @@ describe('userCache.create — session referencing a missing account', () => {
     expect(user.id).toBe(created.id);
     expect(user.email).toBe('real-account@test.local');
     expect((user as any).password).toBeUndefined();
+  });
+
+  it('a default admin whose name is written with capitals answers as the admin in a session bound in lower case', async () => {
+    const credentials = DefaultAdminCredentials as unknown as DefaultAdminCredentialsInternals;
+    credentials.CREDENTIALS = { username: 'Admin@Test.Local', password: 'a password' };
+    try {
+      // The session as the one place a session is made binds it (establishSession): the address in lower case.
+      const user = await userCache.create('admin-session', 'admin@test.local');
+
+      expect(user.id).toBe('admin');
+      expect(user.roles).toEqual(['admin']);
+    } finally {
+      credentials.CREDENTIALS = undefined;
+    }
   });
 });

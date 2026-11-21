@@ -1,3 +1,4 @@
+import moment from 'moment';
 import { getDbAsSystem } from '@proteinjs/db';
 import { SourceRepository } from '@proteinjs/reflection';
 import { MachineAccount, tables } from '@proteinjs/user';
@@ -99,6 +100,31 @@ describe('devLogin route', () => {
     expect(await new PasswordHasher().verify(created!.password, 'test')).toBe(true);
     expect(created!.roles).toEqual([]);
     expect(created!.name).toBeTruthy();
+  });
+
+  it("the dev log-in's account is confirmed, a new one and an existing one", async () => {
+    await invokeDevLogin({ email: 'confirmed.new@test.local' });
+
+    expect((await getUserRow('confirmed.new@test.local'))!.emailVerified).toBe(true);
+
+    // An account as a sign-up without an invite leaves it: not confirmed, a link outstanding.
+    await getDbAsSystem().insert(tables.User, {
+      name: 'Signed up by the form',
+      email: 'confirmed.existing@test.local',
+      password: 'test',
+      emailVerified: false,
+      emailVerificationToken: 'a-digest-of-a-link',
+      emailVerificationTokenExpiration: moment().add(1, 'day'),
+      roles: [],
+    });
+
+    const outcome = await invokeDevLogin({ email: 'confirmed.existing@test.local' });
+
+    expect(outcome.loggedInAs).toBe('confirmed.existing@test.local');
+    const existing = await getUserRow('confirmed.existing@test.local');
+    expect(existing!.emailVerified).toBe(true);
+    expect(existing!.emailVerificationToken ?? null).toBeNull();
+    expect(existing!.name).toBe('Signed up by the form');
   });
 
   it('rejects a ?email outside the DEV_AUTO_LOGIN_EMAIL domain with 400 — no session, no account', async () => {

@@ -40,6 +40,14 @@ describe('establishSession runtime contract', () => {
     expect(events).toEqual(['regenerate', 'login', 'save']);
   });
 
+  it('a session is bound to the address in lower case, however it was typed', async () => {
+    const { request } = await createPassportRequest();
+
+    await establishSession(request, 'Dana.Whitfield@Test.Local');
+
+    expect(request.session.passport.user).toBe('dana.whitfield@test.local');
+  });
+
   it('still surfaces a login failure as a rejection (never as the contract error)', async () => {
     const loginError = new Error('serialize blew up');
     const request = {

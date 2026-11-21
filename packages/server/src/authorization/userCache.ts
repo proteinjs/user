@@ -23,7 +23,8 @@ export const userCache: SessionDataCache<User> = {
     let user = guestUser;
     if (userEmail) {
       const adminCredentials = DefaultAdminCredentials.getCredentials();
-      if (adminCredentials && userEmail == adminCredentials.username) {
+      // A session carries its address in lower case (establishSession); the default admin's name is compared the same way.
+      if (adminCredentials && userEmail.toLowerCase() == adminCredentials.username.toLowerCase()) {
         const adminUser: User = {
           name: 'Admin',
           email: adminCredentials.username,
