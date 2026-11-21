@@ -5,6 +5,7 @@ import { Logger } from '@proteinjs/logger';
 import { RequestDigests } from '@proteinjs/util-node';
 import { User, tables, guestUser, USER_SESSION_CACHE_KEY } from '@proteinjs/user';
 import { DefaultAdminCredentials } from '../authentication/DefaultAdminCredentials';
+import { EmailConfirmation } from '../services/EmailConfirmation';
 
 const logger = new Logger({ name: 'userCache' });
 
@@ -46,6 +47,11 @@ export const userCache: SessionDataCache<User> = {
             message: `Session references a deactivated account; resolving as unauthenticated`,
             obj: { sessionId, account: new RequestDigests().account(userEmail) },
           });
+        } else if (accountUser && new EmailConfirmation().holdsBack(accountUser)) {
+          // The mandatory email confirmation's one branch (EmailConfirmation): where the product asks
+          // for it, a session whose account's address is not confirmed runs as the unauthenticated
+          // guest until the address is confirmed. A deactivated account is judged first, above. No
+          // line is logged here: this runs on every request.
         } else if (accountUser) {
           delete (accountUser as any)['password'];
           user = accountUser;

@@ -1,5 +1,8 @@
+import { getDbAsSystem } from '@proteinjs/db';
+import { tables } from '@proteinjs/user';
 import { DefaultAdminCredentials } from '../src/authentication/DefaultAdminCredentials';
 import { userCache } from '../src/authorization/userCache';
+import { productAsksForConfirmation } from './emailConfirmationHarness';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 
 const testEnv = new UserServerTestEnvironment();
@@ -22,6 +25,7 @@ describe('userCache.create — session referencing a missing account', () => {
   });
 
   afterAll(async () => {
+    productAsksForConfirmation(false);
     await testEnv.afterAll();
   });
 
@@ -41,6 +45,29 @@ describe('userCache.create — session referencing a missing account', () => {
     expect(user.id).toBe(created.id);
     expect(user.email).toBe('real-account@test.local');
     expect((user as any).password).toBeUndefined();
+  });
+
+  it('where the product asks for it, a session whose account is not confirmed answers as nobody, and as itself once confirmed; where no product asks, it answers as itself, as today', async () => {
+    const account = await getDbAsSystem().insert(tables.User, {
+      name: 'Signed up by the form',
+      email: 'not-confirmed@test.local',
+      password: 'test',
+      emailVerified: false,
+      roles: [],
+    });
+
+    productAsksForConfirmation(false);
+    expect((await userCache.create('a-session', 'not-confirmed@test.local')).id).toBe(account.id);
+
+    productAsksForConfirmation(true);
+    const heldBack = await userCache.create('a-session', 'not-confirmed@test.local');
+    expect(heldBack.id).toBe('guest');
+    expect(heldBack.roles).toEqual([]);
+
+    await getDbAsSystem().update(tables.User, { id: account.id, emailVerified: true });
+    const confirmed = await userCache.create('a-session', 'not-confirmed@test.local');
+    expect(confirmed.id).toBe(account.id);
+    expect(confirmed.email).toBe('not-confirmed@test.local');
   });
 
   it('a default admin whose name is written with capitals answers as the admin in a session bound in lower case', async () => {

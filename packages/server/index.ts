@@ -4,6 +4,13 @@ export * from './src/authentication/DbSessionStore';
 // (e.g. an invite-request resolution minting a real invite through sendInvite) — the same
 // single owner the RPC door dispatches to, never a parallel invite-write path.
 export { InviteConfig, DefaultInviteConfigFactory, Signup } from './src/services/Signup';
+// The mandatory email confirmation: the registration a product asks for the rule through, and the class
+// that holds the rule (whether it is asked, and whether an account is held back by it).
+export {
+  EmailConfirmation,
+  EmailConfirmationConfig,
+  DefaultEmailConfirmationConfigFactory,
+} from './src/services/EmailConfirmation';
 // The seam a consumer's sign-up abuse posture plugs into (the signup route consults it on the
 // no-invite road), with the facts it is handed and the verdict it answers, so the registration
 // compiles against them; and the throwaway-mail list the route applies before it.
