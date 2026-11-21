@@ -347,6 +347,10 @@ describe('signup form', () => {
     fillSilently(field('Email'), EMAIL);
     fillSilently(field('Password'), PASSWORD);
     await submit(); // refused by the server
+    // The hidden field as a bot fills it: the value it was given is what the server reads.
+    const hidden = container.querySelector<HTMLInputElement>('form input[name="website"]');
+    expect(hidden).not.toBeNull();
+    fillSilently(hidden!, 'filled-by-a-bot');
     await submit();
 
     expect(posts).toEqual([
@@ -356,7 +360,7 @@ describe('signup form', () => {
       },
       {
         path: routes.signup.path,
-        body: { email: EMAIL, password: PASSWORD, website: '', formToken: 'timing-token-2' },
+        body: { email: EMAIL, password: PASSWORD, website: 'filled-by-a-bot', formToken: 'timing-token-2' },
       },
     ]);
 
