@@ -37,7 +37,9 @@ type SignupSubmission = Partial<UserSignup> & {
  * When the email is already registered the response is byte-identical to success but NO session
  * is minted — auto-login must never hand out a session for an account the caller didn't just
  * create; the caller falls through to the login screen exactly as before. Existence is reported
- * to the mailbox owner by email, never to the caller.
+ * to the mailbox owner by email, never to the caller. Where the product asks for the email
+ * confirmation, an address held by an account that still waits is no such case: the sign-up starts
+ * that account over (`Signup.createAccount`) and its session is made as for a new account.
  *
  * Without an invite the email and the password are asked (the name is not: the account is made with
  * an empty name, which the person may set later), and a blank one is answered with the log-in
@@ -115,7 +117,7 @@ export const signup: Route = {
       return;
     }
 
-    if (result.outcome === 'created') {
+    if (result.outcome === 'created' || result.outcome === 'startedOver') {
       await establishSession(request, result.email);
     }
 

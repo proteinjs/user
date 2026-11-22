@@ -31,6 +31,7 @@ import {
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
 import { EmailVerificationToken } from '../authentication/EmailVerificationToken';
 import { PasswordHasher } from '../authentication/PasswordHasher';
+import { getDefaultEmailConfirmationLinkEmailConfigFactory } from '../emails/EmailConfirmationLinkEmailConfig';
 import { EmailConfirmation } from './EmailConfirmation';
 
 /**
@@ -88,9 +89,11 @@ export const getDefaultInviteConfigFactory = (): DefaultInviteConfigFactory => {
  * route establishes a session on 'created' and must NOT on 'exists' — auto-login must never
  * hand out a session for an account the caller didn't just create. The response body stays
  * identical either way (existence is reported to the mailbox owner by email, not the caller).
+ * 'startedOver' is a waiting account this sign-up took over (`createAccount`): the route
+ * establishes the caller's session as for an account just made.
  */
 export type CreateUserResult = {
-  outcome: 'created' | 'exists';
+  outcome: 'created' | 'exists' | 'startedOver';
   /** The account email, lowercased — resolved from the invite when a token was provided. */
   email: string;
 };
@@ -175,27 +178,38 @@ export class Signup implements SignupService {
       return { outcome: 'exists', email };
     }
 
-    // An invited address was proved by the invite mail; a plain sign-up's welcome carries the
-    // link that confirms it (the account works meanwhile — nothing waits on the tap). A welcome that
-    // cannot be sent does not fail the sign-up: the account exists, and its person is signed in.
-    const verification = invite ? undefined : await this.mintEmailVerification(email);
-    try {
-      await this.emailWelcome(emailSender, email, config, verification && { verifyEmailLink: verification.link });
-    } catch (error: any) {
-      const digests = new RequestDigests();
-      logger.error({
-        message: `Failed to send the welcome mail`,
-        obj: { account: digests.account(email) },
-        error: digests.redactError(error),
-      });
-      // The link never reached the account: withdraw the token, so the account page's re-send
-      // is not held by the gap between mails.
-      if (verification) {
-        await new EmailVerificationToken().revoke(verification.user, verification.token);
+    if (!invite && new EmailConfirmation().isRequired()) {
+      // The mandatory confirmation: this sign-up gets ONE mail and it only confirms (the welcome goes
+      // when the address is confirmed: routes/verifyEmail). Nothing is sent while a started-over
+      // account's last link is inside the gap between mails: the one in the mailbox stands. A mail
+      // that cannot be sent does not fail the sign-up: the account exists, and its screen re-sends.
+      await this.mailVerificationLink(await db.get(tables.User, { email }));
+    } else {
+      // An invited address was proved by the invite mail; a plain sign-up's welcome carries the
+      // link that confirms it (the account works meanwhile — nothing waits on the tap). A welcome that
+      // cannot be sent does not fail the sign-up: the account exists, and its person is signed in.
+      const verification = invite ? undefined : await this.mintEmailVerification(email);
+      try {
+        await this.emailWelcome(emailSender, email, config, verification && { verifyEmailLink: verification.link });
+      } catch (error: any) {
+        const digests = new RequestDigests();
+        logger.error({
+          message: `Failed to send the welcome mail`,
+          obj: { account: digests.account(email) },
+          error: digests.redactError(error),
+        });
+        // The link never reached the account: withdraw the token, so the account page's re-send
+        // is not held by the gap between mails.
+        if (verification) {
+          await new EmailVerificationToken().revoke(verification.user, verification.token);
+        }
       }
     }
-    logger.info({ message: `Created user`, obj: { account: new RequestDigests().account(email) } });
-    return { outcome: 'created', email };
+    logger.info({
+      message: creation === 'startedOver' ? `Started a waiting account over` : `Created user`,
+      obj: { account: new RequestDigests().account(email) },
+    });
+    return { outcome: creation, email };
   }
 
   /**
@@ -213,18 +227,15 @@ export class Signup implements SignupService {
   }
 
   /**
-   * The session's own account's re-send: a fresh token replaces the one outstanding (the earlier
-   * link stops working) and the welcome-shaped mail goes out again with the new link, through the
-   * same config as the sign-up's. Not sent, with the reason, when the address is already confirmed,
-   * when the last mint is inside the gap, or when the mail fails to send (the token is withdrawn
-   * then, so the next tap is not held by the gap). The account is the session's, read fresh from its
-   * row (a confirmation completed on another device is seen here): the one that waits in this
-   * session where the product holds an unconfirmed account back (`EmailConfirmation.waitingAccount`),
-   * else the signed-in one. A session with neither is answered as a mail that could not be sent.
+   * The session's own account's re-send: one link mailed (`mailVerificationLink`: a fresh token
+   * replaces the one outstanding, so the earlier link stops working). Not sent, with the reason, when
+   * the address is already confirmed, when the last link was made inside the gap, or when the mail
+   * fails to send. The account is the session's, read fresh from its row (a confirmation completed on
+   * another device is seen here): the one that waits in this session where the product holds an
+   * unconfirmed account back (`EmailConfirmation.waitingAccount`), else the signed-in one. A session
+   * with neither is answered as a mail that could not be sent.
    */
   async resendEmailVerification(): Promise<ResendEmailVerificationResponse> {
-    const logger = new Logger({ name: 'Signup.resendEmailVerification' });
-    const digests = new RequestDigests();
     const user =
       (await new EmailConfirmation().waitingAccount()) ??
       (await getDbAsSystem().get(tables.User, { id: new UserRepo().getUser().id }));
@@ -235,31 +246,8 @@ export class Signup implements SignupService {
       return { sent: false, whyNot: 'alreadyConfirmed' };
     }
 
-    const fields = { account: digests.account(user.email) };
-    const verification = new EmailVerificationToken();
-    const mintedAt = verification.mintedAt(user);
-    if (mintedAt && moment().diff(mintedAt, 'minutes') < EMAIL_VERIFICATION_RESEND_GAP_MINUTES) {
-      logger.info({ message: `Email verification re-send requested too soon`, obj: fields });
-      return { sent: false, whyNot: 'tooSoon' };
-    }
-
-    const token = await verification.mint(user);
-    try {
-      await this.emailWelcome(new EmailSender(), user.email, this.signupConfirmationEmailConfig(), {
-        verifyEmailLink: this.verifyEmailLink(token),
-      });
-    } catch (error: any) {
-      logger.error({
-        message: `Failed to send the email verification mail`,
-        obj: fields,
-        error: digests.redactError(error),
-      });
-      await verification.revoke(user, token);
-      return { sent: false, whyNot: 'notSent' };
-    }
-
-    logger.info({ message: `Email verification link mailed`, obj: fields });
-    return { sent: true };
+    const outcome = await this.mailVerificationLink(user);
+    return outcome === 'sent' ? { sent: true } : { sent: false, whyNot: outcome };
   }
 
   /**
@@ -447,10 +435,13 @@ export class Signup implements SignupService {
    * 'exists' means the address has an account this call did not create — found by the check, or
    * written by a concurrent create between the check and this insert. Two creates for one address
    * both pass the check; the database's unique index on the address refuses the second insert, and
-   * that refusal is the same fact the check reads, so the second answers 'exists' exactly as if it
-   * had arrived a moment later: its caller gets the existing-address response, no session, and the
-   * owner's mail — never the database's sentence, which names the address. An insert that fails
-   * while the address still has no account is a real failure and throws.
+   * that refusal is the same fact the check reads, so the second is judged exactly as if it had
+   * arrived a moment later (`existsOrStartsOver`): its caller gets the existing-address response, no
+   * session, and the owner's mail — never the database's sentence, which names the address. An
+   * insert that fails while the address still has no account is a real failure and throws.
+   *
+   * 'startedOver' is the mandatory email confirmation's answer for an address held by an account
+   * that still waits (`existsOrStartsOver`): the account is now this caller's, as if just made.
    */
   async createAccount(account: {
     name: string;
@@ -458,14 +449,15 @@ export class Signup implements SignupService {
     password: string;
     emailVerified: boolean;
     invitedBy: User['invitedBy'];
-  }): Promise<'created' | 'exists'> {
+  }): Promise<'created' | 'exists' | 'startedOver'> {
     const email = account.email.toLowerCase();
     if (getMachineAccounts().some((machineAccount) => machineAccount.email === email)) {
       throw new Error(`This address can't be registered.`);
     }
 
-    if (await this.hasAccount(email)) {
-      return 'exists';
+    const held = await this.accountAt(email);
+    if (held) {
+      return await this.existsOrStartsOver(held, account);
     }
 
     const password = await new PasswordHasher().hash(account.password);
@@ -479,17 +471,46 @@ export class Signup implements SignupService {
         invitedBy: account.invitedBy,
       });
     } catch (error: unknown) {
-      if (await this.hasAccount(email)) {
-        return 'exists';
+      const racedIn = await this.accountAt(email);
+      if (racedIn) {
+        return await this.existsOrStartsOver(racedIn, account);
       }
       throw error;
     }
     return 'created';
   }
 
-  /** Whether an account holds `email` (already lowercased) — the one existence read `createAccount` makes. */
-  private async hasAccount(email: string): Promise<boolean> {
-    return Boolean(await getDbAsSystem().get(tables.User, { email }));
+  /** The account that holds `email` (already lowercased), if any — the one existence read `createAccount` makes. */
+  private async accountAt(email: string): Promise<User | undefined> {
+    return await getDbAsSystem().get(tables.User, { email });
+  }
+
+  /**
+   * What a create answers for an address that has an account: 'exists', as ever, unless the address is
+   * held by an account that still waits. Where the product asks for the email confirmation, a create
+   * that would itself make an unconfirmed account (a sign-up without an invite) for an address whose
+   * account is held back and not deactivated STARTS THAT ACCOUNT OVER: the name and the password this
+   * sign-up carries replace the row's, and every session of the account ends. So a mistyped or
+   * abandoned sign-up never blocks the person who really has the address, and nothing needs sweeping.
+   * A confirmed account, a deactivated one, and every create that is not such a sign-up (an invite's,
+   * the dev log-in's) are answered 'exists'.
+   */
+  private async existsOrStartsOver(
+    held: User,
+    account: { name: string; password: string; emailVerified: boolean }
+  ): Promise<'exists' | 'startedOver'> {
+    if (account.emailVerified || held.status === 'deactivated' || !new EmailConfirmation().holdsBack(held)) {
+      return 'exists';
+    }
+
+    const db = getDbAsSystem();
+    await db.update(tables.User, {
+      id: held.id,
+      name: account.name,
+      password: await new PasswordHasher().hash(account.password),
+    });
+    await db.delete(tables.Session, { userEmail: held.email });
+    return 'startedOver';
   }
 
   /** Resolves an invite token, distinguishing "expired" from "never existed / already revoked". */
@@ -562,6 +583,60 @@ export class Signup implements SignupService {
       html,
       ...config.options,
     });
+  }
+
+  /**
+   * One link that confirms `user`'s address, mailed: a fresh token replaces the one outstanding (the
+   * earlier link stops working) and the mail goes out with the new link. `tooSoon` when the last link
+   * was made inside the gap: nothing is sent and that link stands, so no way of asking (a re-send, a
+   * sign-up that starts a waiting account over) sends a second mail to one address inside it.
+   * `notSent` when the mail fails to send: the token is withdrawn, so the next ask is not held by
+   * the gap.
+   */
+  private async mailVerificationLink(user: User): Promise<'sent' | 'tooSoon' | 'notSent'> {
+    const logger = new Logger({ name: 'Signup.mailVerificationLink' });
+    const digests = new RequestDigests();
+    const fields = { account: digests.account(user.email) };
+    const verification = new EmailVerificationToken();
+    const mintedAt = verification.mintedAt(user);
+    if (mintedAt && moment().diff(mintedAt, 'minutes') < EMAIL_VERIFICATION_RESEND_GAP_MINUTES) {
+      logger.info({ message: `Email verification link asked for too soon`, obj: fields });
+      return 'tooSoon';
+    }
+
+    const token = await verification.mint(user);
+    try {
+      await this.emailVerificationLink(user.email, this.verifyEmailLink(token));
+    } catch (error: any) {
+      logger.error({
+        message: `Failed to send the email verification mail`,
+        obj: fields,
+        error: digests.redactError(error),
+      });
+      await verification.revoke(user, token);
+      return 'notSent';
+    }
+
+    logger.info({ message: `Email verification link mailed`, obj: fields });
+    return 'sent';
+  }
+
+  /**
+   * The mail that carries a confirm link: where the product asks for the email confirmation, the
+   * confirmation's own mail (emails/EmailConfirmationLinkEmailConfig); else the welcome-shaped mail
+   * with the link, through the sign-up's config, as before.
+   */
+  private async emailVerificationLink(email: string, link: string): Promise<void> {
+    if (!new EmailConfirmation().isRequired()) {
+      await this.emailWelcome(new EmailSender(), email, this.signupConfirmationEmailConfig(), {
+        verifyEmailLink: link,
+      });
+      return;
+    }
+
+    const config = getDefaultEmailConfirmationLinkEmailConfigFactory().getConfig();
+    const { text, html } = config.getEmailContent(link);
+    await new EmailSender().sendEmail({ to: email, subject: config.subject, text, html });
   }
 
   /** A fresh verification token on the account's row, with the confirm link that carries it. */

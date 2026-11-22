@@ -34,11 +34,22 @@ jest.mock('@proteinjs/email-server', () => ({
 }));
 
 import { getDbAsSystem, Reference } from '@proteinjs/db';
-import { SourceRepository } from '@proteinjs/reflection';
+import { Method, SourceRepository } from '@proteinjs/reflection';
 import { Session } from '@proteinjs/server-api';
-import { MachineAccount, tables, UserRepo } from '@proteinjs/user';
+import { ServiceAuth } from '@proteinjs/service/dist/src/ServiceAuth';
+import { MachineAccount, tables, uiRoutes, UserRepo } from '@proteinjs/user';
+import { authenticate } from '../src/authentication/authenticate';
 import { BlankCredentials } from '../src/authentication/BlankCredentials';
+import { EmailVerificationToken } from '../src/authentication/EmailVerificationToken';
 import { signup } from '../src/routes/signup';
+import { EMAIL_VERIFICATION_RESEND_GAP_MINUTES, Signup } from '../src/services/Signup';
+import { UserPresence } from '../src/services/UserPresence';
+import {
+  CONFIRMATION_MAIL,
+  productAsksForConfirmation,
+  productWordsNoConfirmationMail,
+  requestFrom,
+} from './emailConfirmationHarness';
 import { createPassportRequest } from './passportSessionHarness';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 
@@ -115,6 +126,31 @@ const invokeSignup = async (body: Record<string, unknown>): Promise<RouteOutcome
 const getUserRow = async (email: string) => await getDbAsSystem().get(tables.User, { email });
 const userRowCount = async (email: string) => (await getDbAsSystem().query(tables.User, { email })).length;
 
+type SignupInternals = { accountAt(email: string): Promise<unknown> };
+
+/**
+ * Whether a call for signed-in people is admitted for the request last seeded (`requestFrom`): the
+ * service layer's own gate, asked of a service of this library that is for every signed-in person.
+ */
+const admitsACallForSignedInPeople = (): boolean =>
+  ServiceAuth.canRunService(new UserPresence(), { name: 'recordPresence' } as Method, []);
+
+/** The mail a sign-up's confirmation link is in: the product's words around the page's path and a token. */
+const CONFIRMATION_MAIL_TEXT = new RegExp(
+  `^Confirm: ${CONFIRMATION_MAIL.linkBase.replace(/[.]/g, '\\.')}${uiRoutes.account.verifyEmail}\\?token=[0-9a-f]{64}$`
+);
+
+/** Moves an account's last link back past the gap between two mails. */
+const ageLastLink = async (email: string) => {
+  const row = await getUserRow(email);
+  await getDbAsSystem().update(tables.User, {
+    id: row!.id,
+    emailVerificationTokenExpiration: moment()
+      .add(EmailVerificationToken.LIFETIME_DAYS, 'days')
+      .subtract(EMAIL_VERIFICATION_RESEND_GAP_MINUTES + 1, 'minutes'),
+  });
+};
+
 describe('signup route — auto-login after signup', () => {
   beforeAll(async () => {
     await testEnv.beforeAll();
@@ -123,12 +159,14 @@ describe('signup route — auto-login after signup', () => {
 
   afterAll(async () => {
     delete (SourceRepository.get() as unknown as NamedObjectCache).namedObjectCache[LOADER_KEY];
+    productAsksForConfirmation(false);
     await testEnv.afterAll();
   });
 
   beforeEach(async () => {
     jest.clearAllMocks();
     setInviteConfig([]);
+    productAsksForConfirmation(false);
     (SourceRepository.get() as unknown as ObjectCache).objectCache[GUARD_KEY] = [];
     // Every case starts signed out (the signed-in case leaves its person on the session).
     Session.setData({ sessionId: 'test-session', user: 'guest', data: {} });
@@ -136,6 +174,7 @@ describe('signup route — auto-login after signup', () => {
     const db = getDbAsSystem();
     await db.delete(tables.Invite, {});
     await db.delete(tables.User, {});
+    await db.delete(tables.Session, {});
   });
 
   it('plain signup creates the account and establishes the session in the same request', async () => {
@@ -367,5 +406,175 @@ describe('signup route — auto-login after signup', () => {
     expect(invited.body).toEqual({});
     expect(invited.loggedInAs).toBe('rule.invited@test.local');
     expect(askedAbout).toEqual(['someone@mailinator.com']);
+  });
+
+  describe('where the product asks for the email confirmation', () => {
+    beforeEach(() => {
+      productAsksForConfirmation(true);
+    });
+
+    it('a sign-up without an invite ends signed in and waiting: a call for signed-in people is refused, and the one mail is the confirmation mail', async () => {
+      const outcome = await invokeSignup({ email: 'Waits@Test.local', password: 'pw-waits-1' });
+
+      expect(outcome.body).toEqual({});
+      expect(outcome.loggedInAs).toBe('waits@test.local');
+      expect(outcome.sessionEvents).toEqual(['regenerate', 'login', 'save']);
+      await requestFrom('waits@test.local');
+      expect(admitsACallForSignedInPeople()).toBe(false);
+
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+      const [mail] = sendEmail.mock.calls[0];
+      expect(mail).toMatchObject({ to: 'waits@test.local', subject: CONFIRMATION_MAIL.subject });
+      expect(mail.text).toMatch(CONFIRMATION_MAIL_TEXT);
+
+      // Once its address is confirmed, the same session's request is admitted.
+      const waiting = await getUserRow('waits@test.local');
+      await getDbAsSystem().update(tables.User, { id: waiting!.id, emailVerified: true });
+      await requestFrom('waits@test.local');
+      expect(admitsACallForSignedInPeople()).toBe(true);
+
+      // A product that words no mail of its own: the library's plain mail carries the link.
+      productWordsNoConfirmationMail();
+      await requestFrom(undefined);
+      await invokeSignup({ email: 'plain.mail@test.local', password: 'pw-waits-2' });
+      const [plain] = sendEmail.mock.lastCall!;
+      expect(plain.to).toBe('plain.mail@test.local');
+      expect(plain.subject).toBeTruthy();
+      expect(plain.text).toMatch(new RegExp(`${uiRoutes.account.verifyEmail}\\?token=[0-9a-f]{64}`));
+    });
+
+    it('a sign-up for an address held by a waiting account starts it over: the new password logs in, the old does not, a session made before it is ended; a second one inside five minutes sends no second mail', async () => {
+      const db = getDbAsSystem();
+      await invokeSignup({ email: 'start.over@test.local', password: 'pw-first-1' });
+      const first = await getUserRow('start.over@test.local');
+      // A session of the first sign-up, as the session store keeps one; and another account's.
+      const expires = moment().add(1, 'day').toDate();
+      await db.insert(tables.Session, {
+        sessionId: 'the-first-sign-ups-session',
+        session: '{}',
+        expires,
+        userEmail: 'start.over@test.local',
+      });
+      await db.insert(tables.Session, {
+        sessionId: 'another-accounts-session',
+        session: '{}',
+        expires,
+        userEmail: 'someone.else@test.local',
+      });
+      await ageLastLink('start.over@test.local');
+
+      const again = await invokeSignup({ email: 'Start.Over@Test.local', password: 'pw-second-2' });
+
+      expect(again.body).toEqual({});
+      expect(again.loggedInAs).toBe('start.over@test.local');
+      expect(again.sessionEvents).toEqual(['regenerate', 'login', 'save']);
+      expect(await userRowCount('start.over@test.local')).toBe(1);
+      const startedOver = await getUserRow('start.over@test.local');
+      expect(startedOver!.id).toBe(first!.id);
+      expect(await authenticate('start.over@test.local', 'pw-second-2')).toBe(true);
+      expect(await authenticate('start.over@test.local', 'pw-first-1')).not.toBe(true);
+      expect(await db.get(tables.Session, { sessionId: 'the-first-sign-ups-session' })).toBeUndefined();
+      expect(await db.get(tables.Session, { sessionId: 'another-accounts-session' })).toBeDefined();
+      // One link at each: the first sign-up's, and the start-over's, which replaces it.
+      expect(sendEmail).toHaveBeenCalledTimes(2);
+      expect(sendEmail.mock.calls[1][0]).toMatchObject({
+        to: 'start.over@test.local',
+        subject: CONFIRMATION_MAIL.subject,
+      });
+      expect(startedOver!.emailVerificationToken).not.toBe(first!.emailVerificationToken);
+      expect(startedOver!.emailVerified).toBe(false);
+
+      // Again inside five minutes: started over once more, and the link in the mailbox stands.
+      const third = await invokeSignup({ email: 'start.over@test.local', password: 'pw-third-3' });
+
+      expect(third.loggedInAs).toBe('start.over@test.local');
+      expect(await authenticate('start.over@test.local', 'pw-third-3')).toBe(true);
+      expect(await authenticate('start.over@test.local', 'pw-second-2')).not.toBe(true);
+      expect(sendEmail).toHaveBeenCalledTimes(2);
+      expect((await getUserRow('start.over@test.local'))!.emailVerificationToken).toBe(
+        startedOver!.emailVerificationToken
+      );
+    });
+
+    it('an insert that loses the race for a new address starts the waiting account over and mails no You already have an account', async () => {
+      // The winner of the race: its account waits, its link is in the mailbox.
+      await invokeSignup({ email: 'raced@test.local', password: 'pw-winner-1' });
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+
+      // The loser read the address before the winner wrote: its read misses, and the unique index
+      // refuses its insert.
+      const read = jest
+        .spyOn(Signup.prototype as unknown as SignupInternals, 'accountAt')
+        .mockResolvedValueOnce(undefined);
+      let loser: RouteOutcome;
+      try {
+        loser = await invokeSignup({ email: 'raced@test.local', password: 'pw-loser-2' });
+      } finally {
+        read.mockRestore();
+      }
+
+      // Two at the same instant end as two in a row: the second starts the waiting account over.
+      expect(loser.body).toEqual({});
+      expect(loser.loggedInAs).toBe('raced@test.local');
+      expect(await userRowCount('raced@test.local')).toBe(1);
+      expect(await authenticate('raced@test.local', 'pw-loser-2')).toBe(true);
+      // The winner's link is inside the gap, so it stands: nothing more is mailed, least of all the
+      // notice an existing account's owner gets.
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+      expect(sendEmail.mock.calls[0][0].subject).toBe(CONFIRMATION_MAIL.subject);
+    });
+
+    it("a confirmed account's address is answered as before, and so is a deactivated account's", async () => {
+      await testEnv.createUser({ name: 'Confirmed', email: 'confirmed@test.local' });
+
+      const confirmed = await invokeSignup({ email: 'confirmed@test.local', password: 'pw-other-1' });
+
+      expect(confirmed.body).toEqual({});
+      expect(confirmed.loggedInAs).toBeUndefined();
+      expect(confirmed.sessionEvents).toEqual([]);
+      expect((await getUserRow('confirmed@test.local'))!.password).toBe('test');
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+      expect(sendEmail.mock.calls[0][0].text).toBe('exists');
+
+      // An account that never confirmed and was deactivated is not started over.
+      await getDbAsSystem().insert(tables.User, {
+        name: 'Deactivated',
+        email: 'deactivated@test.local',
+        password: 'test',
+        emailVerified: false,
+        status: 'deactivated',
+        roles: [],
+      });
+
+      const deactivated = await invokeSignup({ email: 'deactivated@test.local', password: 'pw-other-2' });
+
+      expect(deactivated.body).toEqual({});
+      expect(deactivated.loggedInAs).toBeUndefined();
+      expect((await getUserRow('deactivated@test.local'))!.password).toBe('test');
+      expect(sendEmail.mock.lastCall![0].text).toBe('exists');
+    });
+
+    it('an invited sign-up never waits', async () => {
+      await getDbAsSystem().insert(tables.Invite, {
+        email: 'invited.never.waits@test.local',
+        token: 'invite-token-never-waits',
+        tokenExpiresAt: moment().add(1, 'day'),
+        invitedBy: new Reference(tables.User.name, 'inviter-1'),
+      });
+
+      const outcome = await invokeSignup({
+        name: 'Invited',
+        password: 'pw-invited-9',
+        token: 'invite-token-never-waits',
+      });
+
+      expect(outcome.loggedInAs).toBe('invited.never.waits@test.local');
+      expect((await getUserRow('invited.never.waits@test.local'))!.emailVerified).toBe(true);
+      await requestFrom('invited.never.waits@test.local');
+      expect(admitsACallForSignedInPeople()).toBe(true);
+      // Its one mail is the welcome, as before: it has no address left to confirm.
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+      expect(sendEmail.mock.calls[0][0].text).toBe('welcome');
+    });
   });
 });

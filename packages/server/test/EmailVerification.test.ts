@@ -53,7 +53,7 @@ import { verifyEmail } from '../src/routes/verifyEmail';
 import { SignInPageFactsScript } from '../src/scripts/SignInPageFactsScript';
 import { EMAIL_VERIFICATION_RESEND_GAP_MINUTES, Signup } from '../src/services/Signup';
 import { DbTraffic } from './DbTraffic';
-import { productAsksForConfirmation, requestFrom } from './emailConfirmationHarness';
+import { CONFIRMATION_MAIL, productAsksForConfirmation, requestFrom } from './emailConfirmationHarness';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 
 const testEnv = new UserServerTestEnvironment();
@@ -337,7 +337,8 @@ describe('email verification after sign-up', () => {
       expect(await new Signup().resendEmailVerification()).toEqual({ sent: false, whyNot: 'notSent' });
 
       expect(await new Signup().resendEmailVerification()).toEqual({ sent: true });
-      expect(sendEmail.mock.lastCall?.[0]).toMatchObject({ to: user.email });
+      // The mail is the confirmation's own, never the welcome.
+      expect(sendEmail.mock.lastCall?.[0]).toMatchObject({ to: user.email, subject: CONFIRMATION_MAIL.subject });
       expect((await userRow(user.email)).emailVerificationToken).toBe(sha256Hex(mailedToken()));
       expect(mailedToken()).not.toBe(first);
 

@@ -4,15 +4,36 @@ import { userCache } from '../src/authorization/userCache';
 
 type ObjectCache = { objectCache: Record<string, unknown[]> };
 
+/** The confirmation mail as the test's product words it: its subject, and the address that makes its link a full one. */
+export const CONFIRMATION_MAIL = { subject: 'Confirm the address', linkBase: 'https://app.test/' };
+
+const RULE = '@proteinjs/user-server/DefaultEmailConfirmationConfigFactory';
+const MAIL = '@proteinjs/user-server/DefaultEmailConfirmationLinkEmailConfigFactory';
+
 /**
  * Whether a product asks for the mandatory email confirmation: its registration
- * (`DefaultEmailConfirmationConfigFactory`), or none. The suites load src, never the generated source
- * graph, so the lookup is seeded here.
+ * (`DefaultEmailConfirmationConfigFactory`) with its own words for the confirmation mail
+ * (`DefaultEmailConfirmationLinkEmailConfigFactory`), or neither. The suites load src, never the
+ * generated source graph, so the lookups are seeded here.
  */
 export const productAsksForConfirmation = (asks: boolean): void => {
-  (SourceRepository.get() as unknown as ObjectCache).objectCache[
-    '@proteinjs/user-server/DefaultEmailConfirmationConfigFactory'
-  ] = asks ? [{ getConfig: () => ({ isRequired: true }) }] : [];
+  const registered = (SourceRepository.get() as unknown as ObjectCache).objectCache;
+  registered[RULE] = asks ? [{ getConfig: () => ({ isRequired: true }) }] : [];
+  registered[MAIL] = asks
+    ? [
+        {
+          getConfig: () => ({
+            subject: CONFIRMATION_MAIL.subject,
+            getEmailContent: (link: string) => ({ text: `Confirm: ${CONFIRMATION_MAIL.linkBase}${link}` }),
+          }),
+        },
+      ]
+    : [];
+};
+
+/** A product that asks for the confirmation and words no mail of its own: the library's plain mail goes. */
+export const productWordsNoConfirmationMail = (): void => {
+  (SourceRepository.get() as unknown as ObjectCache).objectCache[MAIL] = [];
 };
 
 /**
