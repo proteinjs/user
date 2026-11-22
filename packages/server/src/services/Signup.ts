@@ -184,32 +184,34 @@ export class Signup implements SignupService {
       // account's last link is inside the gap between mails: the one in the mailbox stands. A mail
       // that cannot be sent does not fail the sign-up: the account exists, and its screen re-sends.
       await this.mailVerificationLink(await db.get(tables.User, { email }));
-    } else {
-      // An invited address was proved by the invite mail; a plain sign-up's welcome carries the
-      // link that confirms it (the account works meanwhile — nothing waits on the tap). A welcome that
-      // cannot be sent does not fail the sign-up: the account exists, and its person is signed in.
-      const verification = invite ? undefined : await this.mintEmailVerification(email);
-      try {
-        await this.emailWelcome(emailSender, email, config, verification && { verifyEmailLink: verification.link });
-      } catch (error: any) {
-        const digests = new RequestDigests();
-        logger.error({
-          message: `Failed to send the welcome mail`,
-          obj: { account: digests.account(email) },
-          error: digests.redactError(error),
-        });
-        // The link never reached the account: withdraw the token, so the account page's re-send
-        // is not held by the gap between mails.
-        if (verification) {
-          await new EmailVerificationToken().revoke(verification.user, verification.token);
-        }
+      logger.info({
+        message: creation === 'startedOver' ? `Started a waiting account over` : `Created user`,
+        obj: { account: new RequestDigests().account(email) },
+      });
+      return { outcome: creation, email };
+    }
+
+    // An invited address was proved by the invite mail; a plain sign-up's welcome carries the
+    // link that confirms it (the account works meanwhile — nothing waits on the tap). A welcome that
+    // cannot be sent does not fail the sign-up: the account exists, and its person is signed in.
+    const verification = invite ? undefined : await this.mintEmailVerification(email);
+    try {
+      await this.emailWelcome(emailSender, email, config, verification && { verifyEmailLink: verification.link });
+    } catch (error: any) {
+      const digests = new RequestDigests();
+      logger.error({
+        message: `Failed to send the welcome mail`,
+        obj: { account: digests.account(email) },
+        error: digests.redactError(error),
+      });
+      // The link never reached the account: withdraw the token, so the account page's re-send
+      // is not held by the gap between mails.
+      if (verification) {
+        await new EmailVerificationToken().revoke(verification.user, verification.token);
       }
     }
-    logger.info({
-      message: creation === 'startedOver' ? `Started a waiting account over` : `Created user`,
-      obj: { account: new RequestDigests().account(email) },
-    });
-    return { outcome: creation, email };
+    logger.info({ message: `Created user`, obj: { account: new RequestDigests().account(email) } });
+    return { outcome: 'created', email };
   }
 
   /**
