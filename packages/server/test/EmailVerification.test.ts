@@ -18,7 +18,8 @@ import moment from 'moment';
  *   one mail; inside the gap it sends nothing and the pair stands; a verified account gets no mail;
  *   each time nothing is sent the answer says why;
  * - where the product asks for the confirmation, what a session whose account waits can still reach of
- *   its own account: the re-send, the question on coming back, and the fact its page carries.
+ *   its own account: the re-send, the question on coming back, and the fact its page carries; and the
+ *   link confirms only in the account's own session, ends no session, and sends the welcome once.
  * The mail transport and the config are doubled at the module boundary (SignupRoute.test.ts
  * pattern) — the config double records every context it is handed; the db stays real.
  */
@@ -49,6 +50,7 @@ import { SourceRepository } from '@proteinjs/reflection';
 import { Session } from '@proteinjs/server-api';
 import { SIGN_IN_PAGE_FACTS_SCRIPT_KEY, tables, uiRoutes, User, UserAuth, UserRepo } from '@proteinjs/user';
 import { EmailVerificationToken } from '../src/authentication/EmailVerificationToken';
+import { userCache } from '../src/authorization/userCache';
 import { verifyEmail } from '../src/routes/verifyEmail';
 import { SignInPageFactsScript } from '../src/scripts/SignInPageFactsScript';
 import { EMAIL_VERIFICATION_RESEND_GAP_MINUTES, Signup } from '../src/services/Signup';
@@ -60,6 +62,7 @@ const testEnv = new UserServerTestEnvironment();
 
 type ObjectCache = { objectCache: Record<string, unknown[]> };
 type RouteOutcome = { status?: number; body?: { state?: string } };
+type MailedTokenInternals = { spend(...args: unknown[]): Promise<boolean> };
 
 const TOKEN_SHAPE = /^[0-9a-f]{64}$/;
 const EXPECTED_LIFETIME_DAYS = 7;
@@ -320,6 +323,73 @@ describe('email verification after sign-up', () => {
       productAsksForConfirmation(false);
       delete (SourceRepository.get() as unknown as ObjectCache).objectCache[REPO_KEY];
       Session.setData({ sessionId: 'test-session', user: 'guest', data: {} });
+    });
+
+    it("the link confirms only in the account's own session: with no session, or in another account's, it answers log in first and stays usable", async () => {
+      const { user, token } = await signUp('own-session@test.local');
+      const another = await testEnv.createUser({ name: 'Another', email: 'another-account@test.local' });
+
+      await requestFrom(undefined);
+      expect(await invokeVerify({ token })).toEqual({ status: 200, body: { state: 'logInFirst' } });
+      await requestFrom(another.email);
+      expect(await invokeVerify({ token })).toEqual({ status: 200, body: { state: 'logInFirst' } });
+
+      // Nothing was used up, nothing marked, and no welcome went: the one mail is the sign-up's.
+      const untouched = await userRow(user.email);
+      expect(untouched.emailVerified).toBe(false);
+      expect(untouched.emailVerificationToken).toBe(sha256Hex(token));
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+
+      // A link that is unknown, or lapsed, is answered as ever, before any session is asked about.
+      const { user: lapsedUser, token: lapsed } = await signUp('own-session-lapsed@test.local');
+      await getDbAsSystem().update(tables.User, {
+        id: lapsedUser.id,
+        emailVerificationTokenExpiration: moment().subtract(1, 'minute'),
+      });
+      await requestFrom(undefined);
+      expect(await invokeVerify({ token: sha256Hex('never issued') })).toEqual({
+        status: 200,
+        body: { state: 'invalid' },
+      });
+      expect(await invokeVerify({ token: lapsed })).toEqual({ status: 200, body: { state: 'expired' } });
+
+      // In the account's own session the same link confirms.
+      await requestFrom(user.email);
+      expect(await invokeVerify({ token })).toEqual({ status: 200, body: { state: 'confirmed' } });
+      expect((await userRow(user.email)).emailVerified).toBe(true);
+    });
+
+    it('confirming ends no session: a second waiting session of the account answers as itself after it; the welcome goes once, also when the write finds the link already used', async () => {
+      const { user, token } = await signUp('two-sessions@test.local');
+      const db = getDbAsSystem();
+      const expires = moment().add(1, 'day').toDate();
+      for (const sessionId of ['the-confirming-session', 'a-second-waiting-session']) {
+        await db.insert(tables.Session, { sessionId, session: '{}', expires, userEmail: user.email });
+      }
+      expect((await userCache.create('a-second-waiting-session', user.email)).id).toBe('guest');
+      await requestFrom(user.email);
+
+      // The same link in two requests at once: this one's write finds the link already used. It
+      // answers confirmed all the same, and sends no welcome of its own.
+      const lostWrite = jest
+        .spyOn(EmailVerificationToken.prototype as unknown as MailedTokenInternals, 'spend')
+        .mockResolvedValueOnce(false);
+      try {
+        expect(await invokeVerify({ token })).toEqual({ status: 200, body: { state: 'confirmed' } });
+      } finally {
+        lostWrite.mockRestore();
+      }
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+
+      // The request whose write wins: confirmed, and the welcome goes, with no link in it.
+      expect(await invokeVerify({ token })).toEqual({ status: 200, body: { state: 'confirmed' } });
+      expect(sendEmail).toHaveBeenCalledTimes(2);
+      expect(sendEmail.mock.lastCall?.[0]).toMatchObject({ to: user.email, subject: 'Welcome aboard' });
+      expect(newUserContexts).toEqual([undefined]);
+
+      // No session was ended or made: both stand, and the second answers as the account.
+      expect(await db.query(tables.Session, { userEmail: user.email })).toHaveLength(2);
+      expect((await userCache.create('a-second-waiting-session', user.email)).id).toBe(user.id);
     });
 
     it("a re-send says sent, too soon, or could not be sent, for the session's own account while it waits", async () => {

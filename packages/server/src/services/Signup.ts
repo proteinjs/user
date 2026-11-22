@@ -264,6 +264,25 @@ export class Signup implements SignupService {
     return { state: UserAuth.isLoggedIn() ? 'confirmed' : 'nobody' };
   }
 
+  /**
+   * The welcome mail to an account whose address its link just confirmed (routes/verifyEmail), where
+   * the product asks for the email confirmation: such a sign-up's own mail only confirmed. A welcome
+   * that cannot be sent is logged and fails nothing. Not RPC-reachable (absent from the SignupService
+   * interface, as `createUser` is).
+   */
+  async welcomeConfirmed(email: string): Promise<void> {
+    try {
+      await this.emailWelcome(new EmailSender(), email, this.signupConfirmationEmailConfig());
+    } catch (error: any) {
+      const digests = new RequestDigests();
+      new Logger({ name: 'Signup.welcomeConfirmed' }).error({
+        message: `Failed to send the welcome mail`,
+        obj: { account: digests.account(email) },
+        error: digests.redactError(error),
+      });
+    }
+  }
+
   async sendInvite(email: string): Promise<SendInviteResponse> {
     const logger = new Logger({ name: 'Signup.sendInvite' });
     const caseInsensitiveEmail = email.toLowerCase();
