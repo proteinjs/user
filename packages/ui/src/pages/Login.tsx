@@ -51,11 +51,10 @@ const LoginComponent: React.FC = () => {
       </Helmet>
       <AuthLayout title='Log in'>
         {message && (
-          // The message seat: one inset above the fields, on the theme's quiet tint, announced politely.
-          // Its ground is the theme's hover color at rest. A theme may paint `action.hover` only where a
-          // pointer hovers (so a tap never leaves a hover stuck on a phone), and names the same color for
-          // a ground at rest as `action.tint`: read when the theme has one, so the seat has its ground on
-          // every pointer.
+          // The message place: one inset above the fields, on a quiet ground, announced politely. Its
+          // ground is the theme's selected wash, a plain color every theme has, so it is there at rest on
+          // every pointer (a theme may paint `action.hover` only where a pointer hovers, so that a tap
+          // never leaves a hover stuck on a phone).
           <Typography
             role='status'
             sx={{
@@ -63,8 +62,7 @@ const LoginComponent: React.FC = () => {
               px: '14px',
               py: '12px',
               borderRadius: '12px',
-              backgroundColor: (theme) =>
-                (theme.palette.action as { tint?: string }).tint ?? theme.palette.action.hover,
+              backgroundColor: 'action.selected',
               fontSize: '0.875rem',
               lineHeight: '20px',
               color: 'text.primary',
