@@ -1,4 +1,4 @@
-import { UserSignup, routes } from '@proteinjs/user';
+import { UserSignup, VerifyEmailState, routes } from '@proteinjs/user';
 
 /**
  * What a sign-up form without an invite sends for the product's check: its hidden field (`website`, which no
@@ -115,6 +115,34 @@ export class AuthApi {
     });
     if (response.status !== 200) {
       throw new Error('Failed to reset password');
+    }
+  }
+
+  /**
+   * Asks the route to confirm the address from the token a mailed link carried, and resolves with what
+   * it answered (`VerifyEmailState`) for the page to follow.
+   */
+  async confirmEmail(token: string): Promise<VerifyEmailState> {
+    const response = await fetch(`${routes.verifyEmail.path}?token=${encodeURIComponent(token)}`, {
+      method: routes.verifyEmail.method,
+      credentials: 'same-origin',
+    });
+    const body = await response.json();
+    return body.state;
+  }
+
+  /** Ends the session. The caller decides where the person goes next. */
+  async logout(): Promise<void> {
+    const response = await fetch(routes.logout.path, {
+      method: routes.logout.method,
+      redirect: 'follow',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    if (response.status != 200) {
+      throw new Error(`Failed to log out`);
     }
   }
 

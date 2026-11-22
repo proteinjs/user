@@ -6,11 +6,14 @@
  * render against a document whose address a case sets.
  */
 import React from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MemoryRouter } from 'react-router-dom';
+import { act } from 'react-dom/test-utils';
+import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
 import { SourceRepository } from '@proteinjs/reflection';
-import { SIGN_IN_PAGE_FACTS_SCRIPT_KEY, SIGNUP_CLOSED_SENTENCE } from '@proteinjs/user';
+import { SIGN_IN_PAGE_FACTS_SCRIPT_KEY, SIGNUP_CLOSED_SENTENCE, uiRoutes } from '@proteinjs/user';
 import type { AuthPageProduct } from '../src/auth/AuthPageProduct';
+import { CONFIRM_EMAIL_WORDS, confirmEmailPage } from '../src/pages/ConfirmEmail';
 import { loginPage } from '../src/pages/Login';
 import { forgotPasswordPage } from '../src/pages/ForgotPassword';
 import { passwordResetPage } from '../src/pages/PasswordReset';
@@ -196,6 +199,65 @@ describe('auth pages', () => {
       const html = render(<Signup urlParams={{}} />);
       expect(html).toContain(PRODUCT.signupClosedSentence);
       expect(html).not.toContain('type="submit"');
+    }
+  });
+
+  it('the confirmation page shows the waiting screen to a waiting session: the address, Resend, Use a different email, Log out; with nobody signed in and no token it goes to Log in', async () => {
+    const address = `/${uiRoutes.account.verifyEmail}`;
+    window.history.replaceState({}, '', address);
+    const ConfirmEmail = confirmEmailPage.component;
+
+    // What the server wrote into a waiting session's page (user-server SignInPageFactsScript).
+    (globalThis as any).proteinjs = {
+      [SIGN_IN_PAGE_FACTS_SCRIPT_KEY]: {
+        signupOpen: true,
+        awaitingEmailConfirmation: { sentTo: 'dana@whitfield.studio' },
+      },
+    };
+    const html = render(<ConfirmEmail urlParams={{}} />);
+    const words = CONFIRM_EMAIL_WORDS;
+    const read = html.replace(/<[^>]+>/g, '');
+    expect(read).toContain(words.title);
+    expect(read).toContain(`${words.sentTo} dana@whitfield.studio`);
+    const resend = html.indexOf(`>${words.resend}<`);
+    const differentEmail = html.indexOf(`>${words.differentEmail}<`);
+    const logOut = html.indexOf(`>${words.logOut}<`);
+    expect(resend).toBeGreaterThan(-1);
+    expect(differentEmail).toBeGreaterThan(resend);
+    expect(logOut).toBeGreaterThan(differentEmail);
+    // The two quiet lines say where each leads; the screen holds no field and nothing else to tap.
+    expect(linkTargets(html)).toEqual([`/${uiRoutes.auth.signup}`, `/${uiRoutes.auth.login}`]);
+    expect(html).not.toContain('<input');
+    // At rest the answer's line is there and says nothing.
+    expect(html.match(/<[^>]+role="status"[^>]*>([^<]*)</)?.[1]).toBe('');
+
+    // Nobody signed in, no fact of a waiting session, no token: Log in takes the page's place.
+    pageSays(true);
+    let arrived: { pathname: string; state: unknown; how: string } | undefined;
+    const LoginProbe = () => {
+      const location = useLocation();
+      arrived = { pathname: location.pathname, state: location.state, how: useNavigationType() };
+      return null;
+    };
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    try {
+      await act(async () => {
+        root.render(
+          <MemoryRouter initialEntries={[address]}>
+            <Routes>
+              <Route path={address} element={<ConfirmEmail urlParams={{}} />} />
+              <Route path={`/${uiRoutes.auth.login}`} element={<LoginProbe />} />
+            </Routes>
+          </MemoryRouter>
+        );
+      });
+      expect(arrived).toEqual({ pathname: `/${uiRoutes.auth.login}`, state: null, how: 'REPLACE' });
+      expect(container.textContent).toBe('');
+    } finally {
+      await act(async () => root.unmount());
+      delete (globalThis as any).IS_REACT_ACT_ENVIRONMENT;
     }
   });
 });

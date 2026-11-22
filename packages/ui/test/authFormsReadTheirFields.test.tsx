@@ -21,11 +21,17 @@
 import React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
 import { SourceRepository } from '@proteinjs/reflection';
-import { routes } from '@proteinjs/user';
-import type { InitializeSignupResponse } from '@proteinjs/user';
+import { routes, uiRoutes, UserAuth } from '@proteinjs/user';
+import type {
+  EmailConfirmationStateResponse,
+  InitializeSignupResponse,
+  ResendEmailVerificationResponse,
+  VerifyEmailState,
+} from '@proteinjs/user';
 import { SIGN_IN_PAGE_FACTS_SCRIPT_KEY } from '@proteinjs/user';
+import { CONFIRM_EMAIL_WORDS, confirmEmailPage } from '../src/pages/ConfirmEmail';
 import { loginPage } from '../src/pages/Login';
 import { forgotPasswordPage } from '../src/pages/ForgotPassword';
 import { passwordResetPage } from '../src/pages/PasswordReset';
@@ -39,10 +45,12 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const initializeSignup = jest.fn<Promise<InitializeSignupResponse>, [string | undefined]>();
+const resendEmailVerification = jest.fn<Promise<ResendEmailVerificationResponse>, []>();
+const emailConfirmationState = jest.fn<Promise<EmailConfirmationStateResponse>, []>();
 
 jest.mock('@proteinjs/user', () => ({
   ...jest.requireActual('@proteinjs/user'),
-  getSignupService: () => ({ initializeSignup }),
+  getSignupService: () => ({ initializeSignup, resendEmailVerification, emailConfirmationState }),
 }));
 
 const EMAIL = 'ada@example.com';
@@ -57,6 +65,8 @@ let posts: FetchCall[];
 beforeEach(() => {
   posts = [];
   initializeSignup.mockReset();
+  resendEmailVerification.mockReset();
+  emailConfirmationState.mockReset();
   // The page says sign-up is open (user-server SignInPageFactsScript): the sign-up form renders at once.
   (globalThis as any).proteinjs = { [SIGN_IN_PAGE_FACTS_SCRIPT_KEY]: { signupOpen: true } };
   container = document.createElement('div');
@@ -430,6 +440,174 @@ describe('the fields own their values (what the fix rests on)', () => {
     } finally {
       consoleError.mockRestore();
     }
+  });
+});
+
+describe("the email confirmation's page", () => {
+  const WORDS = CONFIRM_EMAIL_WORDS;
+  const TOKEN = 'c0ffee'.padEnd(64, '0');
+  const LINK = `/${uiRoutes.account.verifyEmail}?token=${TOKEN}`;
+
+  /** A stand-in for `window.location`: the address the page was opened at, and how the page left it. */
+  let location: { pathname: string; search: string; replace: jest.Mock };
+  let realLocation: Location;
+  /** Where the router went when the page moved inside the app (never a load anew), and how. */
+  let movedTo: { pathname: string; state: unknown; how: string } | undefined;
+
+  const ElsewhereProbe = () => {
+    const there = useLocation();
+    movedTo = { pathname: there.pathname, state: there.state, how: useNavigationType() };
+    return null;
+  };
+
+  beforeEach(() => {
+    realLocation = window.location;
+    movedTo = undefined;
+  });
+
+  afterEach(() => {
+    Object.defineProperty(window, 'location', { configurable: true, value: realLocation });
+  });
+
+  /**
+   * Opens the page at the mail's link, under React's strict mode (which runs an effect twice): the
+   * route answers `state`, every POST is recorded and answered with no error. Resolves with every
+   * request the link's route was asked.
+   */
+  async function openTheLink(state: VerifyEmailState): Promise<string[]> {
+    const asked: string[] = [];
+    (global as any).fetch = jest.fn(async (path: string, init?: { method?: string; body?: string }) => {
+      if (path.startsWith(routes.verifyEmail.path)) {
+        asked.push(path);
+        return { status: 200, statusText: 'OK', json: async () => ({ state }) };
+      }
+      if (init?.method === 'post') {
+        posts.push({ path, body: JSON.parse(init.body ?? '{}') });
+      }
+      return { status: 200, statusText: 'OK', json: async () => ({}) };
+    });
+    location = { pathname: `/${uiRoutes.account.verifyEmail}`, search: `?token=${TOKEN}`, replace: jest.fn() };
+    Object.defineProperty(window, 'location', { configurable: true, value: location });
+    const ConfirmEmail = confirmEmailPage.component;
+    await act(async () => {
+      root.render(
+        <React.StrictMode>
+          <MemoryRouter initialEntries={[LINK]}>
+            <Routes>
+              <Route path={`/${uiRoutes.account.verifyEmail}`} element={<ConfirmEmail urlParams={{}} />} />
+              <Route path='*' element={<ElsewhereProbe />} />
+            </Routes>
+          </MemoryRouter>
+        </React.StrictMode>
+      );
+    });
+    // The route's answer, and what the page asks after it, arrive after the first paint.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    return asked;
+  }
+
+  /** The line under the button, as a person reads it (its room's unseen sentences are not it). */
+  function answerLine(): string | null {
+    return container.querySelector('[role="status"], [role="alert"]')?.textContent ?? null;
+  }
+
+  async function tapResend() {
+    await act(async () => {
+      (container.querySelector('button[type="button"]') as HTMLButtonElement).click();
+    });
+  }
+
+  it('with a token, the page asks once and follows the answer: confirmed loads the root; log in first shows the log-in form, and a log-in reloads the same address', async () => {
+    let asked = await openTheLink('confirmed');
+
+    expect(asked).toEqual([`${routes.verifyEmail.path}?token=${TOKEN}`]);
+    expect(location.replace.mock.calls).toEqual([['/']]);
+    // Nothing is said, and nothing but the ground painted.
+    expect(container.textContent).toBe('');
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    asked = await openTheLink('logInFirst');
+
+    expect(asked).toHaveLength(1);
+    expect(location.replace).not.toHaveBeenCalled();
+    expect(container.querySelector('h1')?.textContent).toBe(WORDS.logInFirstTitle);
+    fillSilently(field('Email'), EMAIL);
+    fillSilently(field('Password'), PASSWORD);
+    await submit();
+    expect(posts).toEqual([{ path: routes.login.path, body: { email: EMAIL, password: PASSWORD } }]);
+    // The same address, link and all, loaded anew under the session the log-in made.
+    expect(location.replace.mock.calls).toEqual([[LINK]]);
+  });
+
+  it("a link that no longer works opens the waiting screen saying so, and Resend's answer takes that line's place: it stays while Resend is in flight, then sent, sent a moment ago, could not be sent; confirmed elsewhere loads the root", async () => {
+    (globalThis as any).proteinjs = {
+      [SIGN_IN_PAGE_FACTS_SCRIPT_KEY]: { signupOpen: true, awaitingEmailConfirmation: { sentTo: EMAIL } },
+    };
+    emailConfirmationState.mockResolvedValue({ state: 'waiting' });
+    await openTheLink('invalid');
+
+    // The page's fact can be older than a confirmation made a moment ago: asked once before saying so.
+    expect(emailConfirmationState).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('h1')?.textContent).toBe(WORDS.title);
+    expect(answerLine()).toBe(WORDS.answers.linkGone.words);
+
+    let answerTheResend!: (response: ResendEmailVerificationResponse) => void;
+    resendEmailVerification.mockReturnValueOnce(new Promise((resolve) => (answerTheResend = resolve)));
+    await tapResend();
+    expect(answerLine()).toBe(WORDS.answers.linkGone.words);
+    await act(async () => answerTheResend({ sent: true }));
+    expect(answerLine()).toBe(WORDS.answers.sent.words);
+
+    resendEmailVerification.mockResolvedValueOnce({ sent: false, whyNot: 'tooSoon' });
+    await tapResend();
+    expect(answerLine()).toBe(WORDS.answers.tooSoon.words);
+
+    resendEmailVerification.mockResolvedValueOnce({ sent: false, whyNot: 'notSent' });
+    await tapResend();
+    expect(answerLine()).toBe(WORDS.answers.notSent.words);
+
+    resendEmailVerification.mockResolvedValueOnce({ sent: true });
+    await tapResend();
+    resendEmailVerification.mockRejectedValueOnce(new Error('The call could not be made'));
+    await tapResend();
+    expect(answerLine()).toBe(WORDS.answers.notSent.words);
+
+    expect(location.replace).not.toHaveBeenCalled();
+    resendEmailVerification.mockResolvedValueOnce({ sent: false, whyNot: 'alreadyConfirmed' });
+    await tapResend();
+    expect(location.replace.mock.calls).toEqual([['/']]);
+
+    // A question that cannot be answered leaves the page's fact standing: the same screen, the same line.
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    emailConfirmationState.mockRejectedValue(new Error('The call could not be made'));
+    await openTheLink('expired');
+    expect(container.querySelector('h1')?.textContent).toBe(WORDS.title);
+    expect(answerLine()).toBe(WORDS.answers.linkGone.words);
+  });
+
+  it('a link that no longer works, opened with nobody signed in, goes to Log in with the sentence for its message place; opened by a signed-in person, it goes to the root and says nothing', async () => {
+    await openTheLink('invalid');
+
+    expect(movedTo).toEqual({
+      pathname: `/${uiRoutes.auth.login}`,
+      state: { message: WORDS.linkGoneLogIn },
+      how: 'REPLACE',
+    });
+    // No session waits here, so nothing is asked about one; and nothing is loaded anew.
+    expect(emailConfirmationState).not.toHaveBeenCalled();
+    expect(location.replace).not.toHaveBeenCalled();
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    jest.spyOn(UserAuth, 'isLoggedIn').mockReturnValue(true);
+    await openTheLink('invalid');
+
+    expect(movedTo).toEqual({ pathname: '/', state: null, how: 'REPLACE' });
+    expect(location.replace).not.toHaveBeenCalled();
   });
 });
 

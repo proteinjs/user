@@ -1,6 +1,6 @@
 import { Page } from '@proteinjs/ui';
-import { UserAuth } from '@proteinjs/user';
-import { canViewPage } from '../src/pageAuth';
+import { SIGN_IN_PAGE_FACTS_SCRIPT_KEY, uiRoutes, UserAuth } from '@proteinjs/user';
+import { canViewPage, waitingSessionDestination } from '../src/pageAuth';
 
 /**
  * The page-auth decision `AuthenticatedPageContainer` enforces, including the permission door:
@@ -72,5 +72,39 @@ describe('canViewPage', () => {
 
     setUser(['admin']);
     expect(canViewPage(pageWith(undefined))).toBe(true);
+  });
+});
+
+describe('where a session that waits for its email confirmation is sent', () => {
+  /** What the server wrote into the page at load (user-server SignInPageFactsScript). */
+  const pageCarries = (facts: unknown) => {
+    (globalThis as any).proteinjs = { [SIGN_IN_PAGE_FACTS_SCRIPT_KEY]: facts };
+  };
+
+  afterEach(() => {
+    delete (globalThis as any).proteinjs;
+  });
+
+  it("a page that carries the waiting fact sends every page but the confirmation's to the confirmation's address", () => {
+    const forSignedInPeople = pageWith({ allUsers: true });
+    const openToEveryone = pageWith({ public: true });
+    const confirmation: Page = { ...pageWith({ public: true }), path: uiRoutes.account.verifyEmail };
+    const pages = [forSignedInPeople, openToEveryone, pageWith(undefined), confirmation];
+
+    // No fact of a waiting session: every page stays.
+    expect(pages.map(waitingSessionDestination)).toEqual([undefined, undefined, undefined, undefined]);
+    pageCarries({ signupOpen: true });
+    expect(pages.map(waitingSessionDestination)).toEqual([undefined, undefined, undefined, undefined]);
+    pageCarries({ signupOpen: true, awaitingEmailConfirmation: {} });
+    expect(pages.map(waitingSessionDestination)).toEqual([undefined, undefined, undefined, undefined]);
+
+    pageCarries({ signupOpen: true, awaitingEmailConfirmation: { sentTo: 'dana@whitfield.studio' } });
+    const confirmationAddress = `/${uiRoutes.account.verifyEmail}`;
+    expect(pages.map(waitingSessionDestination)).toEqual([
+      confirmationAddress,
+      confirmationAddress,
+      confirmationAddress,
+      undefined,
+    ]);
   });
 });

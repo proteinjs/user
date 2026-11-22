@@ -1,7 +1,9 @@
 import React from 'react';
+import { Navigate } from 'react-router-dom';
 import { PageContainer, PageContainerProps } from '@proteinjs/ui';
-import { routes, guestUser, UserAuth, UserRepo, uiRoutes } from '@proteinjs/user';
-import { canViewPage } from './pageAuth';
+import { guestUser, UserAuth, UserRepo, uiRoutes } from '@proteinjs/user';
+import { AuthApi } from './auth/AuthApi';
+import { canViewPage, waitingSessionDestination } from './pageAuth';
 import { installUserPresenceReporter } from './presence/installUserPresenceReporter';
 
 export type AuthenticatedPageContainerProps = Omit<PageContainerProps, 'auth'>;
@@ -17,6 +19,14 @@ export function AuthenticatedPageContainer(props: AuthenticatedPageContainerProp
     installUserPresenceReporter();
   }, []);
 
+  // A session whose account waits for its email address to be confirmed has one screen. Sent there,
+  // replaced in history, before anything of the routed page paints — sent, not rendered in place: a
+  // product reads the ROUTED page for what surrounds it, so the routed page must be the one that paints.
+  const confirmEmailAt = waitingSessionDestination(props.page);
+  if (confirmEmailAt) {
+    return <Navigate to={confirmEmailAt} replace />;
+  }
+
   return (
     <PageContainer
       auth={{
@@ -24,18 +34,7 @@ export function AuthenticatedPageContainer(props: AuthenticatedPageContainerProp
         canViewPage,
         login: uiRoutes.auth.login,
         logout: async () => {
-          const response = await fetch(routes.logout.path, {
-            method: routes.logout.method,
-            redirect: 'follow',
-            credentials: 'same-origin',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          });
-          if (response.status != 200) {
-            throw new Error(`Failed to log out`);
-          }
-
+          await new AuthApi().logout();
           new UserRepo().setUser(guestUser);
           setIsLoggedIn(false);
           return uiRoutes.auth.login;

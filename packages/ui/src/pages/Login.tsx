@@ -1,21 +1,14 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Box, Typography } from '@mui/material';
 import { Page } from '@proteinjs/ui';
 import { uiRoutes, UserAuth } from '@proteinjs/user';
 import { Helmet } from 'react-helmet';
 import { Navigate, useLocation } from 'react-router-dom';
 import { AuthLayout } from '../auth/AuthLayout';
-import { AuthTextField } from '../auth/AuthTextField';
-import { AuthButton } from '../auth/AuthButton';
-import { AuthFormError } from '../auth/AuthFormError';
-import { AuthApi } from '../auth/AuthApi';
-import { AuthFormFields } from '../auth/AuthFormFields';
-import { AuthFieldErrors, AuthValidation } from '../auth/AuthValidation';
+import { LoginForm } from '../auth/LoginForm';
 import { SignInPageFacts } from '../auth/SignInPageFacts';
 import { AuthPageProducts } from '../auth/AuthPageProduct';
 import { AuthQuietLink } from '../auth/AuthQuietLink';
-
-type LoginField = 'email' | 'password';
 
 /**
  * What a navigation to the login page may carry in the router's location state: one plain sentence
@@ -43,43 +36,8 @@ function newAccountLine(): { words: string; href: string } | undefined {
 }
 
 const LoginComponent: React.FC = () => {
-  const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors<LoginField>>({});
-  const [error, setError] = useState<string | undefined>();
-  const [busy, setBusy] = useState(false);
   const message = arrivalMessage(useLocation().state);
   const accountLine = newAccountLine();
-
-  const clearFieldError = (name: LoginField) =>
-    setFieldErrors((errors) => (errors[name] ? { ...errors, [name]: undefined } : errors));
-
-  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    // The fields' values as they are NOW, read from the form — a password manager or autofill
-    // that wrote a field without an input event is only in the DOM (AuthFormFields).
-    const form = event.currentTarget;
-    const { email, password } = AuthFormFields.read(form, ['email', 'password'] as const);
-    const invalid = AuthValidation.login({ email, password });
-    setFieldErrors(invalid ?? {});
-    if (invalid) {
-      AuthFormFields.focusFirstInvalid(form, invalid);
-      return;
-    }
-
-    setError(undefined);
-    setBusy(true);
-    try {
-      await new AuthApi().login(email.trim(), password);
-      // REPLACE, not assign: a full navigation (the fresh load renders under the just-established
-      // session), but it replaces the login page in history rather than pushing home on top of it.
-      // Left in history, the login page sits one back-forward entry behind home, and a signed-in
-      // user's back gesture from a route the app pushed after home can land on it — a page a
-      // signed-in user can never be on. Replacing it makes home the base of their history.
-      window.location.replace('/');
-    } catch (error: any) {
-      setError(error.message);
-      setBusy(false);
-    }
-  };
 
   // A signed-in person never sees this page: Home replaces it before anything of the form renders.
   if (UserAuth.isLoggedIn()) {
@@ -94,6 +52,10 @@ const LoginComponent: React.FC = () => {
       <AuthLayout title='Log in'>
         {message && (
           // The message seat: one inset above the fields, on the theme's quiet tint, announced politely.
+          // Its ground is the theme's hover color at rest. A theme may paint `action.hover` only where a
+          // pointer hovers (so a tap never leaves a hover stuck on a phone), and names the same color for
+          // a ground at rest as `action.tint`: read when the theme has one, so the seat has its ground on
+          // every pointer.
           <Typography
             role='status'
             sx={{
@@ -101,7 +63,8 @@ const LoginComponent: React.FC = () => {
               px: '14px',
               py: '12px',
               borderRadius: '12px',
-              backgroundColor: 'action.hover',
+              backgroundColor: (theme) =>
+                (theme.palette.action as { tint?: string }).tint ?? theme.palette.action.hover,
               fontSize: '0.875rem',
               lineHeight: '20px',
               color: 'text.primary',
@@ -110,30 +73,8 @@ const LoginComponent: React.FC = () => {
             {message}
           </Typography>
         )}
-        <form onSubmit={onSubmit} noValidate>
-          {/* 'username' (not 'email'): this is the credential identifier password managers
-              fill from the saved login; type='email' still gives the email keyboard. */}
-          <AuthTextField
-            label='Email'
-            name='email'
-            onChange={() => clearFieldError('email')}
-            error={fieldErrors.email}
-            type='email'
-            autoComplete='username'
-            disabled={busy}
-          />
-          <AuthTextField
-            label='Password'
-            name='password'
-            onChange={() => clearFieldError('password')}
-            error={fieldErrors.password}
-            password
-            autoComplete='current-password'
-            disabled={busy}
-          />
-          <AuthFormError message={error} />
-          <AuthButton busy={busy}>Log in</AuthButton>
-        </form>
+        {/* The app's root, loaded anew under the session the log-in made (LoginForm). */}
+        <LoginForm destination='/' />
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
           <AuthQuietLink href={`/${uiRoutes.auth.forgotPassword}`}>Forgot password?</AuthQuietLink>
         </Box>

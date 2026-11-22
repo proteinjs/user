@@ -1,5 +1,6 @@
 import { Page } from '@proteinjs/ui';
-import { UserAuth } from '@proteinjs/user';
+import { uiRoutes, UserAuth } from '@proteinjs/user';
+import { SignInPageFacts } from './auth/SignInPageFacts';
 
 /**
  * The page-auth decision `AuthenticatedPageContainer` enforces — one owner, mirrored on
@@ -30,4 +31,20 @@ export function canViewPage(page: Page): boolean {
   }
 
   return UserAuth.hasRoles(page.auth.roles);
+}
+
+/**
+ * Where a session whose account waits for its email address to be confirmed is sent from `page`: the
+ * confirmation's own address, or undefined when the page stays — every other session, and the
+ * confirmation's page itself. While a session waits it has that one screen, whatever address of the
+ * product it opens, pages open to everyone included (Log out there makes the person a visitor again).
+ * `AuthenticatedPageContainer` reads this in one line; no page checks for itself.
+ */
+export function waitingSessionDestination(page: Page): string | undefined {
+  const paths = Array.isArray(page.path) ? page.path : [page.path];
+  if (!SignInPageFacts.awaitingEmailConfirmation() || paths.indexOf(uiRoutes.account.verifyEmail) >= 0) {
+    return undefined;
+  }
+
+  return `/${uiRoutes.account.verifyEmail}`;
 }

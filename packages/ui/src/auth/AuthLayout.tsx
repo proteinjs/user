@@ -3,8 +3,8 @@ import { Box, Typography } from '@mui/material';
 
 export interface AuthLayoutProps {
   title: string;
-  /** Optional supporting line rendered under the title. */
-  subtitle?: string;
+  /** Optional supporting line rendered under the title: words, or words with a part of them set apart. */
+  subtitle?: ReactNode;
   children?: ReactNode;
 }
 
@@ -45,14 +45,21 @@ export function AuthLayout(props: AuthLayoutProps) {
           flexDirection: 'column',
         }}
       >
+        {/* The title has line spacing of its own (30px for its 24px type), so one long enough to break
+            on a narrow phone, or at a larger text size, reads as two even lines. The 6px the taller
+            line adds above and below are taken back out of its margins: a one-line title and
+            everything under it stand where they stood. */}
         <Typography
           component='h1'
           sx={{
             fontSize: '1.5rem',
             fontWeight: 600,
             letterSpacing: '-0.01em',
+            lineHeight: '30px',
+            textWrap: 'balance',
             color: 'text.primary',
-            mb: subtitle ? 1 : 4,
+            mt: '-6px',
+            mb: (theme) => `calc(${theme.spacing(subtitle ? 1 : 4)} - 6px)`,
           }}
         >
           {title}

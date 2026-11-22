@@ -24,8 +24,11 @@ import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
 import { SourceRepository } from '@proteinjs/reflection';
-import { routes, SIGN_IN_PAGE_FACTS_SCRIPT_KEY, UserAuth } from '@proteinjs/user';
-import type { InitializeSignupResponse } from '@proteinjs/user';
+import type { Page } from '@proteinjs/ui';
+import { routes, SIGN_IN_PAGE_FACTS_SCRIPT_KEY, uiRoutes, UserAuth } from '@proteinjs/user';
+import type { EmailConfirmationStateResponse, InitializeSignupResponse } from '@proteinjs/user';
+import { AuthenticatedPageContainer } from '../src/AuthenticatedPageContainer';
+import { CONFIRM_EMAIL_WORDS, confirmEmailPage } from '../src/pages/ConfirmEmail';
 import { loginPage } from '../src/pages/Login';
 import { signupPage } from '../src/pages/Signup';
 
@@ -36,10 +39,11 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const initializeSignup = jest.fn<Promise<InitializeSignupResponse>, [string | undefined]>();
+const emailConfirmationState = jest.fn<Promise<EmailConfirmationStateResponse>, []>();
 
 jest.mock('@proteinjs/user', () => ({
   ...jest.requireActual('@proteinjs/user'),
-  getSignupService: () => ({ initializeSignup }),
+  getSignupService: () => ({ initializeSignup, emailConfirmationState }),
 }));
 
 const EMAIL = 'ada@example.com';
@@ -73,6 +77,7 @@ function installLocationSpy() {
 beforeEach(() => {
   realLocation = window.location;
   initializeSignup.mockReset();
+  emailConfirmationState.mockReset();
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -206,5 +211,122 @@ describe('a signed-in person never sees the log-in or sign-up page', () => {
     expect(formsSeen).toEqual([]);
     expect(locationSpy.hrefSets).toEqual([]);
     expect(initializeSignup).not.toHaveBeenCalled();
+  });
+});
+
+describe('a session that waits for its email confirmation', () => {
+  const WORDS = CONFIRM_EMAIL_WORDS;
+  const CONFIRMATION = `/${uiRoutes.account.verifyEmail}`;
+
+  /** What the server wrote into a waiting session's page (user-server SignInPageFactsScript). */
+  function pageSaysTheSessionWaits() {
+    (globalThis as any).proteinjs = {
+      [SIGN_IN_PAGE_FACTS_SCRIPT_KEY]: { signupOpen: true, awaitingEmailConfirmation: { sentTo: EMAIL } },
+    };
+  }
+
+  async function openTheWaitingScreen() {
+    pageSaysTheSessionWaits();
+    await renderPage(confirmEmailPage.component, CONFIRMATION);
+    expect(container.querySelector('h1')?.textContent).toBe(WORDS.title);
+  }
+
+  async function tapTheLine(words: string) {
+    const line = Array.from(container.querySelectorAll('a')).find((anchor) => anchor.textContent === words);
+    expect(line).toBeDefined();
+    await act(async () => {
+      line!.click();
+    });
+  }
+
+  it("opening any other page, one open to everyone included, is replaced to the confirmation's address before anything of that page renders", async () => {
+    pageSaysTheSessionWaits();
+    let arrived: { pathname: string; how: string } | undefined;
+    const ConfirmationProbe = () => {
+      arrived = { pathname: useLocation().pathname, how: useNavigationType() };
+      return null;
+    };
+    let rendered = 0;
+    const pageAt = (path: string, auth: Page['auth']): Page => ({
+      name: path,
+      path,
+      auth,
+      component: () => {
+        rendered++;
+        return null;
+      },
+    });
+
+    const pages: Array<[string, Page['auth']]> = [
+      ['settings', { allUsers: true }],
+      ['login', { public: true }],
+    ];
+    for (const [path, auth] of pages) {
+      arrived = undefined;
+      await act(async () => {
+        root.render(
+          <MemoryRouter key={path} initialEntries={[`/${path}`]}>
+            <Routes>
+              <Route path={`/${path}`} element={<AuthenticatedPageContainer page={pageAt(path, auth)} />} />
+              <Route path={CONFIRMATION} element={<ConfirmationProbe />} />
+            </Routes>
+          </MemoryRouter>
+        );
+      });
+      expect(arrived).toEqual({ pathname: CONFIRMATION, how: 'REPLACE' });
+    }
+    expect(rendered).toBe(0);
+  });
+
+  it('from the waiting screen Log out loads Log in anew and Use a different email loads Sign up anew', async () => {
+    mockServerAccepts();
+    await openTheWaitingScreen();
+
+    await tapTheLine(WORDS.logOut);
+
+    // The session is ended first, then the destination is loaded anew: never a move inside the page.
+    expect((global as any).fetch).toHaveBeenCalledWith(
+      routes.logout.path,
+      expect.objectContaining({ method: routes.logout.method })
+    );
+    expect(locationSpy.replace.mock.calls).toEqual([[`/${uiRoutes.auth.login}`]]);
+
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    locationSpy.replace.mockClear();
+    (global as any).fetch.mockClear();
+    await openTheWaitingScreen();
+
+    await tapTheLine(WORDS.differentEmail);
+
+    expect((global as any).fetch).toHaveBeenCalledWith(
+      routes.logout.path,
+      expect.objectContaining({ method: routes.logout.method })
+    );
+    expect(locationSpy.replace.mock.calls).toEqual([[`/${uiRoutes.auth.signup}`]]);
+    expect(locationSpy.hrefSets).toEqual([]);
+  });
+
+  it('brought back to the front, the waiting screen asks once whether its account still waits, and loads the app anew once it was confirmed somewhere else', async () => {
+    await openTheWaitingScreen();
+    // At rest it asks nothing: no timer.
+    expect(emailConfirmationState).not.toHaveBeenCalled();
+
+    const broughtToTheFront = async () => {
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'));
+        window.dispatchEvent(new Event('focus'));
+      });
+    };
+
+    emailConfirmationState.mockResolvedValueOnce({ state: 'waiting' });
+    await broughtToTheFront();
+    expect(emailConfirmationState).toHaveBeenCalledTimes(1);
+    expect(locationSpy.replace).not.toHaveBeenCalled();
+
+    emailConfirmationState.mockResolvedValueOnce({ state: 'confirmed' });
+    await broughtToTheFront();
+    expect(emailConfirmationState).toHaveBeenCalledTimes(2);
+    expect(locationSpy.replace.mock.calls).toEqual([['/']]);
   });
 });
