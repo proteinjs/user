@@ -1,14 +1,11 @@
 {
   "branch": "feat/sign-up-confirm-your-email",
-  "packages": [
-    "server",
-    "ui",
-    "user"
-  ],
+  "packages": ["server", "ui", "user"],
   "suites": [
     "packages/server/test/AccessGrantPrincipalReference.integration.test.ts",
     "packages/server/test/AccessGrantProvenance.integration.test.ts",
     "packages/server/test/AccountDeletion.integration.test.ts",
+    "packages/server/test/DbSessionStore.integration.test.ts",
     "packages/server/test/DevLogin.test.ts",
     "packages/server/test/DevLoginBootstrapAdmin.test.ts",
     "packages/server/test/DevLoginBootstrapRoles.test.ts",
@@ -18,6 +15,7 @@
     "packages/server/test/ExecutePasswordReset.test.ts",
     "packages/server/test/InitiatePasswordReset.test.ts",
     "packages/server/test/LoginThrottle.integration.test.ts",
+    "packages/server/test/LogoutRoute.test.ts",
     "packages/server/test/MachineAccounts.integration.test.ts",
     "packages/server/test/NoAddressesInLogs.integration.test.ts",
     "packages/server/test/PasswordMigration.integration.test.ts",
@@ -52,7 +50,17 @@
     "packages/ui/test/loginMessageSeat.test.tsx",
     "packages/ui/test/pageAuth.test.ts",
     "packages/ui/test/passwordResetAutofill.test.tsx",
-    "packages/ui/test/signupAutofill.test.tsx"
+    "packages/ui/test/signupAutofill.test.tsx",
+    "packages/user/test/AccessGrantWellFormed.test.ts",
+    "packages/user/test/CapabilityEnforcement.test.ts",
+    "packages/user/test/ClientRootCreationBootstrap.test.ts",
+    "packages/user/test/SharedRecord.test.ts",
+    "packages/user/test/SharedRecordDuplicateModuleState.test.ts",
+    "packages/user/test/SharedRecordNoPrincipal.test.ts",
+    "packages/user/test/auditTrailsDurable.test.ts",
+    "packages/user/test/recordTableDeclarations.test.ts",
+    "packages/user/test/sessionTableAuth.test.ts",
+    "packages/user/test/tablesAuth.test.ts"
   ],
   "removes": [],
   "section": {
@@ -63,5 +71,5 @@
       "- Tap the button in the mail: the app opens."
     ]
   },
-  "notes": "The mandatory email confirmation, the library's part, on top of feat/sign-up-the-page-the-check-and-the-list. It binds only where a product registers DefaultEmailConfirmationConfigFactory (user-server EmailConfirmation); with none registered the library behaves as before. A product words the mail through DefaultEmailConfirmationLinkEmailConfigFactory. The page is user-ui pages/ConfirmEmail at account/verify-email; AuthenticatedPageContainer sends a waiting session there. The dev log-in's accounts are confirmed. Held: nothing landed or published. This library is published first and alone, then the app's branch of the same name."
+  "notes": "The mandatory email confirmation, the library's part, on top of feat/sign-up-the-page-the-check-and-the-list. It binds only where a product registers DefaultEmailConfirmationConfigFactory (user-server EmailConfirmation); with none registered the library behaves as before. A product words the mail through DefaultEmailConfirmationLinkEmailConfigFactory. The page is user-ui pages/ConfirmEmail at account/verify-email; AuthenticatedPageContainer sends a waiting session there. The confirmation is asked of an account as the account is made (the account row's email_confirmation_asked, a new column that is empty on every row that exists), so an account made before a product asks is never asked. The dev log-in's accounts are never held back. The log-in and sign-up routes read a JSON body and no other. Held: nothing landed or published. This library is published first and alone, then the app's branch of the same name."
 }
