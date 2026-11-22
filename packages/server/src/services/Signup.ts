@@ -29,6 +29,7 @@ import {
   SignupConfirmationEmailContext,
 } from '@proteinjs/email-server';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
+import { checkPassword } from '../authentication/authenticate';
 import { EmailVerificationToken } from '../authentication/EmailVerificationToken';
 import { PasswordHasher } from '../authentication/PasswordHasher';
 import { getDefaultEmailConfirmationLinkEmailConfigFactory } from '../emails/EmailConfirmationLinkEmailConfig';
@@ -226,6 +227,25 @@ export class Signup implements SignupService {
     const factory = getDefaultInviteConfigFactory();
     const config = factory.getConfigFor ? await factory.getConfigFor(email) : factory.getConfig();
     return config.isInviteOnly ? config.inviteRequiredSentence ?? SIGNUP_CLOSED_SENTENCE : undefined;
+  }
+
+  /**
+   * Whether the account at `email` (lowercased) still stands as the sign-up that carried `password` left
+   * it. Asked by the sign-up route once that sign-up's session is made: a sign-up for the same address
+   * that started the account over (`existsOrStartsOver`) while this one was still at work, sending its
+   * mail say, ended the account's sessions before this one's existed, and the route ends this one when
+   * the answer is no. So two sign-ups for one address at the same moment end as two in a row. The
+   * password is judged as the log-in judges it (`checkPassword`); that judgment takes a while, so the
+   * row is read once more after it, and a start-over that lands meanwhile is seen too. Not
+   * RPC-reachable (absent from the SignupService interface, as `createUser` is).
+   */
+  async standsAsSignedUp(email: string, password: string): Promise<boolean> {
+    const { user, matches } = await checkPassword(email, password);
+    if (!user || !matches) {
+      return false;
+    }
+
+    return (await this.accountAt(email))?.password === user.password;
   }
 
   /**

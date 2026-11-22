@@ -119,11 +119,31 @@ export const signup: Route = {
 
     if (result.outcome === 'created' || result.outcome === 'startedOver') {
       await establishSession(request, result.email);
+      // TWO SIGN-UPS FOR ONE ADDRESS AT THE SAME MOMENT END AS TWO IN A ROW. A sign-up that started this
+      // account over while this one was still at work (its mail takes a while) ended the account's
+      // sessions before this one's was made, so this one ends here. Asked only now, with the session
+      // saved: either this read sees that sign-up's write, or that sign-up's ending of the account's
+      // sessions sees this session. The caller is answered as ever.
+      if (!(await new Signup().standsAsSignedUp(result.email, body.password))) {
+        await endSession(request);
+        logger.info({
+          message: 'Signup: the account was started over by a later sign-up, so this one keeps no session',
+          obj: { account: digests.account(result.email) },
+        });
+      }
     }
 
     response.send({});
   },
 };
+
+/**
+ * Ends the session this request just made, the way the log-out route ends one: passport's own
+ * `request.logout` clears the account from the session and regenerates its id, and the regenerate
+ * removes the session's row through the store (routes/logout).
+ */
+const endSession = async (request: any): Promise<void> =>
+  await new Promise<void>((resolve, reject) => request.logout((error: unknown) => (error ? reject(error) : resolve())));
 
 /** The facts the guard judges — the address lowercased, the form's two optional fields as sent, the device as a digest. */
 const signupFacts = (request: any, body: SignupSubmission, email: string): SignupGuardFacts => ({

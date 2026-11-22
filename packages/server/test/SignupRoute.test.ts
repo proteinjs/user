@@ -41,6 +41,7 @@ import { MachineAccount, tables, uiRoutes, UserRepo } from '@proteinjs/user';
 import { authenticate } from '../src/authentication/authenticate';
 import { BlankCredentials } from '../src/authentication/BlankCredentials';
 import { EmailVerificationToken } from '../src/authentication/EmailVerificationToken';
+import { PasswordHasher } from '../src/authentication/PasswordHasher';
 import { signup } from '../src/routes/signup';
 import { EMAIL_VERIFICATION_RESEND_GAP_MINUTES, Signup } from '../src/services/Signup';
 import { UserPresence } from '../src/services/UserPresence';
@@ -522,6 +523,63 @@ describe('signup route — auto-login after signup', () => {
       // notice an existing account's owner gets.
       expect(sendEmail).toHaveBeenCalledTimes(1);
       expect(sendEmail.mock.calls[0][0].subject).toBe(CONFIRMATION_MAIL.subject);
+    });
+
+    it('a second sign-up for one address that lands while the first is still at work ends as two in a row: the second is signed in, the password is the second one, and the first ends signed out', async () => {
+      const endsAsTwoInARow = async (address: string, first: RouteOutcome, second: RouteOutcome) => {
+        // Each is answered as a sign-up is. The second started the account over, so the account is its own.
+        expect(first.body).toEqual({});
+        expect(second.body).toEqual({});
+        expect(second.loggedInAs).toBe(address);
+        expect(await userRowCount(address)).toBe(1);
+        expect(await authenticate(address, 'pw-second-2')).toBe(true);
+        expect(await authenticate(address, 'pw-first-1')).not.toBe(true);
+        // In a row, the second would have ended the first's session: the first's request leaves none.
+        expect(first.loggedInAs).toBeUndefined();
+      };
+
+      // The first sign-up's mail is slow: the second sign-up runs whole inside it.
+      let sendTheFirstMail!: () => void;
+      const theFirstIsAtItsMail = new Promise<void>((arrived) => {
+        sendEmail.mockImplementationOnce(() => {
+          arrived();
+          return new Promise<void>((sent) => (sendTheFirstMail = sent));
+        });
+      });
+      let first = invokeSignup({ email: 'during.the.mail@test.local', password: 'pw-first-1' });
+      await theFirstIsAtItsMail;
+      let second = await invokeSignup({ email: 'During.The.Mail@Test.local', password: 'pw-second-2' });
+      sendTheFirstMail();
+
+      await endsAsTwoInARow('during.the.mail@test.local', await first, second);
+      // One mail, the first's: the second's link is inside the gap, so the one in the mailbox stands.
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+
+      // Later still: the first's session is made and its password is being judged when the second runs whole.
+      const judge = PasswordHasher.prototype.verify;
+      let finishTheJudgment!: () => void;
+      let judgment!: jest.SpyInstance;
+      const theFirstIsBeingJudged = new Promise<void>((arrived) => {
+        judgment = jest.spyOn(PasswordHasher.prototype, 'verify').mockImplementationOnce(async function (
+          this: PasswordHasher,
+          storedHash: string | null | undefined,
+          password: string
+        ) {
+          arrived();
+          await new Promise<void>((judged) => (finishTheJudgment = judged));
+          return await judge.call(this, storedHash, password);
+        });
+      });
+      try {
+        first = invokeSignup({ email: 'during.the.judgment@test.local', password: 'pw-first-1' });
+        await theFirstIsBeingJudged;
+        second = await invokeSignup({ email: 'during.the.judgment@test.local', password: 'pw-second-2' });
+        finishTheJudgment();
+
+        await endsAsTwoInARow('during.the.judgment@test.local', await first, second);
+      } finally {
+        judgment.mockRestore();
+      }
     });
 
     it("a confirmed account's address is answered as before, and so is a deactivated account's", async () => {
