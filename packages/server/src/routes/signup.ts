@@ -1,7 +1,8 @@
 import { Route } from '@proteinjs/server-api';
 import { Logger } from '@proteinjs/logger';
+import { emailRegex } from '@proteinjs/util';
 import { RequestDigests } from '@proteinjs/util-node';
-import { UserAuth, UserSignup, routes } from '@proteinjs/user';
+import { NOT_AN_EMAIL_ADDRESS_SENTENCE, UserAuth, UserSignup, routes } from '@proteinjs/user';
 import { BlankCredentials } from '../authentication/BlankCredentials';
 import { JsonBody } from '../authentication/JsonBody';
 import { PasswordSession } from '../authentication/PasswordSession';
@@ -46,9 +47,11 @@ type SignupSubmission = Partial<UserSignup> & {
  *
  * Without an invite the email and the password are asked (the name is not: the account is made with
  * an empty name, which the person may set later), and a blank one is answered with the log-in
- * route's own sentence (`BlankCredentials`); with an invite the name and the password are asked, as
- * the invite form sends them. A request that is already signed in and carries no invite makes no
- * account and keeps its session: it is answered as a success, so the page lands on Home.
+ * route's own sentence (`BlankCredentials`); the email must be an email address, by the same rule and
+ * with the same sentence as the sign-up form's own check (`NOT_AN_EMAIL_ADDRESS_SENTENCE`). With an
+ * invite the name and the password are asked, as the invite form sends them, and the address is the
+ * invite's. A request that is already signed in and carries no invite makes no account and keeps its
+ * session: it is answered as a success, so the page lands on Home.
  *
  * The session is made on the password this sign-up stored (`PasswordSession`): where the account no
  * longer holds that password once the session is saved (a later sign-up for the address started the
@@ -85,6 +88,9 @@ export const signup: Route = {
       }
     } else if (!email || !body.password) {
       response.send({ error: BlankCredentials.REFUSAL });
+      return;
+    } else if (!emailRegex.test(email)) {
+      response.send({ error: NOT_AN_EMAIL_ADDRESS_SENTENCE });
       return;
     }
 

@@ -27,3 +27,9 @@ export type SignInPageFactsCopy = {
  * refusal and the closed sign-up panel's words when no product registered its own. One home, read by both.
  */
 export const SIGNUP_CLOSED_SENTENCE = 'An invite is required to sign up.';
+
+/**
+ * The sentence a person reads when what they typed as their email is not an email address: the sign-up
+ * form's own check and the server's refusal of the same sign-up. One home, read by both.
+ */
+export const NOT_AN_EMAIL_ADDRESS_SENTENCE = 'Enter a valid email address';

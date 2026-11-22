@@ -1,3 +1,4 @@
+import { NOT_AN_EMAIL_ADDRESS_SENTENCE } from '@proteinjs/user';
 import { emailRegex } from '@proteinjs/util';
 
 /** A user-readable message per invalid field, keyed by the field's form name. */
@@ -48,7 +49,7 @@ export class AuthValidation {
       if (!fields.email.trim()) {
         errors.email = 'Enter your email';
       } else if (!emailRegex.test(fields.email.trim())) {
-        errors.email = 'Enter a valid email address';
+        errors.email = NOT_AN_EMAIL_ADDRESS_SENTENCE;
       }
     }
 

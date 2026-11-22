@@ -450,5 +450,20 @@ describe('email verification after sign-up', () => {
       await requestFrom(undefined);
       expect(await factsWritten()).toEqual({ signupOpen: true });
     });
+
+    it('a fact that holds a less-than sign is written as its escape: the script carries no less-than sign, and the page reads the same fact back', async () => {
+      const address = 'a</script><b>@test.local';
+      await getDbAsSystem().insert(tables.User, {
+        name: '',
+        email: address,
+        password: 'test',
+        emailVerified: false,
+        roles: [],
+      });
+      await requestFrom(address);
+
+      expect(await new SignInPageFactsScript().script()).not.toContain('<');
+      expect(await factsWritten()).toEqual({ signupOpen: true, awaitingEmailConfirmation: { sentTo: address } });
+    });
   });
 });

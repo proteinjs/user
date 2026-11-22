@@ -13,6 +13,9 @@ import { getDefaultInviteConfigFactory } from '../services/Signup';
  * that it waits and where the link was sent. The script runs inside the request, so the session is the
  * request's own; the account's row is read only for a session that carries an address and answered as
  * nobody, so a signed-in person's page costs no read.
+ *
+ * The facts are written as JSON that is also safe inside the page's script element: every less-than sign
+ * is written as its escape, so whatever a fact holds is read by the browser as a value and never as markup.
  */
 export class SignInPageFactsScript implements ServerRenderedScript {
   async script(): Promise<string> {
@@ -21,6 +24,6 @@ export class SignInPageFactsScript implements ServerRenderedScript {
     if (waiting) {
       facts.awaitingEmailConfirmation = { sentTo: waiting.email };
     }
-    return `proteinjs[${JSON.stringify(SIGN_IN_PAGE_FACTS_SCRIPT_KEY)}] = ${JSON.stringify(facts)};`;
+    return `proteinjs[${JSON.stringify(SIGN_IN_PAGE_FACTS_SCRIPT_KEY)}] = ${JSON.stringify(facts).replace(/</g, '\\u003c')};`;
   }
 }

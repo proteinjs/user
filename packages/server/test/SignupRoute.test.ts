@@ -37,7 +37,7 @@ import { getDbAsSystem, Reference } from '@proteinjs/db';
 import { Method, SourceRepository } from '@proteinjs/reflection';
 import { Session } from '@proteinjs/server-api';
 import { ServiceAuth } from '@proteinjs/service/dist/src/ServiceAuth';
-import { MachineAccount, tables, uiRoutes, UserRepo } from '@proteinjs/user';
+import { MachineAccount, NOT_AN_EMAIL_ADDRESS_SENTENCE, tables, uiRoutes, UserRepo } from '@proteinjs/user';
 import { authenticate } from '../src/authentication/authenticate';
 import { BlankCredentials } from '../src/authentication/BlankCredentials';
 import { EmailVerificationToken } from '../src/authentication/EmailVerificationToken';
@@ -431,6 +431,33 @@ describe('signup route — auto-login after signup', () => {
     expect(asJson.status).toBeUndefined();
     expect(asJson.body).toEqual({});
     expect(asJson.loggedInAs).toBe('not.sent.as.json@test.local');
+  });
+
+  it("without an invite an email that is not an email address is refused with the sign-up form's own sentence before anything is written; an invited sign-up's address is its invite's", async () => {
+    for (const email of ['not an address', 'no-domain@', 'a@b', 'a<b>@test.local', 'a@test.local</script>']) {
+      const outcome = await invokeSignup({ email, password: 'pw-shape-1' });
+
+      expect(outcome.body).toEqual({ error: NOT_AN_EMAIL_ADDRESS_SENTENCE });
+      expect(outcome.loggedInAs).toBeUndefined();
+      expect(outcome.sessionEvents).toEqual([]);
+    }
+    expect(await getDbAsSystem().query(tables.User, {})).toHaveLength(0);
+    expect(sendEmail).not.toHaveBeenCalled();
+
+    await getDbAsSystem().insert(tables.Invite, {
+      email: 'shape.invited@test.local',
+      token: 'invite-token-shape',
+      tokenExpiresAt: moment().add(1, 'day'),
+      invitedBy: new Reference(tables.User.name, 'inviter-1'),
+    });
+    const invited = await invokeSignup({
+      name: 'Invited',
+      email: 'not an address',
+      password: 'pw-shape-2',
+      token: 'invite-token-shape',
+    });
+    expect(invited.body).toEqual({});
+    expect(invited.loggedInAs).toBe('shape.invited@test.local');
   });
 
   describe('where the product asks for the email confirmation', () => {
