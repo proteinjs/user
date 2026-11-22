@@ -106,8 +106,11 @@ type RouteOutcome = {
   body?: { error?: string };
 };
 
-const invokeSignup = async (body: Record<string, unknown>): Promise<RouteOutcome> => {
-  const { request, events } = await createPassportRequest({ body });
+const invokeSignup = async (
+  body: Record<string, unknown>,
+  headers: Record<string, string | undefined> = {}
+): Promise<RouteOutcome> => {
+  const { request, events } = await createPassportRequest({ body, headers });
   const outcome: RouteOutcome = { sessionEvents: events };
   const response = {
     status(code: number) {
@@ -408,6 +411,26 @@ describe('signup route — auto-login after signup', () => {
     expect(invited.body).toEqual({});
     expect(invited.loggedInAs).toBe('rule.invited@test.local');
     expect(askedAbout).toEqual(['someone@mailinator.com']);
+  });
+
+  it('a sign-up whose body was not sent as JSON is answered 415 and nothing of it is read: no account, no session, no mail; sent as JSON, it is carried out', async () => {
+    const submission = { email: 'not.sent.as.json@test.local', password: 'pw-not-json-1' };
+    for (const contentType of ['application/x-www-form-urlencoded', 'text/plain', undefined]) {
+      const outcome = await invokeSignup(submission, { 'content-type': contentType });
+
+      expect(outcome.status).toBe(415);
+      expect(typeof outcome.body?.error).toBe('string');
+      expect(outcome.loggedInAs).toBeUndefined();
+      expect(outcome.sessionEvents).toEqual([]);
+    }
+    expect(await userRowCount('not.sent.as.json@test.local')).toBe(0);
+    expect(sendEmail).not.toHaveBeenCalled();
+
+    // As a browser sends JSON, its character set named after the type.
+    const asJson = await invokeSignup(submission, { 'content-type': 'application/json; charset=utf-8' });
+    expect(asJson.status).toBeUndefined();
+    expect(asJson.body).toEqual({});
+    expect(asJson.loggedInAs).toBe('not.sent.as.json@test.local');
   });
 
   describe('where the product asks for the email confirmation', () => {

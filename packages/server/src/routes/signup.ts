@@ -3,6 +3,7 @@ import { Logger } from '@proteinjs/logger';
 import { RequestDigests } from '@proteinjs/util-node';
 import { UserAuth, UserSignup, routes } from '@proteinjs/user';
 import { BlankCredentials } from '../authentication/BlankCredentials';
+import { JsonBody } from '../authentication/JsonBody';
 import { PasswordSession } from '../authentication/PasswordSession';
 import { DisposableEmailDomains } from '../services/DisposableEmailDomains';
 import { Signup } from '../services/Signup';
@@ -41,6 +42,8 @@ type SignupSubmission = Partial<UserSignup> & {
  * confirmation, an address held by an account that still waits is no such case: the sign-up starts
  * that account over (`Signup.createAccount`) and its session is made as for a new account.
  *
+ * The body is read as JSON and as nothing else (`JsonBody`), which is how the sign-up page sends it.
+ *
  * Without an invite the email and the password are asked (the name is not: the account is made with
  * an empty name, which the person may set later), and a blank one is answered with the log-in
  * route's own sentence (`BlankCredentials`); with an invite the name and the password are asked, as
@@ -63,6 +66,16 @@ export const signup: Route = {
   path: routes.signup.path,
   method: routes.signup.method,
   onRequest: async (request: any, response): Promise<void> => {
+    const digests = new RequestDigests();
+    if (!JsonBody.sentBy(request)) {
+      logger.info({
+        message: 'Signup refused',
+        obj: { device: digests.coarseIp(new ClientAddress().of(request)), reason: JsonBody.REFUSAL },
+      });
+      response.status(JsonBody.REFUSAL_STATUS).send({ error: SIGN_UP_FAILED });
+      return;
+    }
+
     const body: SignupSubmission = request.body ?? {};
     const email = typeof body.email === 'string' ? body.email.trim() : undefined;
     if (body.token) {
@@ -75,7 +88,6 @@ export const signup: Route = {
       return;
     }
 
-    const digests = new RequestDigests();
     if (!body.token && email) {
       if (UserAuth.isLoggedIn()) {
         response.send({});
@@ -136,6 +148,9 @@ export const signup: Route = {
   },
 };
 
+/** The one sentence a sign-up reads when it could not be carried out and the reason is not a person's to mend. */
+const SIGN_UP_FAILED = 'Sign up failed.';
+
 /** The facts the guard judges — the address lowercased, the form's two optional fields as sent, the device as a digest. */
 const signupFacts = (request: any, body: SignupSubmission, email: string): SignupGuardFacts => ({
   email: email.toLowerCase(),
@@ -153,5 +168,5 @@ const signupFacts = (request: any, body: SignupSubmission, email: string): Signu
  */
 const answerFailure = (response: any, digests: RequestDigests, error: unknown): void => {
   logger.error({ message: 'Signup failed', error: digests.redactError(error) });
-  response.send({ error: error instanceof Error ? error.message : 'Sign up failed.' });
+  response.send({ error: error instanceof Error ? error.message : SIGN_UP_FAILED });
 };

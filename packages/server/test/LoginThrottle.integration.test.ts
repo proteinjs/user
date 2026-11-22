@@ -26,7 +26,8 @@ const testEnv = new UserServerTestEnvironment();
  *   one address however it was typed — and never the address;
  * - tries in flight at the same moment cannot all pass the account's window together;
  * - a refusal for an account still in the legacy password format takes as long as any other;
- * - a field that is not text is a blank one: the door answers, it never throws.
+ * - a field that is not text is a blank one: the door answers, it never throws;
+ * - a body that was not sent as JSON is answered 415 and nothing of it is read.
  */
 
 const WRONG = 'User name or password incorrect';
@@ -336,5 +337,39 @@ describe('login route throttle', () => {
 
     expect(sent).toEqual({ error: BLANK });
     expect(request.session.passport?.user).toBeUndefined();
+  });
+
+  it('a log-in whose body was not sent as JSON is answered 415 and nothing of it is read: the right password binds no session; sent as JSON, it signs in', async () => {
+    await createAccount('throttle-not-json@test.local');
+    for (const contentType of ['application/x-www-form-urlencoded', 'text/plain', undefined]) {
+      let sent: any;
+      let status: number | undefined;
+      const response: any = {
+        send: (body: any) => {
+          sent = body;
+        },
+        status: (code: number) => {
+          status = code;
+          return response;
+        },
+      };
+      const { request, events } = await createPassportRequest({
+        body: { email: 'throttle-not-json@test.local', password: RIGHT_PASSWORD },
+        headers: { 'content-type': contentType },
+        socket: { remoteAddress: '198.51.106.1' },
+        app: { get: () => false },
+      });
+
+      await login.onRequest(request, response);
+
+      expect(status).toBe(415);
+      expect(typeof sent.error).toBe('string');
+      expect(request.session.passport?.user).toBeUndefined();
+      expect(events).toEqual([]);
+    }
+
+    const asJson = await attempt('198.51.106.1', 'throttle-not-json@test.local', RIGHT_PASSWORD);
+    expect(asJson.sent).toEqual({});
+    expect(asJson.signedInAs).toBe('throttle-not-json@test.local');
   });
 });

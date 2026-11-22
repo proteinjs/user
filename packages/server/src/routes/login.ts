@@ -4,6 +4,7 @@ import { Logger } from '@proteinjs/logger';
 import { checkPassword, INCORRECT_CREDENTIALS, judgeCredentials } from '../authentication/authenticate';
 import { BlankCredentials } from '../authentication/BlankCredentials';
 import { establishSession } from '../authentication/establishSession';
+import { JsonBody } from '../authentication/JsonBody';
 import { PasswordSession } from '../authentication/PasswordSession';
 import { AccountDeletion } from '../services/AccountDeletion';
 import { ClientAddress } from '../throttle/ClientAddress';
@@ -18,6 +19,8 @@ import { SignInThrottle, signInThrottle } from '../throttle/SignInThrottle';
  * its own "Sign-in throttled" line, carrying the account digest and the coarse IP hash
  * (`RequestDigests`) — never the address.
  *
+ * The body is read as JSON and as nothing else (`JsonBody`), which is how the sign-in page sends it.
+ *
  * The session is made on the password this log-in judged (`PasswordSession`): where the account no
  * longer holds that password once the session is saved, the session is ended and the log-in is answered
  * as one whose password is not the account's.
@@ -27,12 +30,18 @@ export const login: Route = {
   method: routes.login.method,
   onRequest: async (request: any, response): Promise<void> => {
     const logger = new Logger({ name: 'login' });
+    const digests = new RequestDigests();
+    const ip = digests.coarseIp(new ClientAddress().of(request));
+    if (!JsonBody.sentBy(request)) {
+      logger.info({ message: 'Sign-in refused', obj: { ip, reason: JsonBody.REFUSAL } });
+      response.status(JsonBody.REFUSAL_STATUS).send({ error: UNABLE_TO_LOG_IN });
+      return;
+    }
+
     const credentials = request.body ?? {};
     // A field that is not text is a blank one — never something to call methods on.
     const email: string = typeof credentials.email === 'string' ? credentials.email : '';
     const password: string = typeof credentials.password === 'string' ? credentials.password : '';
-    const digests = new RequestDigests();
-    const ip = digests.coarseIp(new ClientAddress().of(request));
     const account = email ? digests.account(email) : undefined;
     const fields = account ? { account, ip } : { ip };
 
@@ -72,7 +81,7 @@ export const login: Route = {
       // 2026-08-18 after a watcher error surfaced verbatim in the login form). The real
       // error stays loud in the server log.
       console.error('cancelPendingDeletion failed during login', error);
-      response.send({ error: 'Unable to log in right now. Please try again.' });
+      response.send({ error: UNABLE_TO_LOG_IN });
       return;
     }
     if (outcome === 'purging') {
@@ -93,3 +102,6 @@ export const login: Route = {
     response.send({});
   },
 };
+
+/** The one sentence a log-in reads when it could not be carried out and the reason is not the person's to know. */
+const UNABLE_TO_LOG_IN = 'Unable to log in right now. Please try again.';

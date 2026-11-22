@@ -30,6 +30,10 @@ export type PassportRequest = {
  * 'save'. The session mock replicates the one express-session behavior passport depends on:
  * `regenerate` REPLACES `request.session` with a fresh session (new id, no passport state), so
  * the bind provably lands on the post-regeneration session.
+ *
+ * The request says its body is JSON, as every client of the log-in and sign-up routes sends it
+ * (user-ui AuthApi); those routes read no other kind (`JsonBody`). A case that sends another kind
+ * passes its own `content-type` among `extra.headers`.
  */
 export const createPassportRequest = async (extra: Record<string, unknown> = {}): Promise<PassportRequest> => {
   const events: SessionEvent[] = [];
@@ -39,7 +43,10 @@ export const createPassportRequest = async (extra: Record<string, unknown> = {})
     done(null, user);
   });
 
-  const request: any = { ...extra };
+  const request: any = {
+    ...extra,
+    headers: { 'content-type': 'application/json', ...(extra.headers as Record<string, unknown> | undefined) },
+  };
   const makeSession = (): any => ({
     regenerate: (done: (err?: unknown) => void) => {
       events.push('regenerate');
