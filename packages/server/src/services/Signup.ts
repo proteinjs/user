@@ -29,7 +29,6 @@ import {
   SignupConfirmationEmailContext,
 } from '@proteinjs/email-server';
 import { Loadable, SourceRepository } from '@proteinjs/reflection';
-import { checkPassword } from '../authentication/authenticate';
 import { EmailVerificationToken } from '../authentication/EmailVerificationToken';
 import { PasswordHasher } from '../authentication/PasswordHasher';
 import { getDefaultEmailConfirmationLinkEmailConfigFactory } from '../emails/EmailConfirmationLinkEmailConfig';
@@ -91,13 +90,26 @@ export const getDefaultInviteConfigFactory = (): DefaultInviteConfigFactory => {
  * hand out a session for an account the caller didn't just create. The response body stays
  * identical either way (existence is reported to the mailbox owner by email, not the caller).
  * 'startedOver' is a waiting account this sign-up took over (`createAccount`): the route
- * establishes the caller's session as for an account just made.
+ * establishes the caller's session as for an account just made. With either of those two, `stored` is
+ * the password as the account's row holds it once this sign-up wrote it: what the session the route
+ * makes is held to (`PasswordSession`).
  */
 export type CreateUserResult = {
-  outcome: 'created' | 'exists' | 'startedOver';
   /** The account email, lowercased — resolved from the invite when a token was provided. */
   email: string;
+} & AccountWrite;
+
+/** What an account is made from (`Signup.createAccount`): the password as typed, hashed there. */
+type NewAccount = {
+  name: string;
+  email: string;
+  password: string;
+  emailVerified: boolean;
+  invitedBy: User['invitedBy'];
 };
+
+/** What writing an account answers: `stored` is the password as the row holds it once this write made or replaced it. */
+type AccountWrite = { outcome: 'exists' } | { outcome: 'created' | 'startedOver'; stored: string };
 
 export class Signup implements SignupService {
   public serviceMetadata = {
@@ -158,14 +170,14 @@ export class Signup implements SignupService {
     const config = this.signupConfirmationEmailConfig();
     const emailSender = new EmailSender();
 
-    const creation = await this.createAccount({
+    const creation = await this.writeAccount({
       name: user.name ?? '',
       email,
       password: user.password,
       emailVerified: invite ? true : false, // because we retrieved the email from the invite record
       invitedBy: invite ? invite.invitedBy : null,
     });
-    if (creation === 'exists') {
+    if (creation.outcome === 'exists') {
       logger.error({
         message: `User with this email already exists`,
         obj: { account: new RequestDigests().account(email) },
@@ -190,10 +202,10 @@ export class Signup implements SignupService {
       // that cannot be sent does not fail the sign-up: the account exists, and its screen re-sends.
       await this.mailVerificationLink(await db.get(tables.User, { email }));
       logger.info({
-        message: creation === 'startedOver' ? `Started a waiting account over` : `Created user`,
+        message: creation.outcome === 'startedOver' ? `Started a waiting account over` : `Created user`,
         obj: { account: new RequestDigests().account(email) },
       });
-      return { outcome: creation, email };
+      return { ...creation, email };
     }
 
     // An invited address was proved by the invite mail; a plain sign-up's welcome carries the
@@ -216,7 +228,7 @@ export class Signup implements SignupService {
       }
     }
     logger.info({ message: `Created user`, obj: { account: new RequestDigests().account(email) } });
-    return { outcome: 'created', email };
+    return { ...creation, email };
   }
 
   /**
@@ -231,25 +243,6 @@ export class Signup implements SignupService {
     const factory = getDefaultInviteConfigFactory();
     const config = factory.getConfigFor ? await factory.getConfigFor(email) : factory.getConfig();
     return config.isInviteOnly ? config.inviteRequiredSentence ?? SIGNUP_CLOSED_SENTENCE : undefined;
-  }
-
-  /**
-   * Whether the account at `email` (lowercased) still stands as the sign-up that carried `password` left
-   * it. Asked by the sign-up route once that sign-up's session is made: a sign-up for the same address
-   * that started the account over (`existsOrStartsOver`) while this one was still at work, sending its
-   * mail say, ended the account's sessions before this one's existed, and the route ends this one when
-   * the answer is no. So two sign-ups for one address at the same moment end as two in a row. The
-   * password is judged as the log-in judges it (`checkPassword`); that judgment takes a while, so the
-   * row is read once more after it, and a start-over that lands meanwhile is seen too. Not
-   * RPC-reachable (absent from the SignupService interface, as `createUser` is).
-   */
-  async standsAsSignedUp(email: string, password: string): Promise<boolean> {
-    const { user, matches } = await checkPassword(email, password);
-    if (!user || !matches) {
-      return false;
-    }
-
-    return (await this.accountAt(email))?.password === user.password;
   }
 
   /**
@@ -490,13 +483,12 @@ export class Signup implements SignupService {
    * 'startedOver' is the mandatory email confirmation's answer for an address held by an account
    * that still waits (`existsOrStartsOver`): the account is now this caller's, as if just made.
    */
-  async createAccount(account: {
-    name: string;
-    email: string;
-    password: string;
-    emailVerified: boolean;
-    invitedBy: User['invitedBy'];
-  }): Promise<'created' | 'exists' | 'startedOver'> {
+  async createAccount(account: NewAccount): Promise<'created' | 'exists' | 'startedOver'> {
+    return (await this.writeAccount(account)).outcome;
+  }
+
+  /** `createAccount`, answering also the password as the row holds it once this write made or replaced it. */
+  private async writeAccount(account: NewAccount): Promise<AccountWrite> {
     const email = account.email.toLowerCase();
     if (getMachineAccounts().some((machineAccount) => machineAccount.email === email)) {
       throw new Error(`This address can't be registered.`);
@@ -524,7 +516,7 @@ export class Signup implements SignupService {
       }
       throw error;
     }
-    return 'created';
+    return { outcome: 'created', stored: password };
   }
 
   /** The account that holds `email` (already lowercased), if any — the one existence read `createAccount` makes. */
@@ -545,19 +537,16 @@ export class Signup implements SignupService {
   private async existsOrStartsOver(
     held: User,
     account: { name: string; password: string; emailVerified: boolean }
-  ): Promise<'exists' | 'startedOver'> {
+  ): Promise<AccountWrite> {
     if (account.emailVerified || held.status === 'deactivated' || !new EmailConfirmation().holdsBack(held)) {
-      return 'exists';
+      return { outcome: 'exists' };
     }
 
     const db = getDbAsSystem();
-    await db.update(tables.User, {
-      id: held.id,
-      name: account.name,
-      password: await new PasswordHasher().hash(account.password),
-    });
+    const password = await new PasswordHasher().hash(account.password);
+    await db.update(tables.User, { id: held.id, name: account.name, password });
     await db.delete(tables.Session, { userEmail: held.email });
-    return 'startedOver';
+    return { outcome: 'startedOver', stored: password };
   }
 
   /** Resolves an invite token, distinguishing "expired" from "never existed / already revoked". */

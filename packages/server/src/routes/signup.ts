@@ -3,7 +3,7 @@ import { Logger } from '@proteinjs/logger';
 import { RequestDigests } from '@proteinjs/util-node';
 import { UserAuth, UserSignup, routes } from '@proteinjs/user';
 import { BlankCredentials } from '../authentication/BlankCredentials';
-import { establishSession } from '../authentication/establishSession';
+import { PasswordSession } from '../authentication/PasswordSession';
 import { DisposableEmailDomains } from '../services/DisposableEmailDomains';
 import { Signup } from '../services/Signup';
 import { getDefaultSignupGuard, SignupGuardFacts } from '../services/SignupGuard';
@@ -46,6 +46,11 @@ type SignupSubmission = Partial<UserSignup> & {
  * route's own sentence (`BlankCredentials`); with an invite the name and the password are asked, as
  * the invite form sends them. A request that is already signed in and carries no invite makes no
  * account and keeps its session: it is answered as a success, so the page lands on Home.
+ *
+ * The session is made on the password this sign-up stored (`PasswordSession`): where the account no
+ * longer holds that password once the session is saved (a later sign-up for the address started the
+ * account over while this one was still at work), the session is ended, so two sign-ups for one
+ * address at the same moment end as two in a row. The caller is answered as ever.
  *
  * The NO-INVITE road passes three doors before any write, in this order: the product's invite rule
  * asked about the address (`Signup.inviteRequiredOf`, refused with the rule's own sentence), the
@@ -118,14 +123,8 @@ export const signup: Route = {
     }
 
     if (result.outcome === 'created' || result.outcome === 'startedOver') {
-      await establishSession(request, result.email);
-      // TWO SIGN-UPS FOR ONE ADDRESS AT THE SAME MOMENT END AS TWO IN A ROW. A sign-up that started this
-      // account over while this one was still at work (its mail takes a while) ended the account's
-      // sessions before this one's was made, so this one ends here. Asked only now, with the session
-      // saved: either this read sees that sign-up's write, or that sign-up's ending of the account's
-      // sessions sees this session. The caller is answered as ever.
-      if (!(await new Signup().standsAsSignedUp(result.email, body.password))) {
-        await endSession(request);
+      const session = new PasswordSession(result.email, { stored: result.stored, typed: body.password });
+      if (!(await session.establish(request))) {
         logger.info({
           message: 'Signup: the account was started over by a later sign-up, so this one keeps no session',
           obj: { account: digests.account(result.email) },
@@ -136,14 +135,6 @@ export const signup: Route = {
     response.send({});
   },
 };
-
-/**
- * Ends the session this request just made, the way the log-out route ends one: passport's own
- * `request.logout` clears the account from the session and regenerates its id, and the regenerate
- * removes the session's row through the store (routes/logout).
- */
-const endSession = async (request: any): Promise<void> =>
-  await new Promise<void>((resolve, reject) => request.logout((error: unknown) => (error ? reject(error) : resolve())));
 
 /** The facts the guard judges — the address lowercased, the form's two optional fields as sent, the device as a digest. */
 const signupFacts = (request: any, body: SignupSubmission, email: string): SignupGuardFacts => ({

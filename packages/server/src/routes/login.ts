@@ -1,9 +1,10 @@
 import { Route } from '@proteinjs/server-api';
 import { routes } from '@proteinjs/user';
 import { Logger } from '@proteinjs/logger';
-import { authenticate, checkPassword } from '../authentication/authenticate';
+import { checkPassword, INCORRECT_CREDENTIALS, judgeCredentials } from '../authentication/authenticate';
 import { BlankCredentials } from '../authentication/BlankCredentials';
 import { establishSession } from '../authentication/establishSession';
+import { PasswordSession } from '../authentication/PasswordSession';
 import { AccountDeletion } from '../services/AccountDeletion';
 import { ClientAddress } from '../throttle/ClientAddress';
 import { RequestDigests } from '../throttle/RequestDigests';
@@ -16,6 +17,10 @@ import { SignInThrottle, signInThrottle } from '../throttle/SignInThrottle';
  * words nor the timing tell. Every refusal is a "Sign-in refused" line and every throttled try
  * its own "Sign-in throttled" line, carrying the account digest and the coarse IP hash
  * (`RequestDigests`) — never the address.
+ *
+ * The session is made on the password this log-in judged (`PasswordSession`): where the account no
+ * longer holds that password once the session is saved, the session is ended and the log-in is answered
+ * as one whose password is not the account's.
  */
 export const login: Route = {
   path: routes.login.path,
@@ -47,10 +52,10 @@ export const login: Route = {
       return;
     }
 
-    const result = await authenticate(email, password);
-    if (result !== true) {
-      logger.info({ message: 'Sign-in refused', obj: { ...fields, reason: result } });
-      response.send({ error: result });
+    const judgment = await judgeCredentials(email, password);
+    if (judgment.refusal !== undefined) {
+      logger.info({ message: 'Sign-in refused', obj: { ...fields, reason: judgment.refusal } });
+      response.send({ error: judgment.refusal });
       return;
     }
     await signInThrottle.recordSuccess(account, ip);
@@ -77,7 +82,14 @@ export const login: Route = {
       return;
     }
 
-    await establishSession(request, email);
+    // The default admin has no account row, so no password a row could stop holding: its session is made as it is.
+    if (judgment.stored === undefined) {
+      await establishSession(request, email);
+    } else if (!(await new PasswordSession(email, { stored: judgment.stored, typed: password }).establish(request))) {
+      logger.info({ message: 'Sign-in refused', obj: { ...fields, reason: INCORRECT_CREDENTIALS } });
+      response.send({ error: INCORRECT_CREDENTIALS });
+      return;
+    }
     response.send({});
   },
 };

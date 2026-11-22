@@ -11,6 +11,12 @@ export class DbSessionStore extends Store {
   private static readonly TOUCH_INTERVAL = 1000 * 60 * 5;
   private logger = new Logger({ name: this.constructor.name });
   private lastTouchMs = new Map<string, number>();
+  /**
+   * The sessions that have a row behind them: each one loaded from its row (`createSession`), and each one
+   * whose row this store has written or found (`insertOrUpdate`). Held by the session object itself, which
+   * lives as long as its request does.
+   */
+  private rowBehind = new WeakSet<object>();
 
   constructor() {
     super();
@@ -94,6 +100,20 @@ export class DbSessionStore extends Store {
   }
 
   /**
+   * Called by express-session with what `get` answered, to make the request's session of it: a session
+   * that has a row behind it.
+   */
+  createSession = (request: any, session: Express.SessionData) => {
+    const loaded: object = (Store.prototype.createSession as (...args: unknown[]) => object).call(
+      this,
+      request,
+      session
+    );
+    this.rowBehind.add(loaded);
+    return loaded;
+  };
+
+  /**
    * Called by express-session whenever a session id is retired — most notably from
    * `session.regenerate` inside passport's login (fixation rotation) and logout (see logout.ts):
    * the old id's row is deleted, which also disconnects its sockets (SocketIOSessionWatcher).
@@ -111,6 +131,15 @@ export class DbSessionStore extends Store {
     });
   };
 
+  /**
+   * A SESSION'S ROW IS WRITTEN ONCE: by the first save of a session that has no row behind it, which is
+   * the save passport makes of the session a log-in has just made (`establishSession`). A session that
+   * was loaded from its row, or whose row this store has written, is only ever updated. So a session
+   * that is ended while one of its requests is at work (its row deleted: a log-out in another tab,
+   * whatever ends an account's sessions) stays ended: that request's own save or touch at its end
+   * updates nothing and writes no row. A first write that fails leaves the session as it was, so its
+   * next save tries again.
+   */
   private async insertOrUpdate(
     sessionId: string,
     session: Express.SessionData,
@@ -127,6 +156,7 @@ export class DbSessionStore extends Store {
 
     const sessionRecord = await getDbAsSystem().get(tables.Session, { sessionId });
     if (sessionRecord) {
+      this.rowBehind.add(session);
       try {
         sessionRecord.session = JSON.stringify(session);
         sessionRecord.expires = <Date>session.cookie.expires;
@@ -135,7 +165,7 @@ export class DbSessionStore extends Store {
       } catch (error: any) {
         this.logger.error({ message: 'Failed to update session', error });
       }
-    } else {
+    } else if (!this.rowBehind.has(session)) {
       try {
         await getDbAsSystem().insert(tables.Session, {
           sessionId,
@@ -143,6 +173,7 @@ export class DbSessionStore extends Store {
           expires: <Date>session.cookie.expires,
           userEmail: session.passport?.user,
         });
+        this.rowBehind.add(session);
       } catch (error: any) {
         // race condition on insert
         this.logger.error({ message: 'Failed to create session', error });
