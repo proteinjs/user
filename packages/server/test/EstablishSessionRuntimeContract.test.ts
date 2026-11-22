@@ -55,6 +55,9 @@ describe('establishSession runtime contract', () => {
       login(_user: string, cb: (error?: unknown) => void) {
         cb(loginError);
       },
+      logout(cb: (error?: unknown) => void) {
+        cb();
+      },
     };
 
     await expect(establishSession(request, 'dev@test.local')).rejects.toThrow('serialize blew up');

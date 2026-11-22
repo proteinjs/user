@@ -137,8 +137,9 @@ export class DbSessionStore extends Store {
    * was loaded from its row, or whose row this store has written, is only ever updated. So a session
    * that is ended while one of its requests is at work (its row deleted: a log-out in another tab,
    * whatever ends an account's sessions) stays ended: that request's own save or touch at its end
-   * updates nothing and writes no row. A first write that fails leaves the session as it was, so its
-   * next save tries again.
+   * updates nothing and writes no row. A first write that fails is its save's failure: `set` makes a
+   * wounded one again, once, and otherwise tells the save's caller, and `establishSession` ends the
+   * session it could not save.
    */
   private async insertOrUpdate(
     sessionId: string,
@@ -166,18 +167,13 @@ export class DbSessionStore extends Store {
         this.logger.error({ message: 'Failed to update session', error });
       }
     } else if (!this.rowBehind.has(session)) {
-      try {
-        await getDbAsSystem().insert(tables.Session, {
-          sessionId,
-          session: JSON.stringify(session),
-          expires: <Date>session.cookie.expires,
-          userEmail: session.passport?.user,
-        });
-        this.rowBehind.add(session);
-      } catch (error: any) {
-        // race condition on insert
-        this.logger.error({ message: 'Failed to create session', error });
-      }
+      await getDbAsSystem().insert(tables.Session, {
+        sessionId,
+        session: JSON.stringify(session),
+        expires: <Date>session.cookie.expires,
+        userEmail: session.passport?.user,
+      });
+      this.rowBehind.add(session);
     }
 
     if (cb) {

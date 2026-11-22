@@ -36,12 +36,24 @@
  * `request` is typed loosely because passport augments the express request at runtime; the
  * routes in this package share that convention. A login failure (regenerate/serialize/save
  * error) rejects — a door must never answer success for a session that did not commit.
+ *
+ * A SESSION THAT COULD NOT BE MADE IS ENDED BEFORE THAT REJECTION, the way the log-out route ends one
+ * (routes/logout): the account is cleared from the session the login left on the request and its id
+ * is regenerated, which removes its row through the store. So the session is saved by the login or
+ * not at all: the request's end has nothing of it to write, and no row of it stays.
  */
 export async function establishSession(request: any, email: string): Promise<void> {
   const preLoginSession = request.session;
-  await new Promise<void>((resolve, reject) =>
-    request.login(email.toLowerCase(), (error: unknown) => (error ? reject(error) : resolve()))
-  );
+  try {
+    await new Promise<void>((resolve, reject) =>
+      request.login(email.toLowerCase(), (error: unknown) => (error ? reject(error) : resolve()))
+    );
+  } catch (error) {
+    await new Promise<void>((resolve, reject) =>
+      request.logout((ending: unknown) => (ending ? reject(ending) : resolve()))
+    );
+    throw error;
+  }
   if (request.session === preLoginSession) {
     throw new Error(
       'establishSession: request.login resolved without replacing request.session, so the runtime passport ' +

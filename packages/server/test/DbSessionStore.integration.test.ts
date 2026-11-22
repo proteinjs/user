@@ -10,7 +10,8 @@ import passport from 'passport';
  * row, and who the next request of a cookie is.
  *
  * - A session's row is written once: a session that is ended while one of its requests is at work stays
- *   ended, and a first write that fails is made by the session's next save.
+ *   ended; a first write that is aborted is made again by the same save; and a session whose row cannot
+ *   be written as it is made is ended in that request.
  * - A session made on a password stands only while the account holds that password (`PasswordSession`),
  *   in each order of a sign-up that starts a waiting account over beside a sign-up or a log-in that is
  *   still at work; and a session whose account cannot be read back is ended.
@@ -63,7 +64,7 @@ describe('the session store behind the real session machinery', () => {
   let sweep: NodeJS.Timeout;
   /** Where the next request to `AT_WORK` waits before it answers. */
   let atWork: Held | undefined;
-  /** Where the sign-up or log-in that carries this password waits, its session made, before its answer is sent. */
+  /** Where the sign-up or log-in that carries this password waits, its route done, before its answer is sent. */
   let beforeItsAnswer: { password: string; held: Held } | undefined;
 
   beforeAll(async () => {
@@ -119,29 +120,48 @@ describe('the session store behind the real session machinery', () => {
     }
   });
 
-  it("a first write of a session's row that fails is made by the session's next save: the sign-up still ends signed in", async () => {
-    const address = 'first.write.fails@test.local';
-    const insert = Db.prototype.insert;
-    let failed = false;
-    const inserts = jest.spyOn(Db.prototype, 'insert').mockImplementation(async function (this: Db, ...args: any[]) {
-      if (!failed && args[0].name === tables.Session.name) {
-        failed = true;
-        throw new Error('the session table is away');
-      }
-      return await (insert as (...args: any[]) => Promise<any>).apply(this, args);
-    });
+  it("a first write of a session's row that is aborted is made again by the same save: the sign-up ends signed in", async () => {
+    const address = 'first.write.aborted@test.local';
+    const write = theFirstSessionWriteFails(
+      Object.assign(new Error('10 ABORTED: the transaction was aborted'), { code: 10 })
+    );
 
     let signedUp: Answer;
     try {
       signedUp = await post(routes.signup.path, { email: address, password: 'pw-first-write-1' });
     } finally {
-      inserts.mockRestore();
+      write.restore();
     }
 
-    expect(failed).toBe(true);
+    expect(write.failed()).toBe(true);
     expect([signedUp.status, signedUp.body]).toEqual([200, '{}']);
     expect(await sessionIdsOf(address)).toEqual([signedUp.sid]);
     expect(await whoIs(signedUp.cookie)).toBe(address);
+  });
+
+  it('a session whose row cannot be written as it is made is ended in that request: the sign-up fails, and a sign-up that starts the account over before that answer is sent leaves its own session the only one', async () => {
+    const address = 'first.write.fails@test.local';
+    const write = theFirstSessionWriteFails(new Error('the session table is away'));
+    // The first sign-up's route is done and its answer is not sent: the second runs whole there.
+    beforeItsAnswer = { password: 'pw-first-1', held: held() };
+    let first: Answer;
+    let second: Answer;
+    try {
+      const firstAnswer = post(routes.signup.path, { email: address, password: 'pw-first-1' });
+      await beforeItsAnswer.held.arrived;
+      second = await post(routes.signup.path, { email: address, password: 'pw-second-2' });
+      beforeItsAnswer.held.release();
+      first = await firstAnswer;
+    } finally {
+      write.restore();
+    }
+
+    expect(write.failed()).toBe(true);
+    expect(await sessionIdsOf(address)).toEqual([second.sid]);
+    expect(await whoIs(first.cookie)).toBeNull();
+    expect(await whoIs(second.cookie)).toBe(address);
+    expect(first.status).toBe(500);
+    expect([second.status, second.body]).toEqual([200, '{}']);
   });
 
   it('a sign-up that starts a waiting account over ends the session of an earlier sign-up for the address that has not finished answering', async () => {
@@ -299,8 +319,22 @@ describe('the session store behind the real session machinery', () => {
     try {
       await (url.pathname === routes.login.path ? login : signup).onRequest(req as never, response as never);
     } catch (error) {
-      send(500, {});
+      response.status(500).send({});
     }
+  }
+
+  /** Makes the first write of a session's row fail with `error`: `failed` says whether it has, `restore` ends it. */
+  function theFirstSessionWriteFails(error: Error): { failed: () => boolean; restore: () => void } {
+    const insert = Db.prototype.insert;
+    let failed = false;
+    const inserts = jest.spyOn(Db.prototype, 'insert').mockImplementation(async function (this: Db, ...args: any[]) {
+      if (!failed && args[0].name === tables.Session.name) {
+        failed = true;
+        throw error;
+      }
+      return await (insert as (...args: any[]) => Promise<any>).apply(this, args);
+    });
+    return { failed: () => failed, restore: () => inserts.mockRestore() };
   }
 
   function post(path: string, body: unknown): Promise<Answer> {
