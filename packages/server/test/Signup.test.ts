@@ -1,6 +1,7 @@
 import { Session } from '@proteinjs/server-api';
 import { guestUser, UserAuth } from '@proteinjs/user';
 import { Signup } from '../src/services/Signup';
+import { productAsksForConfirmation } from './emailConfirmationHarness';
 
 /**
  * Covers the SignupService auth gate. The invite-management methods are the door into
@@ -70,7 +71,7 @@ describe('Signup service auth', () => {
     expect(canAccess('initializeSignup')).toBe(true);
   });
 
-  it('admits the re-send and the question on coming back for a session that carries an address, never a visitor', () => {
+  it('admits the re-send for a session that carries an address, never a visitor; the question on coming back is anyone to ask, and a visitor is answered nobody', async () => {
     const session = jest.spyOn(Session, 'getData');
     try {
       // A session whose account is held back until its address is confirmed: the request answers as nobody.
@@ -81,10 +82,15 @@ describe('Signup service auth', () => {
       expect(canAccess('resendEmailVerification')).toBe(true);
       expect(canAccess('emailConfirmationState')).toBe(true);
 
+      // A visitor, as the waiting screen's request is once its session has ended somewhere else: no mail
+      // is its to ask for, and asked whether it still waits it is answered nobody, so the screen can leave.
       session.mockReturnValue({ sessionId: undefined, user: undefined, data: {} });
       expect(canAccess('resendEmailVerification')).toBe(false);
-      expect(canAccess('emailConfirmationState')).toBe(false);
+      expect(canAccess('emailConfirmationState')).toBe(true);
+      productAsksForConfirmation(true);
+      expect(await new Signup().emailConfirmationState()).toEqual({ state: 'nobody' });
     } finally {
+      productAsksForConfirmation(false);
       session.mockRestore();
     }
   });

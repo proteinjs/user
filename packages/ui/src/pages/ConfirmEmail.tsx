@@ -147,8 +147,9 @@ const WithoutALink: React.FC<{ linkGone: boolean }> = ({ linkGone }) => {
 /**
  * THE WAITING SCREEN: where the link was sent, Resend with its one line of answer, and two quiet ways
  * out. Confirming signs nobody out, so a link opened somewhere else leaves this screen as it is: it
- * asks once each time it comes back to the front, and loads the app when the account no longer waits.
- * No timer.
+ * asks once each time it comes back to the front, and before it says that a re-send did not go
+ * through, and leaves when the session no longer waits (the app once confirmed; Log in once the
+ * session has ended somewhere else). No timer.
  */
 const WaitingScreen: React.FC<{ sentTo: string; linkGone: boolean }> = ({ sentTo, linkGone }) => {
   const [answer, setAnswer] = useState<Answer | undefined>(linkGone ? 'linkGone' : undefined);
@@ -195,6 +196,13 @@ const WaitingScreen: React.FC<{ sentTo: string; linkGone: boolean }> = ({ sentTo
       }
     } catch (error) {
       next = 'notSent';
+    }
+    // A re-send that did not go through: this session may have ended somewhere else since the screen
+    // was painted (a visitor is refused the re-send), or its account may be gone. Asked once before
+    // saying so, and the screen leaves when it no longer waits; a question that cannot be answered
+    // leaves the screen as it is.
+    if (next === 'notSent' && (await leftIfNoLongerWaiting().catch(() => false))) {
+      return;
     }
     setAnswer(next);
     setBusy(false);
@@ -301,7 +309,8 @@ const AnswerLine: React.FC<{ answer: Answer | undefined }> = ({ answer }) => {
 
 /**
  * Asks whether this session's account still waits, and leaves when it does not: confirmed, the root is
- * loaded anew; nobody (the account is gone or deactivated), Log in is. Resolves true when it left.
+ * loaded anew; nobody (the account is gone or deactivated, or the session has ended somewhere else),
+ * Log in is. Resolves true when it left.
  */
 async function leftIfNoLongerWaiting(): Promise<boolean> {
   const { state } = await getSignupService().emailConfirmationState();

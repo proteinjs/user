@@ -589,6 +589,32 @@ describe("the email confirmation's page", () => {
     expect(answerLine()).toBe(WORDS.answers.linkGone.words);
   });
 
+  it('a Resend that does not go through first asks whether this session still waits: ended somewhere else, Log in is loaded anew and nothing is said; when that cannot be answered either, the line says the mail did not go through', async () => {
+    (globalThis as any).proteinjs = {
+      [SIGN_IN_PAGE_FACTS_SCRIPT_KEY]: { signupOpen: true, awaitingEmailConfirmation: { sentTo: EMAIL } },
+    };
+    emailConfirmationState.mockResolvedValue({ state: 'waiting' });
+    await openTheLink('invalid');
+    expect(container.querySelector('h1')?.textContent).toBe(WORDS.title);
+
+    // Neither call can be made: the screen stays, and says what it knows.
+    resendEmailVerification.mockRejectedValueOnce(new Error('The call could not be made'));
+    emailConfirmationState.mockRejectedValueOnce(new Error('The call could not be made'));
+    await tapResend();
+    expect(answerLine()).toBe(WORDS.answers.notSent.words);
+    expect(location.replace).not.toHaveBeenCalled();
+
+    // The session has ended somewhere else since the screen was painted (the account started over by
+    // another sign-up, a log-out in another tab, its age): a visitor is refused the re-send, and asked
+    // whether it still waits is answered nobody.
+    resendEmailVerification.mockRejectedValueOnce(new Error('User not authorized'));
+    emailConfirmationState.mockResolvedValueOnce({ state: 'nobody' });
+    await tapResend();
+    expect(location.replace.mock.calls).toEqual([[`/${uiRoutes.auth.login}`]]);
+    // The line that was there stays until the page is gone: nothing new is said on the way out.
+    expect(answerLine()).toBe(WORDS.answers.notSent.words);
+  });
+
   it('a link that no longer works, opened with nobody signed in, goes to Log in with the sentence for its message place; opened by a signed-in person, it goes to the root and says nothing', async () => {
     await openTheLink('invalid');
 

@@ -111,14 +111,18 @@ export class Signup implements SignupService {
           return UserAuth.hasPermission(USER_PERMISSIONS.users);
         }
 
-        // The re-send and the question on coming back are the session's own account's: each reads
-        // the account of the session's address and nobody else's. For a session that carries an
-        // address, never a visitor: where a product holds an unconfirmed account back, its session
-        // answers as nobody (UserAuth.isLoggedIn is false) and these two are what it can still ask.
-        if (methodName === 'resendEmailVerification' || methodName === 'emailConfirmationState') {
+        // The re-send is the session's own account's: it reads the account of the session's address
+        // and nobody else's. For a session that carries an address, never a visitor: where a product
+        // holds an unconfirmed account back, its session answers as nobody (UserAuth.isLoggedIn is
+        // false) and the re-send is what it can still ask for.
+        if (methodName === 'resendEmailVerification') {
           return new EmailConfirmation().sessionAddress() !== undefined;
         }
 
+        // The rest is anyone's to ask: the pre-submit initialization, and the question on coming back
+        // (emailConfirmationState). That question too reads the account of the session's address and
+        // nobody else's, and a request with no session is answered nobody with no read: so a waiting
+        // screen whose session has ended somewhere else since it was painted learns it by asking.
         return true;
       },
     },
@@ -276,7 +280,9 @@ export class Signup implements SignupService {
    * The question the confirmation's screen asks when it comes back to the front: does this session's
    * account still wait for its address to be confirmed? `waiting` while it is held back; `confirmed`
    * once the session answers as its account (the link was opened, here or elsewhere); `nobody` when
-   * the session has no account to answer as.
+   * the session has no account to answer as, or the request carries no session at all (it has ended
+   * since the screen was painted: by a log-out elsewhere, by its age, or by a sign-up that started
+   * the account over).
    */
   async emailConfirmationState(): Promise<EmailConfirmationStateResponse> {
     if (await new EmailConfirmation().waitingAccount()) {

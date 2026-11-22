@@ -28,7 +28,8 @@ export type ResendEmailVerificationResponse =
 /**
  * Where the session's own account stands with the email confirmation: `waiting` while it is held back
  * until its address is confirmed, `confirmed` once the session answers as its account, `nobody` when the
- * session has no account to answer as (the account is gone or deactivated).
+ * session has no account to answer as (the account is gone or deactivated) or the request carries no
+ * session (it has ended since the screen was painted).
  */
 export type EmailConfirmationStateResponse = {
   state: 'waiting' | 'confirmed' | 'nobody';
@@ -74,8 +75,9 @@ export interface SignupService extends Service {
   resendEmailVerification(): Promise<ResendEmailVerificationResponse>;
   /**
    * Whether the session's own account still waits for its address to be confirmed: asked by the
-   * confirmation's screen when it comes back to the front (the link may have been opened elsewhere).
-   * For a session that carries an address, never a visitor.
+   * confirmation's screen when it comes back to the front (the link may have been opened elsewhere),
+   * and before it says that a re-send did not go through. Anyone may ask: a visitor is answered
+   * `nobody`.
    */
   emailConfirmationState(): Promise<EmailConfirmationStateResponse>;
   /**
