@@ -6,8 +6,9 @@ import { tables, User, UserAuth } from '@proteinjs/user';
 /** What a product answers about confirming an account's email address. */
 export interface EmailConfirmationConfig {
   /**
-   * True where confirming the email is a mandatory step: an account whose address is not confirmed is
-   * held back (`EmailConfirmation.holdsBack`) until the link mailed to it is opened.
+   * True where confirming the email is a mandatory step: an account made from then on with its address
+   * not confirmed is held back (`EmailConfirmation.holdsBack`) until the link mailed to it is opened.
+   * An account made before the product asked is never asked.
    */
   isRequired: boolean;
 }
@@ -22,10 +23,19 @@ export interface DefaultEmailConfirmationConfigFactory extends Loadable {
 }
 
 /**
- * THE MANDATORY EMAIL CONFIRMATION, in one place: whether the product asks for it, and whether an account
- * is held back by it.
+ * THE MANDATORY EMAIL CONFIRMATION, in one place: whether the product asks for it, which accounts it is
+ * asked of, and whether an account is held back by it.
  *
- * Where the product asks, an account whose address is not confirmed is held back: to the server its
+ * IT IS ASKED OF AN ACCOUNT AS THE ACCOUNT IS MADE, AND OF NO OTHER. An account made unconfirmed where
+ * the product asks (a sign-up without an invite) is written as asked (`asksOfNew`, the row's
+ * `emailConfirmationAsked`), once, by the one place an account's row is made (`Signup.createAccount`).
+ * Everything the confirmation changes reads that mark (`isAskedOf`): an account that carries none is
+ * never held back, whatever its `emailVerified` says, and its link and its mails are what they are
+ * where no product asks. That is every account made before the product asked, and every account made
+ * confirmed (an invite's). So a product that begins to ask changes nothing for the accounts it has, and
+ * writes nothing on them.
+ *
+ * An account that is asked and whose address is not confirmed is held back: to the server its
  * session is nobody. That is applied in ONE place, the function that answers who a request is
  * (authorization/userCache), so everything that asks who the caller is through `UserAuth` or `UserRepo`
  * (every service, every table, every page) is closed to it without a line of its own.
@@ -41,11 +51,27 @@ export class EmailConfirmation {
   }
 
   /**
-   * Whether `account` is held back: the product asks, and the account's address is not confirmed.
-   * Anything but `true` is not confirmed (a row written before the column held a value reads null).
+   * Whether an account being made now is asked to confirm its address: the product asks, and the
+   * account is not made confirmed. `Signup.createAccount` writes the answer on the account's row.
    */
-  holdsBack(account: Pick<User, 'emailVerified'>): boolean {
+  asksOfNew(account: Pick<User, 'emailVerified'>): boolean {
     return account.emailVerified !== true && this.isRequired();
+  }
+
+  /**
+   * Whether the confirmation is asked of `account`: it was asked as it was made, and the product asks.
+   * Anything but `true` is not asked (a row written before the column held a value reads null).
+   */
+  isAskedOf(account: Pick<User, 'emailConfirmationAsked'>): boolean {
+    return account.emailConfirmationAsked === true && this.isRequired();
+  }
+
+  /**
+   * Whether `account` is held back: the confirmation is asked of it, and its address is not confirmed.
+   * Anything but `true` is not confirmed.
+   */
+  holdsBack(account: Pick<User, 'emailVerified' | 'emailConfirmationAsked'>): boolean {
+    return account.emailVerified !== true && this.isAskedOf(account);
   }
 
   /**

@@ -22,7 +22,8 @@ import { Signup } from '../services/Signup';
  * A request with no token at all is refused (400, 'invalid'). Nothing in any answer names an
  * address, and the token itself never reaches the log.
  *
- * WHERE THE PRODUCT ASKS FOR THE EMAIL CONFIRMATION (`EmailConfirmation`), after those answers:
+ * WHERE THE EMAIL CONFIRMATION IS ASKED OF THE LINK'S ACCOUNT (`EmailConfirmation.isAskedOf`: the product
+ * asks, and the account was asked as it was made), after those answers:
  *   - the link confirms only in its account's own session: the session's address must equal the
  *     address of the account the token was issued to, or the answer is 'logInFirst' and nothing is
  *     used up;
@@ -31,6 +32,8 @@ import { Signup } from '../services/Signup';
  *   - where the write wins, the welcome mail goes, after the answer (the sign-up's own mail only
  *     confirmed); where it finds the link already used by a request at the same moment, the answer
  *     is 'confirmed' all the same, with no second welcome.
+ * An account the confirmation is not asked of (one made before the product asked) is confirmed by its
+ * link alone, exactly as where no product asks.
  */
 export const verifyEmail: Route = {
   path: routes.verifyEmail.path,
@@ -62,7 +65,7 @@ export const verifyEmail: Route = {
     }
 
     const confirmation = new EmailConfirmation();
-    const asked = confirmation.isRequired();
+    const asked = confirmation.isAskedOf(resolution.user);
     if (asked && confirmation.sessionAddress() !== resolution.user.email.toLowerCase()) {
       logger.info({ message: `Email verification link opened outside its account's session`, obj: { account } });
       response.status(200).send({ state: 'logInFirst' satisfies VerifyEmailState });

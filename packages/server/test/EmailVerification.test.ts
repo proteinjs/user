@@ -451,6 +451,49 @@ describe('email verification after sign-up', () => {
       expect(await factsWritten()).toEqual({ signupOpen: true });
     });
 
+    it('an account made before the product asked is never shown the confirmation and never asked: its session answers as itself, its page says nothing of waiting, its row stays as it was, and its mail is the one it was', async () => {
+      const db = getDbAsSystem();
+      await db.insert(tables.User, {
+        name: 'Made before',
+        email: 'made-before@test.local',
+        password: 'test',
+        emailVerified: false,
+        roles: [],
+      });
+      const madeBefore = await userRow('made-before@test.local');
+
+      await requestFrom(madeBefore.email);
+      expect(UserAuth.isLoggedIn()).toBe(true);
+      expect(await factsWritten()).toEqual({ signupOpen: true });
+      expect(await new Signup().emailConfirmationState()).toEqual({ state: 'confirmed' });
+      expect(await userRow(madeBefore.email)).toEqual(madeBefore);
+      expect(sendEmail).not.toHaveBeenCalled();
+
+      // A link it asks for comes in the mail it came in before the product asked: the welcome's.
+      expect(await new Signup().resendEmailVerification()).toEqual({ sent: true });
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+      expect(sendEmail.mock.lastCall?.[0]).toMatchObject({ to: madeBefore.email, subject: 'Welcome aboard' });
+      expect((await userRow(madeBefore.email)).emailVerificationToken).toBe(sha256Hex(mailedToken()));
+    });
+
+    it('an account made before the product asked confirms by its link alone, as before: no session is asked for, the link works once, and no second welcome goes', async () => {
+      // The account as a sign-up left it before the product asked: its welcome carried its link.
+      productAsksForConfirmation(false);
+      try {
+        await new Signup().createUser({ email: 'made-before-with-a-link@test.local', password: 'a password' });
+      } finally {
+        productAsksForConfirmation(true);
+      }
+      const token = tokenIn(latestLink());
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+
+      await requestFrom(undefined);
+      expect(await invokeVerify({ token })).toEqual({ status: 200, body: { state: 'confirmed' } });
+      expect((await userRow('made-before-with-a-link@test.local')).emailVerified).toBe(true);
+      expect(await invokeVerify({ token })).toEqual({ status: 200, body: { state: 'invalid' } });
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+    });
+
     it('a fact that holds a less-than sign is written as its escape: the script carries no less-than sign, and the page reads the same fact back', async () => {
       const address = 'a</script><b>@test.local';
       await getDbAsSystem().insert(tables.User, {
@@ -458,6 +501,7 @@ describe('email verification after sign-up', () => {
         email: address,
         password: 'test',
         emailVerified: false,
+        emailConfirmationAsked: true,
         roles: [],
       });
       await requestFrom(address);

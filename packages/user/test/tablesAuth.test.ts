@@ -6,7 +6,8 @@ import { USER_PERMISSIONS } from '../src/permissions';
  * edit cannot silently reopen a door:
  * - user: 'users' permission covers viewing/managing records, EXCEPT roles and status — those
  *   columns are service-protected (single write paths: the Roles and SetUserStatus services),
- *   and the deletion-machinery datetimes are written only by the server-side deletion flow.
+ *   the deletion-machinery datetimes are written only by the server-side deletion flow, and the
+ *   mark that an account was asked to confirm its email only as the account is made.
  * - role_grant_event: the audit trail is readable by 'roles' holders and has NO generic write
  *   door — an explicit auth block with no write grants is a lock, not an admin default.
  * - user_status_event: the standing audit trail is admin-read (the same scope as the
@@ -39,13 +40,15 @@ describe('user table auth shape', () => {
 
   it(`service-protects roles and status (single write paths: the Roles and SetUserStatus
       services), the deletion-machinery datetimes (written only by the server-side
-      deletion flow), and machine-account ownership (written only by the boot sync)`, () => {
+      deletion flow), machine-account ownership (written only by the boot sync), and the mark
+      that an account was asked to confirm its email (written only as the account is made)`, () => {
     expect(tables.User.auth?.serviceProtectedColumns).toEqual([
       'roles',
       'status',
       'deleteRequestedAt',
       'purgeAfter',
       'isLoadedFromSource',
+      'emailConfirmationAsked',
     ]);
   });
 });

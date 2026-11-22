@@ -482,6 +482,10 @@ export class Signup implements SignupService {
    *
    * 'startedOver' is the mandatory email confirmation's answer for an address held by an account
    * that still waits (`existsOrStartsOver`): the account is now this caller's, as if just made.
+   *
+   * An account made unconfirmed where the product asks for the email confirmation is written as asked
+   * to confirm (`EmailConfirmation.asksOfNew`, the row's `emailConfirmationAsked`): the one place that
+   * mark is written, so the confirmation is asked only of accounts made while the product asks.
    */
   async createAccount(account: NewAccount): Promise<'created' | 'exists' | 'startedOver'> {
     return (await this.writeAccount(account)).outcome;
@@ -506,6 +510,7 @@ export class Signup implements SignupService {
         email,
         password,
         emailVerified: account.emailVerified,
+        emailConfirmationAsked: new EmailConfirmation().asksOfNew(account) ? true : null,
         roles: [],
         invitedBy: account.invitedBy,
       });
@@ -642,7 +647,7 @@ export class Signup implements SignupService {
 
     const token = await verification.mint(user);
     try {
-      await this.emailVerificationLink(user.email, this.verifyEmailLink(token));
+      await this.emailVerificationLink(user, this.verifyEmailLink(token));
     } catch (error: any) {
       logger.error({
         message: `Failed to send the email verification mail`,
@@ -658,13 +663,13 @@ export class Signup implements SignupService {
   }
 
   /**
-   * The mail that carries a confirm link: where the product asks for the email confirmation, the
-   * confirmation's own mail (emails/EmailConfirmationLinkEmailConfig); else the welcome-shaped mail
-   * with the link, through the sign-up's config, as before.
+   * The mail that carries `user`'s confirm link: where the email confirmation is asked of the account
+   * (`EmailConfirmation.isAskedOf`), the confirmation's own mail (emails/EmailConfirmationLinkEmailConfig);
+   * else the welcome-shaped mail with the link, through the sign-up's config, as before.
    */
-  private async emailVerificationLink(email: string, link: string): Promise<void> {
-    if (!new EmailConfirmation().isRequired()) {
-      await this.emailWelcome(new EmailSender(), email, this.signupConfirmationEmailConfig(), {
+  private async emailVerificationLink(user: User, link: string): Promise<void> {
+    if (!new EmailConfirmation().isAskedOf(user)) {
+      await this.emailWelcome(new EmailSender(), user.email, this.signupConfirmationEmailConfig(), {
         verifyEmailLink: link,
       });
       return;
@@ -672,7 +677,7 @@ export class Signup implements SignupService {
 
     const config = getDefaultEmailConfirmationLinkEmailConfigFactory().getConfig();
     const { text, html } = config.getEmailContent(link);
-    await new EmailSender().sendEmail({ to: email, subject: config.subject, text, html });
+    await new EmailSender().sendEmail({ to: user.email, subject: config.subject, text, html });
   }
 
   /** A fresh verification token on the account's row, with the confirm link that carries it. */

@@ -4,6 +4,7 @@ import { SourceRepository } from '@proteinjs/reflection';
 import { MachineAccount, tables } from '@proteinjs/user';
 import { PasswordHasher } from '../src/authentication/PasswordHasher';
 import { invokeDevLogin } from './devLoginHarness';
+import { productAsksForConfirmation } from './emailConfirmationHarness';
 import { UserServerTestEnvironment } from './UserServerTestEnvironment';
 
 const testEnv = new UserServerTestEnvironment();
@@ -102,29 +103,52 @@ describe('devLogin route', () => {
     expect(created!.name).toBeTruthy();
   });
 
-  it("the dev log-in's account is confirmed, a new one and an existing one", async () => {
+  it("the dev log-in's account is never held back: a new one is made confirmed, and an existing one the product holds back is confirmed; every other existing account signs in as it stands, its confirmed mark untouched", async () => {
     await invokeDevLogin({ email: 'confirmed.new@test.local' });
 
     expect((await getUserRow('confirmed.new@test.local'))!.emailVerified).toBe(true);
 
-    // An account as a sign-up without an invite leaves it: not confirmed, a link outstanding.
+    // An account made before the product asked for the confirmation: not confirmed, a link outstanding.
+    await getDbAsSystem().insert(tables.User, {
+      name: 'Made before',
+      email: 'made.before@test.local',
+      password: 'test',
+      emailVerified: false,
+      emailVerificationToken: 'a-digest-of-an-older-link',
+      emailVerificationTokenExpiration: moment().add(1, 'day'),
+      roles: [],
+    });
+    const madeBefore = await getUserRow('made.before@test.local');
+    // An account as a sign-up without an invite leaves it where the product asks: asked, not confirmed,
+    // a link outstanding.
     await getDbAsSystem().insert(tables.User, {
       name: 'Signed up by the form',
       email: 'confirmed.existing@test.local',
       password: 'test',
       emailVerified: false,
+      emailConfirmationAsked: true,
       emailVerificationToken: 'a-digest-of-a-link',
       emailVerificationTokenExpiration: moment().add(1, 'day'),
       roles: [],
     });
 
-    const outcome = await invokeDevLogin({ email: 'confirmed.existing@test.local' });
+    productAsksForConfirmation(true);
+    try {
+      const asItStands = await invokeDevLogin({ email: 'made.before@test.local' });
 
-    expect(outcome.loggedInAs).toBe('confirmed.existing@test.local');
-    const existing = await getUserRow('confirmed.existing@test.local');
-    expect(existing!.emailVerified).toBe(true);
-    expect(existing!.emailVerificationToken ?? null).toBeNull();
-    expect(existing!.name).toBe('Signed up by the form');
+      expect(asItStands.loggedInAs).toBe('made.before@test.local');
+      expect(await getUserRow('made.before@test.local')).toEqual(madeBefore);
+
+      const outcome = await invokeDevLogin({ email: 'confirmed.existing@test.local' });
+
+      expect(outcome.loggedInAs).toBe('confirmed.existing@test.local');
+      const existing = await getUserRow('confirmed.existing@test.local');
+      expect(existing!.emailVerified).toBe(true);
+      expect(existing!.emailVerificationToken ?? null).toBeNull();
+      expect(existing!.name).toBe('Signed up by the form');
+    } finally {
+      productAsksForConfirmation(false);
+    }
   });
 
   it('rejects a ?email outside the DEV_AUTO_LOGIN_EMAIL domain with 400 — no session, no account', async () => {

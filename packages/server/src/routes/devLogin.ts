@@ -5,6 +5,7 @@ import { tables } from '@proteinjs/user';
 import { RequestDigests } from '@proteinjs/util-node';
 import { emailRegex } from '@proteinjs/util';
 import { establishSession } from '../authentication/establishSession';
+import { EmailConfirmation } from '../services/EmailConfirmation';
 import { Roles } from '../services/Roles';
 import { Signup } from '../services/Signup';
 import { DevBootstrapRoles } from './DevBootstrapRoles';
@@ -47,11 +48,11 @@ const emailDomain = (address: string) => address.slice(address.lastIndexOf('@') 
  * sessions whose account was deleted AFTER minting; this ensures dev-minted sessions reference a
  * real account from the start.
  *
- * The door's account is CONFIRMED: a new one is made with its address confirmed, and an existing one
- * whose address is not confirmed is marked confirmed (its outstanding link withdrawn) before the
- * session is made. Where a product holds an unconfirmed account back (`EmailConfirmation`), a dev
- * session that answers as nobody is no use to a dev loop, and no local instance runs a product's own
- * step that marks the accounts that exist.
+ * The door's account is never held back: a new one is made with its address confirmed, and an existing
+ * one that a product holds back until its address is confirmed (`EmailConfirmation.holdsBack`: one made
+ * by a sign-up that was asked to confirm) is marked confirmed, its outstanding link withdrawn, before the
+ * session is made: a dev session that answers as nobody is no use to a dev loop. Every other existing
+ * account signs in as it stands, its confirmed mark untouched.
  *
  * First-admin door (`DEV_BOOTSTRAP_ADMIN_EMAIL`): a dev server on a FRESH real database has no
  * privileged account and no sanctioned raw write to make one. Behind the same two gates, when
@@ -116,7 +117,7 @@ export const devLogin: Route = {
     const existing = await getDbAsSystem().get(tables.User, { email });
     if (existing) {
       creation = 'exists';
-      if (existing.emailVerified !== true) {
+      if (new EmailConfirmation().holdsBack(existing)) {
         await getDbAsSystem().update(tables.User, {
           id: existing.id,
           emailVerified: true,

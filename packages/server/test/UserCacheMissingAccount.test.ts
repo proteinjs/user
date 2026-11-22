@@ -47,12 +47,13 @@ describe('userCache.create — session referencing a missing account', () => {
     expect((user as any).password).toBeUndefined();
   });
 
-  it('where the product asks for it, a session whose account is not confirmed answers as nobody, and as itself once confirmed; where no product asks, it answers as itself, as today', async () => {
+  it('where the product asks for it, a session whose account was asked to confirm as it was made answers as nobody, and as itself once confirmed; where no product asks, it answers as itself, as today', async () => {
     const account = await getDbAsSystem().insert(tables.User, {
       name: 'Signed up by the form',
       email: 'not-confirmed@test.local',
       password: 'test',
       emailVerified: false,
+      emailConfirmationAsked: true,
       roles: [],
     });
 
@@ -68,6 +69,35 @@ describe('userCache.create — session referencing a missing account', () => {
     const confirmed = await userCache.create('a-session', 'not-confirmed@test.local');
     expect(confirmed.id).toBe(account.id);
     expect(confirmed.email).toBe('not-confirmed@test.local');
+  });
+
+  it('where the product asks for it, an account made before it asked answers as itself, whatever its confirmed mark says: not confirmed, or never written', async () => {
+    const db = getDbAsSystem();
+    const notConfirmed = await db.insert(tables.User, {
+      name: 'Made before, not confirmed',
+      email: 'made-before-not-confirmed@test.local',
+      password: 'test',
+      emailVerified: false,
+      roles: [],
+    });
+    const neverWritten = await db.insert(tables.User, {
+      name: 'Made before, mark never written',
+      email: 'made-before-never-written@test.local',
+      password: 'test',
+      roles: [],
+    } as never);
+
+    const rows = async () => [
+      await db.get(tables.User, { id: notConfirmed.id }),
+      await db.get(tables.User, { id: neverWritten.id }),
+    ];
+    const before = await rows();
+
+    productAsksForConfirmation(true);
+    expect((await userCache.create('a-session', 'made-before-not-confirmed@test.local')).id).toBe(notConfirmed.id);
+    expect((await userCache.create('a-session', 'made-before-never-written@test.local')).id).toBe(neverWritten.id);
+    // Neither row was written by being asked who it is.
+    expect(await rows()).toEqual(before);
   });
 
   it('a default admin whose name is written with capitals answers as the admin in a session bound in lower case', async () => {

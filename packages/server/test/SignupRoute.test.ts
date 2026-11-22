@@ -202,6 +202,8 @@ describe('signup route — auto-login after signup', () => {
     expect(created!.password).toMatch(/^\$argon2id\$/);
     expect(created!.password).not.toContain('pw-plain-1');
     expect(created!.emailVerified).toBe(false);
+    // No product asks for the email confirmation here: the account is not written as asked.
+    expect(created!.emailConfirmationAsked).not.toBe(true);
     expect(created!.roles).toEqual([]);
     expect(sendEmail).toHaveBeenCalledTimes(1); // welcome email still goes out
   });
@@ -471,6 +473,8 @@ describe('signup route — auto-login after signup', () => {
       expect(outcome.body).toEqual({});
       expect(outcome.loggedInAs).toBe('waits@test.local');
       expect(outcome.sessionEvents).toEqual(['regenerate', 'login', 'save']);
+      // The account is written as asked to confirm, as it is made.
+      expect((await getUserRow('waits@test.local'))!.emailConfirmationAsked).toBe(true);
       await requestFrom('waits@test.local');
       expect(admitsACallForSignedInPeople()).toBe(false);
 
@@ -652,6 +656,34 @@ describe('signup route — auto-login after signup', () => {
       expect(await authenticate('sent.twice@test.local', 'pw-same-1')).toBe(true);
     });
 
+    it("an address held by an account made before the product asked is answered as an account's address is: the account is not started over, whatever its confirmed mark says, and its sessions stand", async () => {
+      const db = getDbAsSystem();
+      await db.insert(tables.User, {
+        name: 'Made before',
+        email: 'made.before@test.local',
+        password: 'test',
+        emailVerified: false,
+        roles: [],
+      });
+      const madeBefore = await getUserRow('made.before@test.local');
+      await db.insert(tables.Session, {
+        sessionId: 'a-session-of-the-account-made-before',
+        session: '{}',
+        expires: moment().add(1, 'day').toDate(),
+        userEmail: 'made.before@test.local',
+      });
+
+      const outcome = await invokeSignup({ email: 'Made.Before@Test.local', password: 'pw-other-3' });
+
+      expect(outcome.body).toEqual({});
+      expect(outcome.loggedInAs).toBeUndefined();
+      expect(outcome.sessionEvents).toEqual([]);
+      expect(await getUserRow('made.before@test.local')).toEqual(madeBefore);
+      expect(await db.get(tables.Session, { sessionId: 'a-session-of-the-account-made-before' })).toBeDefined();
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+      expect(sendEmail.mock.calls[0][0].text).toBe('exists');
+    });
+
     it("a confirmed account's address is answered as before, and so is a deactivated account's", async () => {
       await testEnv.createUser({ name: 'Confirmed', email: 'confirmed@test.local' });
 
@@ -670,6 +702,7 @@ describe('signup route — auto-login after signup', () => {
         email: 'deactivated@test.local',
         password: 'test',
         emailVerified: false,
+        emailConfirmationAsked: true,
         status: 'deactivated',
         roles: [],
       });
@@ -698,6 +731,7 @@ describe('signup route — auto-login after signup', () => {
 
       expect(outcome.loggedInAs).toBe('invited.never.waits@test.local');
       expect((await getUserRow('invited.never.waits@test.local'))!.emailVerified).toBe(true);
+      expect((await getUserRow('invited.never.waits@test.local'))!.emailConfirmationAsked).not.toBe(true);
       await requestFrom('invited.never.waits@test.local');
       expect(admitsACallForSignedInPeople()).toBe(true);
       // Its one mail is the welcome, as before: it has no address left to confirm.

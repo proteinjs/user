@@ -43,6 +43,16 @@ export type User = SourceRecord & {
    */
   emailVerificationToken?: string | null;
   emailVerificationTokenExpiration?: Moment | null;
+  /**
+   * True on an account that was asked to confirm its email address as it was made: one made
+   * unconfirmed where the product asks for the confirmation (@proteinjs/user-server
+   * `EmailConfirmation`). Written once, by the one place an account's row is made
+   * (`Signup.createAccount`), and by nothing after. Null on every other account: one made before the
+   * product asked, one made confirmed (an invite's), one made where no product asks. Only an account
+   * marked here is ever held back until its address is confirmed, so rows that existed need no
+   * backfill (the `status`/`machine` null-default convention).
+   */
+  emailConfirmationAsked?: boolean | null;
   /** Role names from the roles catalog (see `RolesCatalog`). Written ONLY by the Roles service. */
   roles: string[];
   /**
@@ -119,8 +129,17 @@ export class UserTable extends Table<User> {
      * written only by the server-side deletion flow — never through the generic RPC path.
      * `isLoadedFromSource` is machine-account ownership — written only by the boot sync; an RPC
      * write could hand a human row to source ownership (or unhook a machine row from it).
+     * `emailConfirmationAsked` is written only as an account is made (`Signup.createAccount`): no
+     * account that exists is marked as asked, or unmarked, through the generic RPC path.
      */
-    serviceProtectedColumns: ['roles', 'status', 'deleteRequestedAt', 'purgeAfter', 'isLoadedFromSource'],
+    serviceProtectedColumns: [
+      'roles',
+      'status',
+      'deleteRequestedAt',
+      'purgeAfter',
+      'isLoadedFromSource',
+      'emailConfirmationAsked',
+    ],
   };
   /**
    * Machine accounts sync by EMAIL, not id: accounts adopted from hand-made rows before
@@ -156,6 +175,8 @@ export class UserTable extends Table<User> {
     emailVerificationTokenExpiration: new DateTimeColumn('email_verification_token_expiration', {
       ui: { hidden: true },
     }),
+    // Written as an account is made, server write path only: hidden like the verification pair.
+    emailConfirmationAsked: new BooleanColumn('email_confirmation_asked', { ui: { hidden: true } }),
     /**
      * Typed array in the `role_list` column. The legacy comma-string `roles` column (STRING(255))
      * is still physically present on databases that predate the cutover — Spanner cannot retype

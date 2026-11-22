@@ -178,11 +178,20 @@ describe('initiatePasswordReset route', () => {
     expect(row.passwordResetToken).toBeNull();
   });
 
-  it('Forgot password mails nothing to a waiting account and answers the same sentence', async () => {
-    // An account as a sign-up without an invite leaves it: its address not confirmed.
+  it('Forgot password mails nothing to a waiting account and answers the same sentence; an account made before the product asked is mailed as ever', async () => {
+    // An account as a sign-up without an invite leaves it where the product asks: asked, its address not confirmed.
     await getDbAsSystem().insert(tables.User, {
       name: '',
       email: 'initiate-waiting@test.local',
+      password: 'test',
+      emailVerified: false,
+      emailConfirmationAsked: true,
+      roles: [],
+    });
+    // An account made before the product asked, its address not confirmed either.
+    await getDbAsSystem().insert(tables.User, {
+      name: 'Made before',
+      email: 'initiate-made-before@test.local',
       password: 'test',
       emailVerified: false,
       roles: [],
@@ -194,15 +203,21 @@ describe('initiatePasswordReset route', () => {
       expect(held).toEqual({ status: 200, body: GENERIC });
       expect(MailSink.get().list()).toEqual([]);
       expect((await userRow('initiate-waiting@test.local')).passwordResetToken ?? null).toBeNull();
+
+      const madeBefore = await invoke(initiatePasswordReset, { body: { email: 'initiate-made-before@test.local' } });
+
+      expect(madeBefore).toEqual({ status: 200, body: GENERIC });
+      expect(MailSink.get().list()).toHaveLength(1);
+      expect((await userRow('initiate-made-before@test.local')).passwordResetToken).toBeTruthy();
     } finally {
       productAsksForConfirmation(false);
     }
 
-    // Where no product asks for the confirmation the same account is mailed, as before.
+    // Where no product asks for the confirmation the waiting account is mailed too, as before.
     const mailed = await invoke(initiatePasswordReset, { body: { email: 'initiate-waiting@test.local' } });
 
     expect(mailed).toEqual({ status: 200, body: GENERIC });
-    expect(MailSink.get().list()).toHaveLength(1);
+    expect(MailSink.get().list()).toHaveLength(2);
   });
 
   it('a send that fails withdraws the token — asking again straight away mails a link', async () => {
