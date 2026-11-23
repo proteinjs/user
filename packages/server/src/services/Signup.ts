@@ -1,4 +1,4 @@
-import { getDbAsSystem, Reference } from '@proteinjs/db';
+import { getDbAsSystem, QueryBuilderFactory, Reference } from '@proteinjs/db';
 import {
   SendInviteResponse,
   ResendEmailVerificationResponse,
@@ -538,6 +538,11 @@ export class Signup implements SignupService {
    * abandoned sign-up never blocks the person who really has the address, and nothing needs sweeping.
    * A confirmed account, a deactivated one, and every create that is not such a sign-up (an invite's,
    * the dev log-in's) are answered 'exists'.
+   *
+   * THE ACCOUNT IS WRITTEN ONLY WHILE IT STILL WAITS: the write carries that as its own condition
+   * (`whileItStillWaits`), the way a mailed link is used up by one conditional write (`MailedToken`).
+   * An address confirmed since this sign-up read the account has an account like any other: it is
+   * answered 'exists' too, and its password, its name and its sessions stand as they were.
    */
   private async existsOrStartsOver(
     held: User,
@@ -549,9 +554,28 @@ export class Signup implements SignupService {
 
     const db = getDbAsSystem();
     const password = await new PasswordHasher().hash(account.password);
-    await db.update(tables.User, { id: held.id, name: account.name, password });
+    const startedOver = await db.update(tables.User, { name: account.name, password }, this.whileItStillWaits(held));
+    if (startedOver === 0) {
+      return { outcome: 'exists' };
+    }
+
     await db.delete(tables.Session, { userEmail: held.email });
     return { outcome: 'startedOver', stored: password };
+  }
+
+  /**
+   * The account's own row, and only while its address is not confirmed: anything but `true` is not
+   * confirmed (`EmailConfirmation.holdsBack`), so a mark that is false and one that was never written
+   * both match.
+   */
+  private whileItStillWaits(account: User) {
+    return new QueryBuilderFactory()
+      .getQueryBuilder(tables.User)
+      .condition({ field: 'id', operator: '=', value: account.id })
+      .or([
+        { field: 'emailVerified', operator: '=', value: false },
+        { field: 'emailVerified', operator: 'IS NULL' },
+      ]);
   }
 
   /** Resolves an invite token, distinguishing "expired" from "never existed / already revoked". */

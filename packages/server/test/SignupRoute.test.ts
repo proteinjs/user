@@ -41,6 +41,7 @@ import { MachineAccount, NOT_AN_EMAIL_ADDRESS_SENTENCE, tables, uiRoutes, UserRe
 import { authenticate } from '../src/authentication/authenticate';
 import { BlankCredentials } from '../src/authentication/BlankCredentials';
 import { EmailVerificationToken } from '../src/authentication/EmailVerificationToken';
+import { PasswordHasher } from '../src/authentication/PasswordHasher';
 import { PasswordSession } from '../src/authentication/PasswordSession';
 import { signup } from '../src/routes/signup';
 import { EMAIL_VERIFICATION_RESEND_GAP_MINUTES, Signup } from '../src/services/Signup';
@@ -654,6 +655,61 @@ describe('signup route — auto-login after signup', () => {
       expect(second.loggedInAs).toBe('sent.twice@test.local');
       expect(await userRowCount('sent.twice@test.local')).toBe(1);
       expect(await authenticate('sent.twice@test.local', 'pw-same-1')).toBe(true);
+    });
+
+    it("an address confirmed while a sign-up for it is still at work is answered as an account's address is: the account keeps its password and its sessions, and the sign-up ends with no session", async () => {
+      const db = getDbAsSystem();
+      await invokeSignup({ email: 'confirmed.meanwhile@test.local', password: 'pw-first-1' });
+      const waiting = await getUserRow('confirmed.meanwhile@test.local');
+      const token = /token=([0-9a-f]{64})$/.exec(sendEmail.mock.calls[0][0].text)![1];
+      await db.insert(tables.Session, {
+        sessionId: 'a-session-of-the-confirmed-account',
+        session: '{}',
+        expires: moment().add(1, 'day').toDate(),
+        userEmail: 'confirmed.meanwhile@test.local',
+      });
+      // Another account that still waits: nothing of it is the sign-up's to write.
+      await invokeSignup({ email: 'another.waiting@test.local', password: 'pw-other-9' });
+      sendEmail.mockClear();
+
+      // The second sign-up has read the account, which still waits, and is storing its password when the
+      // account's link is opened.
+      const hash = PasswordHasher.prototype.hash;
+      let goOnStoring!: () => void;
+      let storing!: jest.SpyInstance;
+      const theSecondIsStoring = new Promise<void>((arrived) => {
+        storing = jest.spyOn(PasswordHasher.prototype, 'hash').mockImplementationOnce(async function (
+          this: PasswordHasher,
+          password: string
+        ) {
+          arrived();
+          await new Promise<void>((released) => (goOnStoring = released));
+          return await hash.call(this, password);
+        });
+      });
+      try {
+        const second = invokeSignup({ email: 'Confirmed.Meanwhile@Test.local', password: 'pw-second-2' });
+        await theSecondIsStoring;
+        expect(await new EmailVerificationToken().confirm(waiting!, token)).toBe(true);
+        goOnStoring();
+        const outcome = await second;
+
+        expect(outcome.body).toEqual({});
+        expect(outcome.loggedInAs).toBeUndefined();
+        expect(outcome.sessionEvents).toEqual([]);
+        const confirmed = await getUserRow('confirmed.meanwhile@test.local');
+        expect(confirmed!.emailVerified).toBe(true);
+        expect(confirmed!.password).toBe(waiting!.password);
+        expect(await authenticate('confirmed.meanwhile@test.local', 'pw-first-1')).toBe(true);
+        expect(await authenticate('confirmed.meanwhile@test.local', 'pw-second-2')).not.toBe(true);
+        expect(await db.get(tables.Session, { sessionId: 'a-session-of-the-confirmed-account' })).toBeDefined();
+        expect(await authenticate('another.waiting@test.local', 'pw-other-9')).toBe(true);
+        // The one mail is the one any address that has an account is sent.
+        expect(sendEmail).toHaveBeenCalledTimes(1);
+        expect(sendEmail.mock.calls[0][0].text).toBe('exists');
+      } finally {
+        storing.mockRestore();
+      }
     });
 
     it("an address held by an account made before the product asked is answered as an account's address is: the account is not started over, whatever its confirmed mark says, and its sessions stand", async () => {
