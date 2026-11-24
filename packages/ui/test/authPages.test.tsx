@@ -1,6 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
+import { SourceRepository } from '@proteinjs/reflection';
 import { loginPage } from '../src/pages/Login';
 import { forgotPasswordPage } from '../src/pages/ForgotPassword';
 import { passwordResetPage } from '../src/pages/PasswordReset';
@@ -10,7 +11,21 @@ function render(node: React.ReactElement) {
   return renderToStaticMarkup(<MemoryRouter>{node}</MemoryRouter>);
 }
 
+/** The links a page renders, in the order it renders them: each one's address and words. */
+function links(html: string): { href: string; words: string }[] {
+  const found: { href: string; words: string }[] = [];
+  const anchor = /<a [^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g;
+  for (let match = anchor.exec(html); match; match = anchor.exec(html)) {
+    found.push({ href: match[1], words: match[2] });
+  }
+  return found;
+}
+
 describe('auth pages', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('login renders email + password fields, the submit action, and the forgot-password link', () => {
     const Login = loginPage.component;
     const html = render(<Login urlParams={{}} />);
@@ -27,6 +42,23 @@ describe('auth pages', () => {
     expect(html.toLowerCase()).toContain('autocomplete="username"');
     expect(html.toLowerCase()).toContain('type="email"');
     expect(html.toLowerCase()).toContain('autocomplete="current-password"');
+  });
+
+  it("login shows the line a product registers under the forgot-password link, opening the product's address, and no line when none is registered", () => {
+    const Login = loginPage.component;
+    // A product's registration, in words that are the test's own (the library carries no product's words).
+    const product = { signupClosedLine: { words: 'Ask the product for an invite', href: '/ask-the-product' } };
+    let registered: typeof product | undefined = product;
+    jest.spyOn(SourceRepository, 'get').mockReturnValue({
+      object: (type: string) => (type === '@proteinjs/user-ui/AuthPageProduct' ? registered : undefined),
+    } as unknown as SourceRepository);
+
+    const offered = links(render(<Login urlParams={{}} />));
+    expect(offered.map((link) => link.href)).toEqual(['/login/forgot-password', product.signupClosedLine.href]);
+    expect(offered[1].words).toBe(product.signupClosedLine.words);
+
+    registered = undefined;
+    expect(links(render(<Login urlParams={{}} />)).map((link) => link.href)).toEqual(['/login/forgot-password']);
   });
 
   it('forgot password renders the email field, the send action, and a way back to login', () => {

@@ -1,0 +1,21 @@
+{
+  "branch": "feat/the-log-in-page-shows-a-products-line",
+  "packages": [
+    "ui"
+  ],
+  "suites": [
+    "packages/ui/test/authFormsReadTheirFields.test.tsx",
+    "packages/ui/test/authPages.test.tsx",
+    "packages/ui/test/authRedirectReplacesTheAuthPage.test.tsx",
+    "packages/ui/test/loginMessageSeat.test.tsx"
+  ],
+  "removes": [],
+  "section": {
+    "heading": "## User library — The log-in page can show a product's own line",
+    "text": "- A product can put one line of its own under Forgot password on the log-in page.",
+    "smoke": [
+      "- In a product that registers a line, signed out, open the log-in page: the line shows under Forgot password and opens its address."
+    ]
+  },
+  "notes": "The log-in page (user-ui pages/Login) shows one more quiet line under Forgot password, in that link's own style, when a product registers one: user-ui AuthPageProduct, a registration found through the reflection graph, with one member today, signupClosedLine { words, href }. With none registered the page is as it was; AuthPageProducts.registered() answers none where the graph holds no such type, so every suite that mounts the page stands as it is. The hand-in's name and member are the ones the held sign-up build gives it (feat/sign-up-the-switch-and-the-log-in-line), so the two are one line when that build lands; nothing else of that build is here. A product's own part is its registration, in its own repository. A change to the sign-in pages: read by the security review before it ships; this library is published first and alone. Held: nothing landed or published."
+}
