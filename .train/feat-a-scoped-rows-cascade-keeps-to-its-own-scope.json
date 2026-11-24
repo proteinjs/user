@@ -1,0 +1,6 @@
+{
+  "branch": "feat/a-scoped-rows-cascade-keeps-to-its-own-scope",
+  "packages": ["user"],
+  "suites": ["packages/user/"],
+  "removes": []
+}

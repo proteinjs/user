@@ -51,6 +51,9 @@ const getScopedRecordColumns = (accessibleScopes: string[] = []) => {
       // into ANOTHER user's scope (the row then acts under the victim: e.g. an executable routine
       // ticking in their session). System callers (reapers, migrations) may still move rows.
       immutable: (runAsSystem) => !runAsSystem,
+      // A scoped row is its scope's own. A delete made as the system that takes, with a row, the rows that row
+      // names takes only those of the row's own scope (`ColumnOptions.owner`).
+      owner: true,
       addToQuery: async (qb, runAsSystem) => {
         if (!runAsSystem) {
           qb.condition({
