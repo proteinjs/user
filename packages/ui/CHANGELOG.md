@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+# [1.13.0](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.12.8...@proteinjs/user-ui@1.13.0) (2026-11-25)
+
+
+### Features
+
+* **user-ui:** the log-in page shows a product's own line under Forgot password ([4f345d6](https://github.com/proteinjs/user/commit/4f345d62cb7090f7085cb30a79258493a5514639))
+
+
+
+
+
 ## [1.12.8](https://github.com/proteinjs/user/compare/@proteinjs/user-ui@1.12.7...@proteinjs/user-ui@1.12.8) (2026-10-29)
 
 **Note:** Version bump only for package @proteinjs/user-ui
