@@ -48,9 +48,9 @@ function requirePrincipal(table: string, operation: string): string {
  * Does the CURRENT caller hold a write-or-greater grant on the given permission source? Queries
  * the caller's own grants directly as SYSTEM — never through the read-scoped `resource.get()` that
  * let a no-access caller's undefined fetch skip the check (the escalation-hole shape). This is the
- * one owner for "can this caller write into this permission scope", shared by the insert guard and
- * the zero-row write refusal below. `on` names the table and operation being guarded, for the
- * no-principal refusal.
+ * one owner for "can this caller write into this permission scope", shared by the insert guard,
+ * the update's own check of a source it names, and the zero-row write refusal below. `on` names
+ * the table and operation being guarded, for the no-principal refusal.
  */
 async function callerHasWriteAccess(
   permissionSourceId: string,
@@ -197,6 +197,42 @@ const getSharedRecordColumns = ({
         }
 
         if (!(await callerHasWriteAccess(sourceId, sourceTable, { table: table.name, operation: 'insert' }))) {
+          throw new RecordAccessError(
+            `User does not have write access to the permission source (${sourceTable}:${sourceId})`
+          );
+        }
+      },
+      // A ROW IS MOVED BY A WRITER OF ITS NEW SOURCE (the update-side twin of the insert's check
+      // above): an update that carries `permissionSource` moves the rows it selects into that
+      // source's permission scope, so the caller holds write+ on the source it names, exactly as an
+      // insert that names one does. The source's table is the one this table's rows take their
+      // permission from (the value an insert stores), whatever table the payload's reference names.
+      // The rows an update leaves are rows the caller can already write (`addToQuery` below). An
+      // update that does not carry the field moves nothing and asks nothing; one that names the
+      // source a row is already in asks the same question and is written for any writer of it. A
+      // row keeps a source, named by a string id: a payload that carries the field with no id, or
+      // with an id that is not a string, is refused, so the id asked about is the id stored.
+      // System writes (migrations, server flows that re-home rows) are not asked. The question is
+      // the insert's own (`callerHasWriteAccess`), with its memo.
+      onBeforeUpdate: async (table, updateObj, runAsSystem) => {
+        if (runAsSystem || skipAccessGrantsEnabled()) {
+          return;
+        }
+
+        const permissionSource = updateObj.permissionSource as Reference<any> | null | undefined;
+        if (permissionSource === undefined) {
+          return;
+        }
+
+        const sourceId = permissionSource?._id;
+        const sourceTable = permissionSourceTableName ?? table.name;
+        if (typeof sourceId !== 'string' || !sourceId) {
+          throw new RecordAccessError(
+            `A ${table.name} row keeps a permission source: an update that carries one names it by its id`
+          );
+        }
+
+        if (!(await callerHasWriteAccess(sourceId, sourceTable, { table: table.name, operation: 'update' }))) {
           throw new RecordAccessError(
             `User does not have write access to the permission source (${sourceTable}:${sourceId})`
           );

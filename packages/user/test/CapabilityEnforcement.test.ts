@@ -16,7 +16,13 @@ import {
   TableServiceAuth,
 } from '@proteinjs/db';
 import { KnexDriver } from '@proteinjs/db-driver-knex';
-import { getSharedDb, getSharedDbAsSystem, SharedRecord, withSharedRecordColumns } from '../src/SharedRecord';
+import {
+  getSharedDb,
+  getSharedDbAsSystem,
+  setSkipAccessGrants,
+  SharedRecord,
+  withSharedRecordColumns,
+} from '../src/SharedRecord';
 import { AccessGrant, AccessGrantTable } from '../src/tables/AccessGrantTable';
 import { AccessInvite, AccessInviteTable } from '../src/tables/AccessInviteTable';
 import { Session, SessionData, SessionDataStorage } from '@proteinjs/server-api';
@@ -86,9 +92,27 @@ export class SharedItemTable extends Table<SharedItem> {
   });
 }
 
+/** A row that takes its permission from a SharedItem: the shape of a table whose rows hang on another table's. */
+export interface SharedNote extends SharedRecord {
+  text: string;
+}
+
+export class SharedNoteTable extends Table<SharedNote> {
+  name = 'user_test_shared_note';
+  auth: Table<SharedNote>['auth'] = {
+    db: { all: 'authenticated' },
+    service: { all: 'authenticated' },
+  };
+  columns = withSharedRecordColumns<SharedNote>(
+    { text: new StringColumn('text') },
+    { permissionSourceTableName: 'user_test_shared_item' }
+  );
+}
+
 const dbDriver = new KnexDriver({ host: 'localhost', user: 'root', password: '', dbName: 'test' });
 const userRepo = new UserRepo();
 const sharedItemTable = new SharedItemTable() as Table<SharedItem>;
+const sharedNoteTable = new SharedNoteTable() as Table<SharedNote>;
 
 const dropTable = async (table: Table<any>) => {
   if (await dbDriver.getKnex().schema.withSchema(dbDriver.getDbName()).hasTable(table.name)) {
@@ -122,6 +146,7 @@ describe('Sharing capability enforcement floor', () => {
       tables.AccessGrant,
       tables.AccessInvite,
       sharedItemTable,
+      sharedNoteTable,
     ];
     (SourceRepository.get() as any).objectCache['@proteinjs/user-auth/AuthenticatedUserRepo'] = [userRepo];
 
@@ -137,12 +162,14 @@ describe('Sharing capability enforcement floor', () => {
 
   beforeEach(async () => {
     await dbDriver.getTableManager().loadTable(sharedItemTable);
+    await dbDriver.getTableManager().loadTable(sharedNoteTable);
     await dbDriver.getTableManager().loadTable(tables.AccessGrant);
     await dbDriver.getTableManager().loadTable(tables.AccessInvite);
   });
 
   afterEach(async () => {
     await dropTable(sharedItemTable);
+    await dropTable(sharedNoteTable);
     await dropTable(new AccessGrantTable());
     await dropTable(new AccessInviteTable());
   });
@@ -481,6 +508,218 @@ describe('Sharing capability enforcement floor', () => {
       }
     }
     expect(told).toEqual(due);
+  });
+
+  // ————————————————————————————————— A ROW'S MOVE —————————————————————————————————
+
+  /** The permission source a row is in, as the system reads it. */
+  const sourceOf = async (id: string) =>
+    (await getSharedDbAsSystem().get(sharedItemTable, { id }))?.permissionSource?._id;
+
+  const grant = async (userIndex: number, resourceId: string, accessLevel: AccessGrant['accessLevel']) =>
+    await getDbAsSystem().insert(tables.AccessGrant, {
+      principal: new Reference('user', users[userIndex].id),
+      resource: new Reference(sharedItemTable.name, resourceId),
+      resourceTable: sharedItemTable.name,
+      accessLevel,
+    });
+
+  it('a row is moved into another permission source only by a caller who holds write on that source: holding nothing on it, or read, the move is refused by name on every update road and the row stays where it is; a row keeps a source', async () => {
+    runAs(0);
+    const theirs = await getSharedDb().insert(sharedItemTable, { name: 'user0 doc' });
+    const into = new Reference<SharedItem>(sharedItemTable.name, theirs.id);
+    // A write grant the caller holds under the same id in ANOTHER table's name: the source asked about is the one
+    // this table's rows take their permission from, whatever table a payload's reference names.
+    const elsewhere = 'user_test_other_kind';
+    await getDbAsSystem().insert(tables.AccessGrant, {
+      principal: new Reference('user', users[1].id),
+      resource: new Reference(elsewhere, theirs.id),
+      resourceTable: elsewhere,
+      accessLevel: 'write',
+    });
+    runAs(1);
+    const roads: [string, (row: SharedItem) => Promise<number>][] = [
+      ['an update by id', (row) => getSharedDb().update(sharedItemTable, { id: row.id, permissionSource: into })],
+      [
+        "an update whose reference names another table's row of the same id",
+        (row) =>
+          getSharedDb().update(sharedItemTable, {
+            id: row.id,
+            permissionSource: new Reference<SharedItem>(elsewhere, theirs.id),
+          }),
+      ],
+      [
+        'an update by a query',
+        (row) => getSharedDb().update(sharedItemTable, { permissionSource: into }, { name: row.name }),
+      ],
+      [
+        'a preserving update',
+        (row) =>
+          getSharedDb().updatePreserving(
+            sharedItemTable,
+            { id: row.id, meta: { a: 2 }, permissionSource: into } as Partial<SharedItem>,
+            [{ columnPropertyName: 'meta', paths: ['a'] }]
+          ),
+      ],
+      [
+        'an update whose reference has no id',
+        (row) =>
+          getSharedDb().update(sharedItemTable, {
+            id: row.id,
+            permissionSource: new Reference<SharedItem>(sharedItemTable.name, undefined as unknown as string),
+          }),
+      ],
+      [
+        'an update whose source is a plain object that names the id',
+        (row) =>
+          getSharedDb().update(sharedItemTable, {
+            id: row.id,
+            permissionSource: { _table: sharedItemTable.name, _id: theirs.id } as unknown as Reference<SharedItem>,
+          }),
+      ],
+      [
+        'an update whose reference id is a list',
+        (row) =>
+          getSharedDb().update(sharedItemTable, {
+            id: row.id,
+            permissionSource: new Reference<SharedItem>(sharedItemTable.name, [row.id, theirs.id] as unknown as string),
+          }),
+      ],
+      [
+        'an update whose reference id is an object',
+        (row) =>
+          getSharedDb().update(sharedItemTable, {
+            id: row.id,
+            permissionSource: new Reference<SharedItem>(sharedItemTable.name, { id: theirs.id } as unknown as string),
+          }),
+      ],
+      [
+        'an update that clears the source',
+        (row) =>
+          getSharedDb().update(sharedItemTable, {
+            id: row.id,
+            permissionSource: null,
+          } as unknown as Partial<SharedItem>),
+      ],
+    ];
+
+    // Every road, with nothing held on the other source and then with read: what the caller is told, and where
+    // the row is afterwards as the system reads it. One row a try, so each road answers for itself.
+    const outcomes: [string, string, string | undefined, boolean][] = [];
+    for (const held of ['nothing', 'read'] as const) {
+      if (held === 'read') {
+        await grant(1, theirs.id, 'read');
+      }
+      for (const [road, move] of roads) {
+        const row = await getSharedDb().insert(sharedItemTable, {
+          name: `user1 row, ${held}, ${road}`,
+          meta: { a: 1 },
+        });
+        let refusal: string | undefined;
+        try {
+          await move(row);
+        } catch (error) {
+          refusal = (error as Error).name;
+        }
+        outcomes.push([held, road, refusal, (await sourceOf(row.id)) === row.id]);
+      }
+    }
+    const refusedAndStayed: typeof outcomes = [];
+    for (const held of ['nothing', 'read']) {
+      for (const [road] of roads) {
+        refusedAndStayed.push([held, road, 'RecordAccessError', true]);
+      }
+    }
+    expect(outcomes).toEqual(refusedAndStayed);
+    // The other source holds its own row alone.
+    const inTheirs = await getSharedDbAsSystem().query(sharedItemTable, { permissionSource: theirs.id } as any);
+    expect(inTheirs.map((row) => row.id)).toEqual([theirs.id]);
+  });
+
+  it('a writer of the new source moves a row of theirs into it, where the people that source reaches read it; an update that names the source a row is already in is written for any writer of it; a move made as the system is not asked', async () => {
+    runAs(0);
+    const theirs = await getSharedDb().insert(sharedItemTable, { name: 'user0 doc' });
+    await grant(1, theirs.id, 'write');
+    const into = new Reference<SharedItem>(sharedItemTable.name, theirs.id);
+    runAs(1);
+    const row = await getSharedDb().insert(sharedItemTable, { name: 'user1 row' });
+
+    await getSharedDb().update(sharedItemTable, { id: row.id, permissionSource: into });
+    expect(await sourceOf(row.id)).toBe(theirs.id);
+    // In its new source the row is read by that source's people: its owner reads it.
+    runAs(0);
+    expect((await getSharedDb().get(sharedItemTable, { id: row.id }))?.name).toBe('user1 row');
+
+    // A writer who is not the owner saves the whole row, the source it is already in included: written.
+    runAs(1);
+    await getSharedDb().update(sharedItemTable, { id: row.id, name: 'edited where it is', permissionSource: into });
+    expect((await getSharedDbAsSystem().get(sharedItemTable, { id: row.id }))?.name).toBe('edited where it is');
+
+    // The system re-homes a row whoever the session is: user2 holds nothing on either source.
+    runAs(2);
+    await getSharedDbAsSystem().update(sharedItemTable, {
+      id: row.id,
+      permissionSource: new Reference<SharedItem>(sharedItemTable.name, row.id),
+    });
+    expect(await sourceOf(row.id)).toBe(row.id);
+
+    // With the grants switched off for a run (`setSkipAccessGrants`), a move is asked nothing, as an insert is.
+    setSkipAccessGrants(true);
+    try {
+      await getSharedDb().update(sharedItemTable, { id: row.id, permissionSource: into });
+      expect(await sourceOf(row.id)).toBe(theirs.id);
+    } finally {
+      setSkipAccessGrants(false);
+    }
+  });
+
+  it("the source asked about is the one the table's rows take their permission from, and a row that is not a root holds no grant of its own: a row of a table whose rows hang on another table's moves between two of those its mover may write and into no other; a row that was never a root is not made its own source", async () => {
+    runAs(0);
+    const theirs = await getSharedDb().insert(sharedItemTable, { name: 'user0 doc' });
+    runAs(1);
+    const first = await getSharedDb().insert(sharedItemTable, { name: 'user1 first doc' });
+    const second = await getSharedDb().insert(sharedItemTable, { name: 'user1 second doc' });
+    const inItem = (item: SharedItem) => new Reference<SharedItem>(sharedItemTable.name, item.id);
+    const note = await getSharedDb().insert(sharedNoteTable, {
+      text: 'a note',
+      permissionSource: inItem(first),
+    } as Partial<SharedNote> as SharedNote);
+    const noteSource = async () => (await getDbAsSystem().get(sharedNoteTable, { id: note.id }))?.permissionSource?._id;
+    expect(await noteSource()).toBe(first.id);
+
+    // Between two items its mover may write: written. The grant asked about is on the item, under the items' table.
+    await getSharedDb().update(sharedNoteTable, { id: note.id, permissionSource: inItem(second) });
+    expect(await noteSource()).toBe(second.id);
+
+    // Into an item its mover holds nothing on: refused by name, and the note stays.
+    const refusalOf = async (update: () => Promise<number>) => {
+      try {
+        await update();
+      } catch (error) {
+        return (error as Error).name;
+      }
+      return undefined;
+    };
+    expect(
+      await refusalOf(() => getSharedDb().update(sharedNoteTable, { id: note.id, permissionSource: inItem(theirs) }))
+    ).toBe('RecordAccessError');
+    expect(await noteSource()).toBe(second.id);
+
+    // A row that was never a root is not made its own source: a grant is born with a root, and this row is none.
+    const line = await getSharedDb().insert(sharedItemTable, {
+      name: 'a line of user1 first doc',
+      permissionSource: inItem(first),
+      permissionSourceTable: sharedItemTable.name,
+    } as Partial<SharedItem> as SharedItem);
+    expect(
+      await refusalOf(() =>
+        getSharedDb().update(sharedItemTable, {
+          id: line.id,
+          permissionSource: new Reference<SharedItem>(sharedItemTable.name, line.id),
+        })
+      )
+    ).toBe('RecordAccessError');
+    expect(await sourceOf(line.id)).toBe(first.id);
   });
 
   // ————————————————————————————————— REGRESSIONS —————————————————————————————————

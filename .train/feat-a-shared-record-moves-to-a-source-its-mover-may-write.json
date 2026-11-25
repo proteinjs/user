@@ -1,0 +1,6 @@
+{
+  "branch": "feat/a-shared-record-moves-to-a-source-its-mover-may-write",
+  "packages": ["user"],
+  "suites": ["packages/user/"],
+  "removes": []
+}
