@@ -1,0 +1,6 @@
+{
+  "branch": "fix/an-access-invites-row-is-kept-by-its-own-services",
+  "packages": ["user"],
+  "suites": ["packages/user/"],
+  "removes": []
+}

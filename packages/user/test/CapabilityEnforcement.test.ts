@@ -13,10 +13,12 @@ import {
   ReferenceArrayColumn,
   StringColumn,
   Table,
+  TableServiceAuth,
 } from '@proteinjs/db';
 import { KnexDriver } from '@proteinjs/db-driver-knex';
 import { getSharedDb, getSharedDbAsSystem, SharedRecord, withSharedRecordColumns } from '../src/SharedRecord';
 import { AccessGrant, AccessGrantTable } from '../src/tables/AccessGrantTable';
+import { AccessInvite, AccessInviteTable } from '../src/tables/AccessInviteTable';
 import { Session, SessionData, SessionDataStorage } from '@proteinjs/server-api';
 import { SourceRepository } from '@proteinjs/reflection';
 import { tables } from '../src/tables/tables';
@@ -116,7 +118,11 @@ describe('Sharing capability enforcement floor', () => {
     (SourceRepository.get() as any).objectCache['@proteinjs/server-api/SessionDataStorage'] = [
       new TestSessionDataStorage(),
     ];
-    (SourceRepository.get() as any).objectCache['@proteinjs/db/Table'] = [tables.AccessGrant, sharedItemTable];
+    (SourceRepository.get() as any).objectCache['@proteinjs/db/Table'] = [
+      tables.AccessGrant,
+      tables.AccessInvite,
+      sharedItemTable,
+    ];
     (SourceRepository.get() as any).objectCache['@proteinjs/user-auth/AuthenticatedUserRepo'] = [userRepo];
 
     Session.setData({ sessionId: 'test-session', user: 'guest', data: {} });
@@ -132,11 +138,13 @@ describe('Sharing capability enforcement floor', () => {
   beforeEach(async () => {
     await dbDriver.getTableManager().loadTable(sharedItemTable);
     await dbDriver.getTableManager().loadTable(tables.AccessGrant);
+    await dbDriver.getTableManager().loadTable(tables.AccessInvite);
   });
 
   afterEach(async () => {
     await dropTable(sharedItemTable);
     await dropTable(new AccessGrantTable());
+    await dropTable(new AccessInviteTable());
   });
 
   afterAll(() => {
@@ -378,6 +386,101 @@ describe('Sharing capability enforcement floor', () => {
     });
     const persisted = await getSharedDbAsSystem().get(sharedItemTable, { id: item.id });
     expect(persisted?.related?._ids ?? []).toEqual(['ref-a']);
+  });
+
+  // ————————————————————————————————— AN INVITE'S ROW —————————————————————————————————
+
+  it("an access invite's row at the table's own doors: a signed-in caller's own Db mints through the mint's check, and the break-glass admin's also reads; nobody's changes or removes; the table service's gate admits the admin's reads and nothing more", async () => {
+    runAs(0);
+    const item = await getSharedDb().insert(sharedItemTable, { name: 'user0 doc' });
+    /** A mint as the invite service makes one: an insert through the caller's own Db. */
+    const mint = async () =>
+      await getDb().insert(tables.AccessInvite, {
+        resource: new Reference(sharedItemTable.name, item.id),
+        resourceTable: sharedItemTable.name,
+        accessLevel: 'read',
+        tokenExpiresAt: moment().add(7, 'days'),
+      } as Partial<AccessInvite> as AccessInvite);
+    const asAdmin = () => userRepo.setUser({ ...users[2], roles: ['admin'] });
+    const callers: [string, () => void, boolean][] = [
+      ['a person who holds nothing on the resource', () => runAs(1), false],
+      ['the minter', () => runAs(0), false],
+      // A role that is not the admin's reads nothing: the read is the break-glass admin's alone.
+      ['a person with another role', () => userRepo.setUser({ ...users[2], roles: ['people-desk'] }), false],
+      ['the break-glass admin', asAdmin, true],
+    ];
+    const roads: [string, 'reads' | 'writes', (invite: AccessInvite) => Promise<unknown>][] = [
+      ['a read', 'reads', () => getDb().query(tables.AccessInvite, {})],
+      ['a read by id', 'reads', (invite) => getDb().get(tables.AccessInvite, { id: invite.id })],
+      ['a count', 'reads', () => getDb().getRowCount(tables.AccessInvite)],
+      ['a change', 'writes', (invite) => getDb().update(tables.AccessInvite, { id: invite.id, accessLevel: 'write' })],
+      ['a removal', 'writes', (invite) => getDb().delete(tables.AccessInvite, { id: invite.id })],
+    ];
+
+    // Each caller on each road, one invite a try: what the caller is told, and whether the row stands as minted.
+    // A read is the admin's alone; a change and a removal are nobody's but the system's.
+    const outcomes: [string, string, string | undefined, boolean][] = [];
+    const expected: typeof outcomes = [];
+    for (const [caller, act, isAdmin] of callers) {
+      for (const [road, kind, take] of roads) {
+        runAs(0);
+        const invite = await mint();
+        act();
+        let refusal: string | undefined;
+        try {
+          await take(invite);
+        } catch (error) {
+          refusal = (error as Error).name;
+        }
+        const kept = await getDbAsSystem().get(tables.AccessInvite, { id: invite.id });
+        outcomes.push([caller, road, refusal, kept?.accessLevel === 'read' && kept?.token === invite.token]);
+        expected.push([caller, road, isAdmin && kind === 'reads' ? undefined : 'TableAuthError', true]);
+      }
+    }
+    expect(outcomes).toEqual(expected);
+
+    // The mint's own check stands: a person who holds nothing on the resource mints nothing.
+    runAs(1);
+    await expect(mint()).rejects.toThrow();
+
+    // The table service's gate, asked before anything is run: a signed-in person is told no for every method,
+    // by the table's name; the admin's reads are admitted and the admin's writes are told no the same way.
+    const gate = new TableServiceAuth();
+    const row = { id: 'any', accessLevel: 'write' };
+    const methods: [string, 'reads' | 'writes', unknown[]][] = [
+      ['query', 'reads', [tables.AccessInvite, {}]],
+      ['get', 'reads', [tables.AccessInvite, { id: 'any' }]],
+      ['getRowCount', 'reads', [tables.AccessInvite]],
+      ['insert', 'writes', [tables.AccessInvite, row]],
+      ['update', 'writes', [tables.AccessInvite, row]],
+      ['updatePreserving', 'writes', [tables.AccessInvite, row, []]],
+      [
+        'updateArrayMembership',
+        'writes',
+        [tables.AccessInvite, { recordId: 'any', columnPropertyName: 'acceptedBy', ops: [] }],
+      ],
+      ['delete', 'writes', [tables.AccessInvite, { id: 'any' }]],
+    ];
+    const told: [string, string, string][] = [];
+    const due: typeof told = [];
+    for (const [who, act, isAdmin] of [
+      ['a person', () => runAs(1), false],
+      ['the break-glass admin', asAdmin, true],
+    ] as const) {
+      act();
+      for (const [method, kind, args] of methods) {
+        let answer: string;
+        try {
+          answer = gate.canAccess(method, args as any[]) ? 'admitted' : 'not admitted';
+        } catch (error) {
+          const refusal = error as Error;
+          answer = `${refusal.name}, naming the table: ${refusal.message.includes(tables.AccessInvite.name)}`;
+        }
+        told.push([who, method, answer]);
+        due.push([who, method, isAdmin && kind === 'reads' ? 'admitted' : 'ServiceError, naming the table: true']);
+      }
+    }
+    expect(told).toEqual(due);
   });
 
   // ————————————————————————————————— REGRESSIONS —————————————————————————————————

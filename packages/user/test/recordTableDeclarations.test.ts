@@ -1,3 +1,4 @@
+import { AccessInviteTable } from '../src/tables/AccessInviteTable';
 import { InviteTable } from '../src/tables/InviteTable';
 import { SessionTable } from '../src/tables/SessionTable';
 
@@ -26,6 +27,16 @@ describe('admin row-scan declarations', () => {
     const table = new InviteTable();
     const actions = table.ui?.recordTable?.actions ?? [];
     expect(actions.map((action) => [action.kind, action.label])).toEqual([['create', 'Send invite']]);
+  });
+
+  it('access invite rows: what it is for, at what level, by whom, until when — never the token', () => {
+    const table = new AccessInviteTable();
+    const declared = table.ui?.recordTable?.columns;
+    expect(declared?.length).toBeGreaterThan(0);
+    expect(declared).not.toContain('token');
+    for (const column of declared!) {
+      expect((table.columns as any)[column]).toBeDefined();
+    }
   });
 
   it('session rows: whose, when it dies, which one — never the serialized session', () => {

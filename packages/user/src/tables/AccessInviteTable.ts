@@ -41,12 +41,35 @@ export type AccessInvite<T extends Record = any> = Record & {
 
 export class AccessInviteTable extends Table<AccessInvite> {
   name = 'access_invite';
+  /**
+   * THE TABLE'S OWN DOORS: A CALLER MINTS, THE BREAK-GLASS ADMIN READS, AND THE REST IS THE SYSTEM'S.
+   * - db block: `insert` for a signed-in caller. That is the mint: `AccessInviteService.createAccessInvite`
+   *   inserts as the caller, and the mint's own check (the `resourceTable` column's `onBeforeInsert`) asks
+   *   admin or owner on the resource. Query, update and delete are not declared there, and inside a declared
+   *   block an undeclared operation is closed to everyone, but that the admin's query mirrors the service
+   *   block's admin-only door (`TableAuth`).
+   * - service block: `query` for the break-glass admin alone, so a generic record page lists this table for
+   *   the admin as it lists every table. Insert, update and delete are not declared: the table service runs
+   *   none of them on this table for anyone.
+   * A row holds the token an accept asks for and names what an accept confers. Changing a row and removing
+   * one are made as the system alone: the accept finds its row by token and stamps it, and a consumer that
+   * ends a resource's links expires them in place after its own check.
+   */
   auth: Table<AccessInvite>['auth'] = {
     db: {
-      all: 'authenticated',
+      insert: 'authenticated',
     },
     service: {
-      all: 'authenticated',
+      query: ['admin'],
+    },
+  };
+  /**
+   * The admin's row scan: what an invite is for, at what level, by whom, until when. Never the
+   * redeemable `token`, which stays on the record form, as on the invite table's own row scan.
+   */
+  ui: Table<AccessInvite>['ui'] = {
+    recordTable: {
+      columns: ['resourceTable', 'resource', 'accessLevel', 'createdBy', 'tokenExpiresAt'],
     },
   };
   columns = withRecordColumns<AccessInvite>({
