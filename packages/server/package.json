@@ -22,7 +22,7 @@
     "test": "jest --runInBand --passWithNoTests"
   },
   "dependencies": {
-    "@proteinjs/db": "^1.59.1",
+    "@proteinjs/db": "^1.63.1",
     "@proteinjs/db-file": "^1.11.3",
     "@proteinjs/email-server": "^1.5.0",
     "@proteinjs/logger": "^1.2.0",
