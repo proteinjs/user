@@ -25,6 +25,8 @@ import { tables } from './tables/tables';
 
 /** Levels that satisfy a WRITE capability on a permission source (read ⊂ write ⊂ admin ⊂ owner). */
 const WRITE_ACCESS_LEVELS: AccessGrant['accessLevel'][] = ['write', 'admin', 'owner'];
+/** Levels that satisfy a DELETE of a row, held on its permission source. */
+const DELETE_ACCESS_LEVELS: AccessGrant['accessLevel'][] = ['admin', 'owner'];
 
 /**
  * The caller's principal for a grant-scoped `operation` on `table`: the session user's id. With
@@ -73,6 +75,62 @@ async function callerHasWriteAccess(
   const held = grants.length > 0;
   memo?.set(key, held);
   return held;
+}
+
+/**
+ * The permission sources, among the rows of `sourceTableName`, on which the CURRENT caller holds one
+ * of `levels`: the grants subquery the row rule is written with (`addToQuery`), and the one an
+ * update's own conditions are narrowed with when it names another source for a row that is its own
+ * (`onBeforeUpdate`). `on` names the table and operation asked, for the no-principal refusal.
+ */
+function sourcesTheCallerHolds(
+  levels: AccessGrant['accessLevel'][],
+  sourceTableName: string,
+  on: { table: string; operation: string }
+): QueryBuilder {
+  const subQuery = new QueryBuilder(tables.AccessGrant.name);
+  subQuery.select({
+    fields: ['resource'],
+  });
+
+  subQuery.condition({
+    field: 'principal',
+    operator: '=',
+    value: requirePrincipal(on.table, on.operation),
+  });
+
+  subQuery.condition({
+    field: 'accessLevel',
+    operator: 'IN',
+    value: levels,
+  });
+
+  subQuery.condition({
+    field: 'resourceTable',
+    operator: '=',
+    value: sourceTableName,
+  });
+
+  return subQuery;
+}
+
+/**
+ * Does the CURRENT caller hold admin or owner on the given permission source? The caller's own
+ * grants, read as SYSTEM, as {@link callerHasWriteAccess} reads them. Asked after a write that
+ * matched nothing, to say why by name (`onZeroRowFilteredWrite`); the rule itself is in the
+ * update's own conditions.
+ */
+async function callerHoldsAdminOrOwner(
+  permissionSourceId: string,
+  permissionSourceTableName: string,
+  on: { table: string; operation: string }
+): Promise<boolean> {
+  const qb = new QueryBuilder(tables.AccessGrant.name);
+  qb.condition({ field: 'principal', operator: '=', value: requirePrincipal(on.table, on.operation) });
+  qb.condition({ field: 'resource', operator: '=', value: permissionSourceId });
+  qb.condition({ field: 'resourceTable', operator: '=', value: permissionSourceTableName });
+  qb.condition({ field: 'accessLevel', operator: 'IN', value: DELETE_ACCESS_LEVELS });
+  return (await getDbAsSystem<AccessGrant>().query(tables.AccessGrant, qb)).length > 0;
 }
 
 /**
@@ -214,7 +272,25 @@ const getSharedRecordColumns = ({
       // with an id that is not a string, is refused, so the id asked about is the id stored.
       // System writes (migrations, server flows that re-home rows) are not asked. The question is
       // the insert's own (`callerHasWriteAccess`), with its memo.
-      onBeforeUpdate: async (table, updateObj, runAsSystem) => {
+      //
+      // A PERSON'S UPDATE THAT NAMES A PERMISSION SOURCE NAMES ITS ROW BY ID: one row an update, the
+      // row the database library tells this step (`rows.id`). An update that names its rows by a
+      // builder, or by an object that holds no id, is refused.
+      //
+      // A ROW THAT IS ITS OWN PERMISSION SOURCE IS GIVEN ANOTHER BY A CALLER WHO HOLDS ADMIN OR OWNER
+      // ON IT. Such a row is the root of a scope: its people reach it by the grants on it, and under
+      // another source it answers to that source's grants. So an update that names another source
+      // for the row it names adds to its own conditions: the row is the one it was told, and it is
+      // not its own source, or the caller holds on it what a delete of it asks
+      // (`DELETE_ACCESS_LEVELS`). The rule is part of the conditions the update's row is chosen by,
+      // and a row the rule leaves out is not written. Where the update is one statement, the row is
+      // asked and written at once; an update that also writes an encrypted column chooses its row
+      // by a read under the same conditions and writes the row it read. The caller is told by name
+      // where a write that matched nothing is explained (`onZeroRowFilteredWrite`). A row that
+      // takes its permission from another row is a writer's to move, and an update that names the
+      // row itself adds nothing. In a table whose rows take their permission from another table's
+      // rows, no row is its own source: the first rule holds there and the second adds nothing.
+      onBeforeUpdate: async (table, updateObj, runAsSystem, rows) => {
         if (runAsSystem || skipAccessGrantsEnabled()) {
           return;
         }
@@ -232,11 +308,37 @@ const getSharedRecordColumns = ({
           );
         }
 
+        if (!rows) {
+          throw new Error(
+            `A ${table.name} row's permission source is ruled on with the rows its update names: this needs a @proteinjs/db whose update hands a column's step its rows (\`UpdateRows\`)`
+          );
+        }
+
+        if (rows.id === undefined) {
+          throw new RecordAccessError(
+            `A ${table.name} row is given a permission source by its id: an update that names its rows by a query carries none`
+          );
+        }
+
         if (!(await callerHasWriteAccess(sourceId, sourceTable, { table: table.name, operation: 'update' }))) {
           throw new RecordAccessError(
             `User does not have write access to the permission source (${sourceTable}:${sourceId})`
           );
         }
+
+        if (sourceTable !== table.name || rows.id === sourceId) {
+          return;
+        }
+
+        rows.conditions.condition({ field: 'id', operator: '=', value: rows.id });
+        rows.conditions.or([
+          { field: 'permissionSource', operator: '!=', value: rows.id },
+          {
+            field: 'permissionSource',
+            operator: 'IN',
+            value: sourcesTheCallerHolds(DELETE_ACCESS_LEVELS, sourceTable, { table: table.name, operation: 'update' }),
+          },
+        ]);
       },
       // OWNER-GRANT BOOTSTRAP (server-side, post-DML): a scope root's creator gets an `owner`
       // grant the moment the row lands. The grant is PLATFORM-CONFERRED, not something the user
@@ -288,7 +390,7 @@ const getSharedRecordColumns = ({
       // fact exists (system truth) AND the caller lacks write+ on its source, surface a typed
       // error. An absent row, or a caller who DOES hold write+ (e.g. a same-value no-op), is left
       // as a legitimate 0 — never mis-flagged.
-      onZeroRowFilteredWrite: async (table, id, operation, runAsSystem) => {
+      onZeroRowFilteredWrite: async (table, id, operation, runAsSystem, record) => {
         if (runAsSystem || skipAccessGrantsEnabled()) {
           return;
         }
@@ -307,6 +409,23 @@ const getSharedRecordColumns = ({
         if (!(await callerHasWriteAccess(sourceId, sourceTable, { table: table.name, operation }))) {
           throw new RecordAccessError(`User does not have ${operation} access to ${table.name}:${id}`);
         }
+
+        // A write that named another permission source for a row that is its own, by a caller who
+        // holds neither admin nor owner on the row: the update's own conditions left the row out
+        // (`onBeforeUpdate`), and here the caller is told so by name.
+        const named = (record?.permissionSource as Reference<any> | null | undefined)?._id;
+        if (
+          operation === 'write' &&
+          (permissionSourceTableName ?? table.name) === table.name &&
+          typeof named === 'string' &&
+          named !== id &&
+          sourceId === id &&
+          !(await callerHoldsAdminOrOwner(id, table.name, { table: table.name, operation }))
+        ) {
+          throw new RecordAccessError(
+            `User holds neither admin nor owner on ${table.name}:${id}: a row that is its own permission source is given another by a caller who holds one`
+          );
+        }
       },
       addToQuery: async (qb, runAsSystem, operation) => {
         if (runAsSystem || skipAccessGrantsEnabled()) {
@@ -316,36 +435,16 @@ const getSharedRecordColumns = ({
         const operationToLevel: globalThis.Record<typeof operation, AccessGrant['accessLevel'][]> = {
           read: ['read', 'write', 'admin', 'owner'],
           write: ['write', 'admin', 'owner'],
-          delete: ['admin', 'owner'],
+          delete: DELETE_ACCESS_LEVELS,
         };
-
-        const subQuery = new QueryBuilder(tables.AccessGrant.name);
-        subQuery.select({
-          fields: ['resource'],
-        });
-
-        subQuery.condition({
-          field: 'principal',
-          operator: '=',
-          value: requirePrincipal(qb.tableName, operation),
-        });
-
-        subQuery.condition({
-          field: 'accessLevel',
-          operator: 'IN',
-          value: operationToLevel[operation],
-        });
-
-        subQuery.condition({
-          field: 'resourceTable',
-          operator: '=',
-          value: permissionSourceTableName ?? qb.tableName,
-        });
 
         qb.condition({
           field: 'permissionSource',
           operator: 'IN',
-          value: subQuery,
+          value: sourcesTheCallerHolds(operationToLevel[operation], permissionSourceTableName ?? qb.tableName, {
+            table: qb.tableName,
+            operation,
+          }),
         });
       },
     }),
